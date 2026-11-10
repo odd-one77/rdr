@@ -77,3 +77,25 @@ Riedel logo in its place (same filename) to replace it everywhere.
 
 Phase 2: phone camera scanning (needs the optional HTTPS switch), RTSP
 programme feed on the mirror, per-site stock reports, phone-sized layout.
+
+## Screenshots (demo data)
+
+| Start screen | Kiosk |
+|---|---|
+| ![Start](docs/screenshots/01-start.png) | ![Kiosk](docs/screenshots/03-kiosk-signout.png) |
+
+| Conflict decision | Swap | Unknown barcode |
+|---|---|---|
+| ![Conflict](docs/screenshots/03c-kiosk-conflict.png) | ![Swap](docs/screenshots/03d-kiosk-swap.png) | ![Quick create](docs/screenshots/03b-kiosk-quick-create.png) |
+
+| Mirror (processing) | Mirror (done) |
+|---|---|
+| ![Mirror](docs/screenshots/04-mirror.png) | ![Mirror result](docs/screenshots/04b-mirror-result.png) |
+
+| Admin dashboard | Devices | Person |
+|---|---|---|
+| ![Dashboard](docs/screenshots/06-admin-dashboard.png) | ![Devices](docs/screenshots/07-admin-devices.png) | ![Person](docs/screenshots/08-admin-person.png) |
+
+| Import: map columns | Import: review | Settings & update | Transactions |
+|---|---|---|---|
+| ![Map](docs/screenshots/09-admin-import-map.png) | ![Review](docs/screenshots/10-admin-import-review.png) | ![Settings](docs/screenshots/11-admin-settings.png) | ![Transactions](docs/screenshots/12-admin-transactions.png) |
