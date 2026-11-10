@@ -104,8 +104,10 @@ phone view still works for typing SI numbers.
 ## Mirror and programme feed
 
 `/mirror?site=<id>` is the customer-facing screen. Idle, it shows the welcome
-line (or random sayings from Settings) and asks for name and role, naming the
-tech on that site's kiosk. During a transaction it greets the person and lists what they
+line, or one of your own sayings, or, with the "Movie quotes" box ticked in
+Settings, one of fifty well-known film lines with its credit underneath. The
+line changes each time the screen returns from a transaction. Below it the
+screen asks for name and role, naming the tech on that site's kiosk. During a transaction it greets the person and lists what they
 are getting by type ("2 × Pro-D2 Headset", "Bolero Beltpack · Bolero 61"),
 never serial numbers; those stay on the technician's side. Give a site a feed address under Event & sites and the mirror
 shows it next to the transaction: an RTSP address is relayed to HLS by the

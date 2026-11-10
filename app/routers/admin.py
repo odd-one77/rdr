@@ -16,7 +16,7 @@ from ..auth import (
 from ..config import DATA_DIR, IMPORT_DIR, UPLOAD_DIR, load_config, save_config
 from ..db import ACTION_LABELS, get_db, get_setting, now_iso, reset_db, set_setting
 from ..main import lan_addresses, render
-from ..services import backup, certs, importer, inventory, reports, snapshots, streams, updater
+from ..services import backup, certs, importer, inventory, quotes, reports, snapshots, streams, updater
 
 router = APIRouter(prefix="/admin")
 
@@ -620,6 +620,8 @@ def settings_page(request: Request, fetch: int = 0):
         }
         mirror["transcode"] = get_setting(db, "stream_transcode") == "1"
         mirror["pgm_size"] = get_setting(db, "pgm_size") or "half"
+        mirror["quotes"] = quotes.MOVIE_QUOTES
+        mirror["quotes_on"] = quotes.enabled(get_setting(db, "movie_quotes"))
     cfg = load_config()
     https = {"on": bool(cfg.get("https")), "port": cfg.get("https_port", 8443), "cert": certs.status(),
              "listening": _port_open(int(cfg.get("https_port", 8443))) if cfg.get("https") else None, "log": _tail(DATA_DIR / "https.log")}
@@ -657,8 +659,9 @@ def settings_update():
 
 
 @router.post("/settings/mirror", dependencies=[Depends(require_admin)])
-def settings_mirror(mirror_title: str = Form(""), mirror_prompt: str = Form(""), mirror_sayings: str = Form(""), stream_transcode: str = Form(""), pgm_size: str = Form("half")):
+def settings_mirror(mirror_title: str = Form(""), mirror_prompt: str = Form(""), mirror_sayings: str = Form(""), stream_transcode: str = Form(""), pgm_size: str = Form("half"), movie_quotes: str = Form("")):
     with get_db() as db:
+        set_setting(db, "movie_quotes", "1" if movie_quotes else None)
         set_setting(db, "stream_transcode", "1" if stream_transcode else None)
         set_setting(db, "pgm_size", pgm_size if pgm_size in ("small", "half", "large") else None)
         set_setting(db, "mirror_title", mirror_title.strip() or None)

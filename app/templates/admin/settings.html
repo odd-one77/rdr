@@ -44,7 +44,13 @@
     <div class="panel"><div class="panel-head"><h2>Mirror screen</h2><a class="btn sm ghost" href="/mirror" target="_blank">Open mirror</a></div>
       <div class="panel-body"><form method="post" action="/admin/settings/mirror">
         <div class="field"><label>Welcome line</label><input name="mirror_title" value="{{ mirror.title }}" placeholder="Welcome to RDR"></div>
-        <div class="field"><label>Random sayings (one per line, shown instead of the welcome line when set)</label><textarea name="mirror_sayings" rows="4" placeholder="Comms is life.&#10;Have you tried turning it off and on again?&#10;Please return all devices before you leave.">{{ mirror.sayings }}</textarea></div>
+        <div class="field"><label>Your own sayings (one per line, shown instead of the welcome line when set)</label><textarea name="mirror_sayings" rows="3" placeholder="Comms is life.&#10;Have you tried turning it off and on again?&#10;Please return all devices before you leave.">{{ mirror.sayings }}</textarea></div>
+        <div class="field">
+          <label class="check"><input type="checkbox" name="movie_quotes" value="1" {{ 'checked' if mirror.quotes_on }}> Movie quotes <span class="muted">· {{ mirror.quotes | length }} famous film lines, shown with their credit, mixed in with your own sayings</span></label>
+          <details style="margin-top:6px"><summary>See the list</summary>
+            <div class="quote-grid">{% for q in mirror.quotes %}<div class="quote"><span class="q">{{ q.text }}</span><span class="c">{{ q.credit }}</span></div>{% endfor %}</div>
+          </details>
+        </div>
         <div class="field"><label>Prompt line</label><input name="mirror_prompt" value="{{ mirror.prompt }}" placeholder="Please give your name and role to {tech}"><div class="help" style="margin-top:4px"><span class="mono">{tech}</span> is the tech on that site's kiosk.</div></div>
         <div class="grid cols-2" style="align-items:end;margin-bottom:12px">
           <div class="field" style="margin:0"><label>PGM feed size on the mirror</label><select name="pgm_size"><option value="small" {{ 'selected' if mirror.pgm_size == 'small' }}>Small (a third)</option><option value="half" {{ 'selected' if mirror.pgm_size == 'half' }}>Half</option><option value="large" {{ 'selected' if mirror.pgm_size == 'large' }}>Large (two thirds)</option></select></div>

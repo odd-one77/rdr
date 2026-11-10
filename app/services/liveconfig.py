@@ -14,7 +14,7 @@ import sqlite3
 from ..db import get_setting
 from . import streams
 
-MIRROR_KEYS = ("mirror_title", "mirror_prompt", "mirror_sayings", "stream_transcode", "pgm_size")
+MIRROR_KEYS = ("mirror_title", "mirror_prompt", "mirror_sayings", "stream_transcode", "pgm_size", "movie_quotes")
 
 
 def snapshot(db: sqlite3.Connection) -> dict:

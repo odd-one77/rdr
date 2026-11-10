@@ -359,3 +359,19 @@ def test_partial_si_search(client):
     r = client.get("/api/devices/search?q=bol-10").json()["results"]
     assert all("BOL-10" in x["si"] for x in r) and len(r) <= 12
     assert client.get("/api/devices/search?q=").json()["results"] == []
+
+
+def test_movie_quotes_toggle(client):
+    from app.services import quotes
+    assert len(quotes.MOVIE_QUOTES) >= 40 and all(q["credit"] for q in quotes.MOVIE_QUOTES)
+    assert len({q["id"] for q in quotes.MOVIE_QUOTES}) == len(quotes.MOVIE_QUOTES)
+    client.post("/admin/login", data={"password": "test1234"})
+    r = client.post("/admin/settings/mirror", data={"mirror_title": "", "mirror_prompt": "", "mirror_sayings": "Own line", "pgm_size": "half", "movie_quotes": "1"})
+    assert r.status_code == 303
+    g = client.get("/api/mirror/1").json()["greeting"]
+    assert len(g["sayings"]) == 1 + len(quotes.MOVIE_QUOTES)
+    assert g["sayings"][0] == {"text": "Own line", "credit": ""}
+    assert any(x["text"].startswith("Ah, Mr. Bond") and "Bond" in x["credit"] for x in g["sayings"])
+    assert 'name="movie_quotes" value="1" checked' in client.get("/admin/settings").text
+    client.post("/admin/settings/mirror", data={"mirror_title": "", "mirror_prompt": "", "mirror_sayings": "", "pgm_size": "half"})
+    assert client.get("/api/mirror/1").json()["greeting"]["sayings"] == []

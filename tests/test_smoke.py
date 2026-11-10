@@ -239,7 +239,7 @@ def test_mirror_greeting_and_tech_name(client):
     assert r.status_code == 303
     client.post("/api/kiosk/state", json={"state": {"person": None, "basket": []}})
     d = client.get("/api/mirror/1").json()
-    assert d["greeting"]["sayings"] == ["One", "Two"]
+    assert [x["text"] for x in d["greeting"]["sayings"]] == ["One", "Two"]
     assert d["greeting"]["title"] == "Welcome to RDR"
     assert "{tech}" in d["greeting"]["prompt"]
     assert d["state"]["tech_name"] == "RDR Tech"

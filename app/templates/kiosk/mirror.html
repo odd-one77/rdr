@@ -24,12 +24,13 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const main = document.getElementById('main');
   let lastJson = '', greeting = {title: 'Welcome to RDR', sayings: [], prompt: 'Please give your name and role to {tech}'}, techName = null, sayingIdx = -1, idleShown = false, currentSaying = null;
+  const asSaying = x => (typeof x === 'string' ? { text: x, credit: '' } : x);
   const pick = () => {
-    const list = greeting.sayings && greeting.sayings.length ? greeting.sayings : [greeting.title || 'Welcome to RDR'];
+    const list = (greeting.sayings && greeting.sayings.length ? greeting.sayings : [greeting.title || 'Welcome to RDR']).map(asSaying);
     if (list.length > 1) { let i; do { i = Math.floor(Math.random() * list.length); } while (i === sayingIdx); sayingIdx = i; return list[i]; }
     return list[0];
   };
-  const idleHtml = () => `<div class="idle ${fresh ? 'anim' : ''}"><div class="big" id="saying">${esc(currentSaying || (currentSaying = pick()))}</div><div class="sub">${esc((greeting.prompt || 'Please give your name and role to {tech}').replace('{tech}', techName || 'the technician'))}</div></div>`;
+  const idleHtml = () => { const sy = asSaying(currentSaying || (currentSaying = pick())); return `<div class="idle ${fresh ? 'anim' : ''}"><div class="big" id="saying">${esc(sy.text)}</div>${sy.credit ? `<div class="credit">${esc(sy.credit)}</div>` : ''}<div class="sub">${esc((greeting.prompt || 'Please give your name and role to {tech}').replace('{tech}', techName || 'the technician'))}</div></div>`; };
   async function tick(){
     try {
       const r = await fetch(`/api/mirror/${SITE}`, {cache:'no-store'});

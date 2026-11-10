@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import current_tech, is_admin
 from ..db import get_db, get_setting, now_iso
-from ..services import inventory, liveconfig, streams
+from ..services import inventory, liveconfig, quotes, streams
 
 router = APIRouter(prefix="/api")
 
@@ -254,7 +254,8 @@ def mirror_state(site_id: int):
     with get_db() as db:
         row = db.execute("SELECT * FROM kiosk_state WHERE site_id = ?", (site_id,)).fetchone()
         event = db.execute("SELECT * FROM event WHERE id = 1").fetchone()
-        sayings = [ln.strip() for ln in (get_setting(db, "mirror_sayings") or "").splitlines() if ln.strip()]
+        sayings = [{"text": ln.strip(), "credit": ""} for ln in (get_setting(db, "mirror_sayings") or "").splitlines() if ln.strip()]
+        sayings += [{"text": q["text"], "credit": q["credit"]} for q in quotes.selected(get_setting(db, "movie_quotes"))]
         state = json.loads(row["state_json"]) if row else {}
         age = None
         if row:
