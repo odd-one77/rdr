@@ -79,11 +79,17 @@ def check_admin_password(db: sqlite3.Connection, password: str) -> bool:
 
 # -- sessions -----------------------------------------------------------------
 
+ADMIN_IDLE_SECONDS = 20 * 60
+
+
 def admin_token() -> str:
-    return serializer().dumps({"admin": True, "nonce": secrets.token_hex(8)})
+    import time
+    return serializer().dumps({"admin": True, "ts": int(time.time()), "nonce": secrets.token_hex(8)})
 
 
 def is_admin(request: Request) -> bool:
+    """Admin cookie is valid for ADMIN_IDLE_SECONDS; admin pages refresh it on every visit."""
+    import time
     raw = request.cookies.get(ADMIN_COOKIE)
     if not raw:
         return False
@@ -91,7 +97,9 @@ def is_admin(request: Request) -> bool:
         data = serializer().loads(raw)
     except BadSignature:
         return False
-    return bool(data.get("admin"))
+    if not data.get("admin"):
+        return False
+    return (time.time() - int(data.get("ts", 0))) < ADMIN_IDLE_SECONDS
 
 
 def tech_token(tech_id: int, site_id: int) -> str:

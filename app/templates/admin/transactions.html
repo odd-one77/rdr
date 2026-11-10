@@ -8,7 +8,6 @@
   <div class="field"><label>Site</label><select name="site_id"><option value="">All</option>{% for s in sites %}<option value="{{ s.id }}" {{ 'selected' if f_site == s.id|string }}>{{ s.name }}</option>{% endfor %}</select></div>
   <div class="field"><label>From</label><input type="date" name="date_from" value="{{ date_from }}"></div>
   <div class="field"><label>To</label><input type="date" name="date_to" value="{{ date_to }}"></div>
-  <button class="btn">Filter</button>
 </form>
 <div class="panel"><div class="table-wrap" style="max-height:none"><table>
   <tr><th>Time</th><th>Action</th><th>Device</th><th>Person</th><th>Tech</th><th>Site</th><th>Reason / note</th></tr>

@@ -40,6 +40,17 @@ def lan_addresses() -> list[str]:
     return sorted(ips)
 
 
+MOBILE_MARKERS = ("iphone", "ipod", "android", "mobile", "windows phone", "blackberry")
+
+
+def is_mobile(request: Request) -> bool:
+    """Phones get the phone view, everything else the desktop kiosk. Android tablets without 'Mobile' count as desktop."""
+    ua = request.headers.get("user-agent", "").lower()
+    if "ipad" in ua or ("android" in ua and "mobile" not in ua):
+        return False
+    return any(m in ua for m in MOBILE_MARKERS)
+
+
 def base_context(request: Request) -> dict:
     """Context every page needs: event, tech session, sites, flash messages."""
     with get_db() as db:
@@ -73,9 +84,15 @@ def render(request: Request, name: str, **ctx) -> HTMLResponse:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    from .services import snapshots
+    ok, detail = snapshots.integrity_check()
+    if not ok:
+        print(f"!! Database integrity check failed: {detail}. Restore a snapshot from data/backups via Admin > Backup.", flush=True)
+    snapshots.start()
     yield
     from .services.streams import stop_all
     stop_all()
+    snapshots.stop()
 
 
 def create_app() -> FastAPI:
@@ -93,6 +110,15 @@ def create_app() -> FastAPI:
     app.include_router(kiosk.router)
     app.include_router(api.router)
     app.include_router(admin.router)
+
+    @app.middleware("http")
+    async def refresh_admin_cookie(request: Request, call_next):
+        """Admin sessions are idle-limited; every admin page visit extends them."""
+        response = await call_next(request)
+        if request.url.path.startswith("/admin") and request.url.path != "/admin/logout" and is_admin(request):
+            from .auth import ADMIN_COOKIE, admin_token
+            response.set_cookie(ADMIN_COOKIE, admin_token(), max_age=60 * 60 * 12, samesite="lax", httponly=True)
+        return response
 
     @app.exception_handler(404)
     async def not_found(request: Request, exc):  # pragma: no cover - simple UX nicety

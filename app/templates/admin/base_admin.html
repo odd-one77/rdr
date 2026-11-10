@@ -12,7 +12,7 @@
     <a href="/admin" class="{{ 'on' if active == 'dashboard' }}">Dashboard</a>
     <div class="group">Event</div>
     <a href="/admin/event" class="{{ 'on' if active == 'event' }}">Event & sites</a>
-    <a href="/admin/assignments" class="{{ 'on' if active == 'assignments' }}">Pre-assignments</a>
+    <a href="/admin/plans" class="{{ 'on' if active in ('plans', 'assignments') }}">Kit plans</a>
     <div class="group">Data</div>
     <a href="/admin/people" class="{{ 'on' if active == 'people' }}">People</a>
     <a href="/admin/devices" class="{{ 'on' if active == 'devices' }}">Devices</a>

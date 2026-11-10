@@ -44,7 +44,7 @@
     <div class="panel"><div class="panel-head"><h2>Mirror screen</h2><a class="btn sm ghost" href="/mirror" target="_blank">Open mirror</a></div>
       <div class="panel-body"><form method="post" action="/admin/settings/mirror">
         <div class="field"><label>Welcome line</label><input name="mirror_title" value="{{ mirror.title }}" placeholder="Welcome to RDR"></div>
-        <div class="field"><label>Random sayings (one per line, shown instead of the welcome line when set)</label><textarea name="mirror_sayings" rows="4" placeholder="Comms is life.&#10;Have you tried turning it off and on again?&#10;Return your kit, keep your deposit.">{{ mirror.sayings }}</textarea></div>
+        <div class="field"><label>Random sayings (one per line, shown instead of the welcome line when set)</label><textarea name="mirror_sayings" rows="4" placeholder="Comms is life.&#10;Have you tried turning it off and on again?&#10;Please return all devices before you leave.">{{ mirror.sayings }}</textarea></div>
         <div class="field"><label>Prompt line</label><input name="mirror_prompt" value="{{ mirror.prompt }}" placeholder="Please give your name and role to {tech}"><div class="help" style="margin-top:4px"><span class="mono">{tech}</span> is the tech on that site's kiosk.</div></div>
         <label class="check" style="margin-bottom:12px"><input type="checkbox" name="stream_transcode" value="1" {{ 'checked' if mirror.transcode }}> Re-encode the PGM feed (only if the RTSP source is not H.264)</label>
         <button class="btn">Save mirror screen</button></form>
@@ -54,7 +54,9 @@
       <div class="panel-body">
         <p class="help">Phone browsers only allow the camera on a secure address. Turning this on adds an https server with a local certificate; phones install it once from <span class="mono">/trust</span>.</p>
         {% if https.on %}
-        <dl class="kv" style="margin:10px 0"><dt>Address</dt><dd>{% for ip in lan %}https://{{ ip }}:{{ https.port }}<br>{% endfor %}</dd><dt>Valid for</dt><dd>{{ https.cert.hosts | join(', ') }}</dd><dt>Expires</dt><dd>{{ https.cert.expires or '—' }}</dd></dl>
+        <dl class="kv" style="margin:10px 0"><dt>Status</dt><dd>{% if https.listening %}<span class="green">listening on port {{ https.port }}</span>{% else %}<span class="red">not listening on port {{ https.port }}</span> <span class="muted">· see log below; restart the server from its window if needed</span>{% endif %}</dd><dt>Address</dt><dd>{% for ip in lan %}https://{{ ip }}:{{ https.port }}<br>{% endfor %}{% if not lan %}https://&lt;this-pc-ip&gt;:{{ https.port }}{% endif %}</dd><dt>Valid for</dt><dd>{{ https.cert.hosts | join(', ') }}</dd><dt>Expires</dt><dd>{{ https.cert.expires or '—' }}</dd></dl>
+        {% if https.log and not https.listening %}<div class="code" style="margin-bottom:10px">{{ https.log | join('\n') }}</div>{% endif %}
+        <p class="help">Phones still can't connect? Allow <span class="mono">python.exe</span> through Windows Firewall for private networks, or open port {{ https.port }}.</p>
         <form method="post" action="/admin/settings/https" class="row wrap">
           <input type="hidden" name="https_port" value="{{ https.port }}">
           <input name="extra_hosts" placeholder="Extra hostnames or IPs (optional)" style="max-width:260px">

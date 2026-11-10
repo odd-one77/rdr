@@ -84,3 +84,32 @@ def activity_by_site(db: sqlite3.Connection) -> list[sqlite3.Row]:
         GROUP BY x.site_id, x.tech_id ORDER BY s.name, outs DESC
         """
     ).fetchall()
+
+
+def end_of_event(db: sqlite3.Connection) -> list[dict]:
+    """Who still has what: one entry per person holding devices, with contact details,
+    when they were last seen at a counter, and when/where each device was issued."""
+    rows = db.execute(
+        """
+        SELECT p.id AS person_id, p.name, p.dept, p.role, p.phone, p.bolero_id,
+               (SELECT MAX(ts) FROM transactions x WHERE x.person_id = p.id) AS last_seen,
+               d.id AS device_id, d.si, d.label, d.status, t.name AS type_name,
+               x.ts AS issued_at, s.name AS issued_site, tc.display_name AS issued_by
+        FROM devices d
+        JOIN people p ON p.id = d.holder_id
+        JOIN device_types t ON t.id = d.type_id
+        LEFT JOIN transactions x ON x.id = (SELECT MAX(id) FROM transactions WHERE device_id = d.id AND action IN ('out','out_reassign','swap_in'))
+        LEFT JOIN sites s ON s.id = x.site_id
+        LEFT JOIN techs tc ON tc.id = x.tech_id
+        WHERE d.status <> 'in'
+        ORDER BY COALESCE(NULLIF(p.dept,''), 'zzz'), p.name, t.sort_order, d.label
+        """
+    ).fetchall()
+    people: dict[int, dict] = {}
+    for r in rows:
+        entry = people.setdefault(r["person_id"], {
+            "person_id": r["person_id"], "name": r["name"], "dept": r["dept"], "role": r["role"], "phone": r["phone"],
+            "bolero_id": r["bolero_id"], "last_seen": r["last_seen"], "items": [],
+        })
+        entry["items"].append({k: r[k] for k in ("device_id", "si", "label", "status", "type_name", "issued_at", "issued_site", "issued_by")})
+    return list(people.values())

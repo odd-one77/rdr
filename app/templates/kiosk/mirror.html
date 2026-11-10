@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Mirror · {{ mirror_site.name }}{% endblock %}
 {% block body %}
-{% if mirror_site.rtsp_url %}<script src="/static/vendor/hls.min.js"></script>{% endif %}
+{% if feed.kind in ("rtsp", "hls") %}<script src="/static/vendor/hls.min.js"></script>{% endif %}
 <div class="mirror">
   <div class="mirror-head">
     <div class="row" style="gap:24px">
@@ -10,12 +10,14 @@
     </div>
     <div class="title"><div class="ev">{{ event.name }}</div><div class="show">{{ event.show_name or mirror_site.name }}</div></div>
   </div>
-  <div class="mirror-body {% if not mirror_site.rtsp_url %}no-video{% endif %}">
-    <div id="main">
+  <div class="mirror-body {% if feed.kind == 'unknown' %}no-video{% endif %}">
+    <div id="main" class="main">
       <div class="idle"><div class="big">Welcome to RDR</div><div class="sub">Please give your name and role to the technician</div></div>
     </div>
-    {% if mirror_site.rtsp_url %}
-    <div class="video" id="video"><span class="pgm">PGM</span><video id="pgm" muted autoplay playsinline></video><div class="status" id="pgmStatus">Connecting to programme feed…</div></div>
+    {% if feed.kind == 'youtube' and feed.embed %}
+    <div class="video"><span class="pgm">PGM</span><iframe src="{{ feed.embed }}" allow="autoplay; encrypted-media" allowfullscreen frameborder="0"></iframe></div>
+    {% elif feed.kind in ('rtsp', 'hls', 'file') %}
+    <div class="video" id="video"><span class="pgm">PGM</span><video id="pgm" muted autoplay playsinline loop></video><div class="status" id="pgmStatus">Connecting to programme feed…</div></div>
     {% endif %}
   </div>
   <div class="mirror-foot"><span>{{ mirror_site.name }}</span><span id="mclock"></span></div>
@@ -25,13 +27,13 @@
   const SITE = {{ mirror_site.id }};
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const main = document.getElementById('main');
-  let lastJson = '', greeting = {title: 'Welcome to RDR', sayings: [], prompt: 'Please give your name and role to {tech}'}, techName = null, sayingIdx = -1, idleShown = false;
+  let lastJson = '', greeting = {title: 'Welcome to RDR', sayings: [], prompt: 'Please give your name and role to {tech}'}, techName = null, sayingIdx = -1, idleShown = false, currentSaying = null;
   const pick = () => {
     const list = greeting.sayings && greeting.sayings.length ? greeting.sayings : [greeting.title || 'Welcome to RDR'];
     if (list.length > 1) { let i; do { i = Math.floor(Math.random() * list.length); } while (i === sayingIdx); sayingIdx = i; return list[i]; }
     return list[0];
   };
-  const idleHtml = () => `<div class="idle"><div class="big" id="saying">${esc(pick())}</div><div class="sub">${esc((greeting.prompt || 'Please give your name and role to {tech}').replace('{tech}', techName || 'the technician'))}</div></div>`;
+  const idleHtml = () => `<div class="idle anim"><div class="big" id="saying">${esc(currentSaying || (currentSaying = pick()))}</div><div class="sub">${esc((greeting.prompt || 'Please give your name and role to {tech}').replace('{tech}', techName || 'the technician'))}</div></div>`;
   async function tick(){
     try {
       const r = await fetch(`/api/mirror/${SITE}`, {cache:'no-store'});
@@ -43,42 +45,48 @@
       if (j !== lastJson) { lastJson = j; render(s); }
     } catch (e) {}
   }
-  const item = (i, small) => `<li${small ? ' class="small"' : ''}><span><span class="type">${esc(i.type)}</span><br>${esc(i.label || i.si)}</span><span class="si">${esc(i.si)}</span></li>`;
+  let stagger = 0;
+  const item = (i, small) => `<li class="anim${small ? ' small' : ''}" style="animation-delay:${(stagger++) * 60}ms"><span><span class="type">${esc(i.type)}</span><br>${esc(i.label || i.si)}</span><span class="si">${esc(i.si)}</span></li>`;
   const heading = t => `<div class="heading">${t}</div>`;
   function render(s){
+    stagger = 0;
     if (s.result && s.result.items && s.result.items.length) {
       const kind = s.result.kind;
       main.innerHTML = `
-        <div class="who">${esc(s.result.person || 'Returned items')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
+        <div class="who anim">${esc(s.result.person || 'Returned devices')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
         <ul class="items">${s.result.items.map(i => item(i)).join('')}</ul>
-        <div class="result ${kind}">${kind === 'out' ? 'Please look after your kit' : 'All checked in'}</div>`;
+        <div class="result ${kind} anim" style="animation-delay:${s.result.items.length * 60 + 80}ms">${kind === 'out' ? 'Please look after your devices' : 'All checked in'}</div>`;
       return;
     }
     if (!s.person && !(s.basket && s.basket.length)) {
+      if (!idleShown) currentSaying = pick();   // a new saying only when coming back from an interaction
       main.innerHTML = idleHtml(); idleShown = true;
       return;
     }
     idleShown = false;
     const p = s.person || {};
     main.innerHTML = `
-      <div class="who">${p.name ? 'Hi! ' + esc(p.name) : 'Returning items'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'Items are being checked in'))}</small></div>
-      ${(s.holdings && s.holdings.length) ? heading('Currently with you') + `<ul class="items" style="margin-top:8px">${s.holdings.map(i => item(i, true)).join('')}</ul>` : ''}
+      <div class="who anim">${p.name ? 'Hi! ' + esc(p.name) : 'Returning devices'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'Devices are being checked in'))}${p.bolero_id ? ` <span class="bolero">Bolero ${esc(String(p.bolero_id).replace(/^bolero\s*/i, ''))}</span>` : ''}</small></div>
+      ${(s.holdings && s.holdings.length) ? heading('Already with you') + `<ul class="items" style="margin-top:8px">${s.holdings.map(i => item(i, true)).join('')}</ul>` : ''}
       ${(s.basket && s.basket.length) ? heading('Being processed') + `<ul class="items" style="margin-top:8px">${s.basket.map(i => item(i)).join('')}</ul>` : ''}`;
   }
   setInterval(tick, 1000); tick();
   // Programme feed: ask the server to relay RTSP -> HLS and play it.
   const videoEl = document.getElementById('pgm');
-  if (videoEl) {
+  const FEED = {{ feed | tojson }};
+  if (videoEl && FEED.kind === 'file') { videoEl.src = FEED.url; document.getElementById('pgmStatus').classList.add('hidden'); videoEl.play().catch(() => {}); }
+  else if (videoEl) {
     const statusEl = document.getElementById('pgmStatus');
     let hls = null, attached = false;
     async function pingStream() {
       try {
-        const r = await fetch(`/api/stream/${SITE}/ping`, {cache: 'no-store'});
-        const st = await r.json();
+        let st;
+        if (FEED.kind === 'hls') { st = {ready: true, playlist: FEED.url}; }
+        else { const r = await fetch(`/api/stream/${SITE}/ping`, {cache: 'no-store'}); st = await r.json(); }
         if (st.error && !st.running) { statusEl.textContent = st.error; statusEl.classList.remove('hidden'); attached = false; if (hls) { hls.destroy(); hls = null; } return; }
         if (st.ready && !attached) {
           attached = true;
-          const src = st.playlist + '?t=' + Date.now();
+          const src = FEED.kind === 'hls' ? st.playlist : st.playlist + '?t=' + Date.now();
           if (window.Hls && Hls.isSupported()) {
             hls = new Hls({lowLatencyMode: true, liveSyncDurationCount: 2, liveMaxLatencyDurationCount: 4, maxBufferLength: 4, backBufferLength: 0});
             hls.loadSource(src); hls.attachMedia(videoEl);
@@ -93,8 +101,6 @@
     }
     setInterval(pingStream, 4000); pingStream();
   }
-  // Rotate through the sayings while idle.
-  setInterval(() => { const el = document.getElementById('saying'); if (idleShown && el && greeting.sayings && greeting.sayings.length > 1) { el.style.opacity = 0; setTimeout(() => { el.textContent = pick(); el.style.opacity = 1; }, 400); } }, 9000);
   const clock = () => { document.getElementById('mclock').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); };
   setInterval(clock, 1000); clock();
 })();

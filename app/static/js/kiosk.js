@@ -11,7 +11,7 @@
     created: 'Created', imported: 'Imported', assigned: 'Pre-assigned', unassigned: 'Unassigned',
   };
 
-  const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null };
+  const state = { person: null, holdings: [], assignments: [], plan: [], basket: [], scope: 'site', result: null };
 
   // ---- api ---------------------------------------------------------------
   async function api(path, opts = {}) {
@@ -65,7 +65,7 @@
       const d = await api(`/api/recent?limit=40&scope=${state.scope}`);
       $('#feed').innerHTML = d.transactions.map(x => {
         const label = ACTIONS[x.action] || x.action;
-        return `<li class="act-${x.action}"><span class="ts">${esc(x.ts.slice(11, 16))}</span><span><span class="what">${esc(label)}</span> · ${esc(x.label || x.si || '')} <span class="si">${esc(x.si || '')}</span>${x.person_name ? `<br><span class="who">${esc(x.person_name)}</span>` : ''}${x.note ? `<br><span class="dim">${esc(x.note)}</span>` : ''}${x.tech_name ? ` <span class="dim">· ${esc(x.tech_name)}</span>` : ''}</span></li>`;
+        return `<li class="act-${x.action}"><span class="ts">${esc(x.ts.slice(11, 16))}</span><span class="txt"><div class="l1"><span class="what">${esc(label)}</span> · ${esc(x.label || x.si || '')}</div><div class="l2">${esc([x.person_name, x.tech_name, x.note].filter(Boolean).join(' · ') || x.si || '')}</div></span></li>`;
       }).join('') || '<li><span class="ts"></span><span class="dim">No activity yet.</span></li>';
     } catch (e) { /* ignore */ }
   }
@@ -84,7 +84,7 @@
     pushTimer = setTimeout(() => {
       const brief = d => ({ si: d.si, label: d.label, type: d.type_name || d.type });
       post('/api/kiosk/state', { state: {
-        person: state.person ? { name: state.person.name, dept: state.person.dept, role: state.person.role } : null,
+        person: state.person ? { name: state.person.name, dept: state.person.dept, role: state.person.role, bolero_id: state.person.bolero_id } : null,
         holdings: state.holdings.map(brief),
         basket: state.basket.map(brief),
         result: state.result,
@@ -120,7 +120,7 @@
     try {
       const d = await api(`/api/people/search?q=${encodeURIComponent(q)}`);
       lastResults = d.results; activeIdx = d.results.length ? 0 : -1;
-      resultsEl.innerHTML = d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)}</div><div class="meta">${esc([p.dept, p.role, p.phone].filter(Boolean).join(' · '))}</div></div><div class="counts">${p.held_count ? `${p.held_count} out` : ''}${p.assigned_count ? ` · ${p.assigned_count} pre` : ''}</div></div>`).join('') +
+      resultsEl.innerHTML = d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)}</div><div class="meta">${esc([p.dept, p.role, p.phone].filter(Boolean).join(' · '))}</div></div><div class="counts">${p.bolero_id ? `Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}` : ''}${p.held_count ? `${p.bolero_id ? ' · ' : ''}${p.held_count} out` : ''}</div></div>`).join('') +
         `<div class="empty"><span>${d.results.length ? 'Not listed?' : 'No match for “' + esc(q) + '”'}</span><button class="btn sm" data-new>+ Create “${esc(q)}”</button></div>`;
       resultsEl.classList.remove('hidden'); paintActive();
       resultsEl.querySelectorAll('.item').forEach(el => el.onmousedown = () => selectPerson(+el.dataset.id));
@@ -132,12 +132,12 @@
     hideResults();
     try {
       const d = await api(`/api/people/${id}`);
-      state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.result = null;
+      state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.plan = d.plan || []; state.result = null;
       searchEl.value = '';
       renderPerson(); renderBasket(); pushState(); focusScan();
     } catch (e) { toast('err', 'Could not load person', e.message); }
   }
-  function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; renderPerson(); renderBasket(); pushState(); }
+  function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; state.plan = []; renderPerson(); renderBasket(); pushState(); }
 
   function renderPerson() {
     const panel = $('#personPanel');
@@ -147,24 +147,24 @@
       $('#btnAddAssigned').classList.add('hidden');
       return;
     }
-    const hold = state.holdings, pre = state.assignments;
+    const hold = state.holdings, pre = state.assignments, plan = state.plan;
+    const line1 = [p.dept, p.role].filter(Boolean).map(esc).join(' · ');
+    const line2 = [p.phone ? `<span class="mono">${esc(p.phone)}</span>` : '', p.external_id ? `<span class="si">ID ${esc(p.external_id)}</span>` : ''].filter(Boolean).join(' · ');
+    const devRow = (d, actions) => `<li>
+          <span class="badge ${d.status}">${esc(d.status)}</span>
+          <span class="txt"><div class="label">${esc(d.label || d.si)}</div><div class="type">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${d.holder_name && (!p || d.holder_id !== p.id) ? ` · <span class="amber">with ${esc(d.holder_name)}</span>` : ''}</div></span>
+          <span class="actions">${actions}</span></li>`;
     panel.innerHTML = `
       <div class="person-card">
-        <div class="row"><div class="name grow">${esc(p.name)}</div><button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
-        <div class="meta">${p.dept ? `<span><b>${esc(p.dept)}</b></span>` : ''}${p.role ? `<span>${esc(p.role)}</span>` : ''}${p.phone ? `<span class="mono">${esc(p.phone)}</span>` : ''}${p.external_id ? `<span class="si">ID ${esc(p.external_id)}</span>` : ''}</div>
+        <div class="row"><div class="name grow">${esc(p.name)}</div>${p.bolero_id ? `<span class="bolero" title="This person's Bolero ID">Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
+        ${line1 ? `<div class="meta">${line1}</div>` : ''}${line2 ? `<div class="meta">${line2}</div>` : ''}
       </div>
-      <div class="section-title"><h3>Currently has <span class="mono">${hold.length}</span></h3>${hold.length ? '<button class="btn sm ghost" data-return-all>Return all</button>' : ''}</div>
-      <ul class="dev-list">${hold.map(d => `<li>
-          <span class="badge ${d.status}">${esc(d.status)}</span>
-          <span><div class="label">${esc(d.label || d.si)}</div><div class="type">${esc(d.type_name)} <span class="si">${esc(d.si)}</span></div></span>
-          <span class="actions"><button class="btn sm" data-swap="${d.id}" title="Straight swap for another item">Swap</button><button class="btn sm ghost" data-flag="${d.id}" title="Mark lost or damaged">!</button><button class="btn sm ghost" data-add="${d.id}" title="Add to list to sign in">+</button></span>
-        </li>`).join('') || '<li class="empty">Nothing signed out.</li>'}</ul>
-      <div class="section-title"><h3>Pre-assigned <span class="mono">${pre.length}</span></h3>${pre.length ? '<button class="btn sm ghost" data-add-all>Add all</button>' : ''}</div>
-      <ul class="dev-list">${pre.map(d => `<li>
-          <span class="badge ${d.status}">${esc(d.status)}</span>
-          <span><div class="label">${esc(d.label || d.si)}</div><div class="type">${esc(d.type_name)} <span class="si">${esc(d.si)}</span>${d.holder_name ? ` · <span class="amber">with ${esc(d.holder_name)}</span>` : ''}</div></span>
-          <span class="actions"><button class="btn sm" data-add="${d.id}">+ Add</button></span>
-        </li>`).join('') || '<li class="empty">None.</li>'}</ul>`;
+      ${plan.length ? `<div class="section-title"><h3>Plan</h3></div>
+      <ul class="plan">${plan.map(r => `<li class="${r.held >= r.qty ? 'done' : ''}"><span class="tick">${r.held >= r.qty ? '&#10003;' : ''}</span><span class="txt">${r.qty > 1 ? r.qty + ' × ' : ''}${esc(r.type_name)}${/bolero/i.test(r.type_name) && p.bolero_id ? ` <span class="muted">· ID ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}${r.note ? ` <span class="dim">· ${esc(r.note)}</span>` : ''}</span><span class="mono count">${r.held}/${r.qty}</span></li>`).join('')}</ul>` : ''}
+      <div class="section-title"><h3>Signed out <span class="mono">${hold.length}</span></h3>${hold.length ? '<button class="btn sm ghost" data-return-all>Return all</button>' : ''}</div>
+      <ul class="dev-list">${hold.map(d => devRow(d, `<button class="btn sm" data-swap="${d.id}" title="Swap for another item">Swap</button><button class="btn sm ghost" data-flag="${d.id}" title="Mark lost or damaged">!</button><button class="btn sm ghost" data-add="${d.id}" title="Add to list">+</button>`)).join('') || '<li class="empty">Nothing signed out.</li>'}</ul>
+      ${pre.length ? `<div class="section-title"><h3>Reserved devices <span class="mono">${pre.length}</span></h3><button class="btn sm ghost" data-add-all>Add all</button></div>
+      <ul class="dev-list">${pre.map(d => devRow(d, `<button class="btn sm" data-add="${d.id}">+ Add</button>`)).join('')}</ul>` : ''}`;
     $('#btnClearPerson').onclick = clearPerson;
     panel.querySelectorAll('[data-add]').forEach(b => b.onclick = () => addById(+b.dataset.add));
     const addAll = panel.querySelector('[data-add-all]'); if (addAll) addAll.onclick = () => pre.forEach(d => addToBasket(d, true));
@@ -179,10 +179,11 @@
     modal('New person', `
       <div class="field"><label>Full name</label><input id="np_name" value="${esc(prefill)}"></div>
       <div class="grid cols-2"><div class="field"><label>Department</label><input id="np_dept"></div><div class="field"><label>Role</label><input id="np_role"></div></div>
-      <div class="grid cols-2"><div class="field"><label>Phone</label><input id="np_phone"></div><div class="field"><label>Unique ID (optional)</label><input id="np_ext"></div></div>`,
+      <div class="grid cols-2"><div class="field"><label>Phone</label><input id="np_phone"></div><div class="field"><label>Bolero ID (optional)</label><input id="np_bolero" placeholder="e.g. 61"></div></div>
+      <div class="field"><label>Unique ID (optional)</label><input id="np_ext"></div>`,
       [{ label: 'Cancel' }, { label: 'Create & select', cls: 'primary', onClick: async root => {
         try {
-          const d = await post('/api/people', { name: $('#np_name', root).value, dept: $('#np_dept', root).value, role: $('#np_role', root).value, phone: $('#np_phone', root).value, external_id: $('#np_ext', root).value });
+          const d = await post('/api/people', { name: $('#np_name', root).value, dept: $('#np_dept', root).value, role: $('#np_role', root).value, phone: $('#np_phone', root).value, external_id: $('#np_ext', root).value, bolero_id: $('#np_bolero', root).value });
           closeModal(); toast('ok', 'Person created', d.person.name); selectPerson(d.person.id);
         } catch (e) { toast('err', 'Could not create', e.message); }
       } }]);
@@ -228,7 +229,7 @@
       if (d.site_name && d.site_name !== TECH.site_name) note += (note ? ' · ' : '') + `${d.site_name} stock`;
       if (d.assigned_person_name && (!p || d.assigned_person_id !== p.id)) note += (note ? ' · ' : '') + `pre-assigned to ${d.assigned_person_name}`;
       return `<li class="${cls}"><span class="idx">${i + 1}</span>
-        <span><div class="label">${esc(d.label || d.si)}</div><div class="sub">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${note ? ` · <span class="${cls === 'conflict' ? 'red' : 'amber'}">${esc(note)}</span>` : ''}</div></span>
+        <span class="txt"><div class="label">${esc(d.label || d.si)}</div><div class="sub">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${note ? ` · <span class="${cls === 'conflict' ? 'red' : 'amber'}">${esc(note)}</span>` : ''}</div></span>
         <span class="badge ${d.status}">${esc(d.status)}</span>
         <span class="remove" data-rm="${d.id}" title="Remove">&#10005;</span></li>`;
     }).join('');
@@ -277,7 +278,7 @@
   }
   async function refreshPerson() {
     if (!state.person) return;
-    try { const d = await api(`/api/people/${state.person.id}`); state.holdings = d.holdings; state.assignments = d.assignments; } catch (e) { /* ignore */ }
+    try { const d = await api(`/api/people/${state.person.id}`); state.holdings = d.holdings; state.assignments = d.assignments; state.plan = d.plan || []; } catch (e) { /* ignore */ }
   }
 
   $('#btnSignIn').onclick = async () => {
@@ -309,6 +310,9 @@
         return;
       }
       state.basket = [];
+      await refreshPerson();
+      const missing = state.plan.filter(r => r.held < r.qty).map(r => `${r.qty - r.held} × ${r.type_name}`);
+      if (missing.length) toast('warn', 'Still to issue', missing.join(', '), 6000);
       clearPerson(); focusScan();
     } catch (e) { toast('err', 'Sign out failed', e.message); }
   }

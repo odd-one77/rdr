@@ -13,10 +13,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from ..auth import (
     ADMIN_COOKIE, admin_password_set, admin_token, check_admin_password, current_tech, is_admin, set_admin_password,
 )
-from ..config import IMPORT_DIR, UPLOAD_DIR, load_config, save_config
+from ..config import DATA_DIR, IMPORT_DIR, UPLOAD_DIR, load_config, save_config
 from ..db import ACTION_LABELS, get_db, get_setting, now_iso, reset_db, set_setting
 from ..main import lan_addresses, render
-from ..services import backup, certs, importer, inventory, reports, streams, updater
+from ..services import backup, certs, importer, inventory, reports, snapshots, streams, updater
 
 router = APIRouter(prefix="/admin")
 
@@ -79,7 +79,7 @@ def dashboard(request: Request):
         counts = {
             "people": db.execute("SELECT COUNT(*) FROM people").fetchone()[0],
             "devices": db.execute("SELECT COUNT(*) FROM devices").fetchone()[0],
-            "assignments": db.execute("SELECT COUNT(*) FROM assignments").fetchone()[0],
+            "plans": db.execute("SELECT COUNT(DISTINCT person_id) FROM plans").fetchone()[0],
             "holders": db.execute("SELECT COUNT(DISTINCT holder_id) FROM devices WHERE holder_id IS NOT NULL").fetchone()[0],
         }
     return render(request, "admin/dashboard.html", overall=overall, per_site=per_site, recent=recent, counts=counts, active="dashboard")
@@ -218,14 +218,14 @@ def type_edit(type_id: int, action: str = Form("save"), name: str = Form(""), sh
 def people_page(request: Request, q: str = "", holding: str = ""):
     with get_db() as db:
         like = f"%{q}%"
-        where = "WHERE (p.name LIKE ? OR p.dept LIKE ? OR p.role LIKE ? OR p.phone LIKE ? OR p.external_id LIKE ?)"
-        params = [like] * 5
+        where = "WHERE (p.name LIKE ? OR p.dept LIKE ? OR p.role LIKE ? OR p.phone LIKE ? OR p.external_id LIKE ? OR p.bolero_id LIKE ?)"
+        params = [like] * 6
         if holding:
             where += " AND held > 0"
         rows = db.execute(
             f"""SELECT * FROM (
                   SELECT p.*, (SELECT COUNT(*) FROM devices d WHERE d.holder_id = p.id) AS held,
-                         (SELECT COUNT(*) FROM assignments a WHERE a.person_id = p.id) AS assigned
+                         (SELECT COALESCE(SUM(qty), 0) FROM plans pl WHERE pl.person_id = p.id) AS planned
                   FROM people p) p {where} ORDER BY p.name LIMIT 500""",
             params,
         ).fetchall()
@@ -239,11 +239,11 @@ def person_new(request: Request):
 
 
 @router.post("/people/new", dependencies=[Depends(require_admin)])
-def person_create(name: str = Form(...), dept: str = Form(""), role: str = Form(""), phone: str = Form(""), external_id: str = Form(""), notes: str = Form("")):
+def person_create(name: str = Form(...), dept: str = Form(""), role: str = Form(""), phone: str = Form(""), external_id: str = Form(""), bolero_id: str = Form(""), notes: str = Form("")):
     with get_db() as db:
         if external_id.strip() and db.execute("SELECT 1 FROM people WHERE external_id = ?", (external_id.strip(),)).fetchone():
             return _redirect("/admin/people/new", err="That unique ID is already used")
-        p = inventory.create_person(db, name, dept, role, phone, external_id, notes)
+        p = inventory.create_person(db, name, dept, role, phone, external_id, notes, bolero_id=bolero_id)
     return _redirect(f"/admin/people/{p['id']}", msg="Person created")
 
 
@@ -255,12 +255,21 @@ def person_page(request: Request, person_id: int):
             raise HTTPException(404)
         holdings = inventory.person_holdings(db, person_id)
         assignments = inventory.person_assignments(db, person_id)
+        plan = inventory.person_plan(db, person_id)
+        types = db.execute("SELECT * FROM device_types WHERE active = 1 ORDER BY sort_order, name").fetchall()
         history = inventory.transactions(db, limit=200, person_id=person_id)
-    return render(request, "admin/person_form.html", person=p, holdings=holdings, assignments=assignments, history=history, active="people")
+    return render(request, "admin/person_form.html", person=p, holdings=holdings, assignments=assignments, plan=plan, types=types, history=history, active="people")
+
+
+@router.post("/people/{person_id}/plan", dependencies=[Depends(require_admin)])
+def person_plan_save(request: Request, person_id: int, type_id: int = Form(...), qty: int = Form(1)):
+    with get_db() as db:
+        inventory.set_plan(db, person_id, type_id, qty, tech=current_tech(request))
+    return _redirect(f"/admin/people/{person_id}", msg="Plan updated")
 
 
 @router.post("/people/{person_id}", dependencies=[Depends(require_admin)])
-def person_save(person_id: int, action: str = Form("save"), name: str = Form(""), dept: str = Form(""), role: str = Form(""), phone: str = Form(""), external_id: str = Form(""), notes: str = Form("")):
+def person_save(person_id: int, action: str = Form("save"), name: str = Form(""), dept: str = Form(""), role: str = Form(""), phone: str = Form(""), external_id: str = Form(""), bolero_id: str = Form(""), notes: str = Form("")):
     with get_db() as db:
         if action == "delete":
             held = db.execute("SELECT COUNT(*) FROM devices WHERE holder_id = ?", (person_id,)).fetchone()[0]
@@ -271,8 +280,8 @@ def person_save(person_id: int, action: str = Form("save"), name: str = Form("")
         if external_id.strip() and db.execute("SELECT 1 FROM people WHERE external_id = ? AND id <> ?", (external_id.strip(), person_id)).fetchone():
             return _redirect(f"/admin/people/{person_id}", err="That unique ID is already used by someone else")
         db.execute(
-            "UPDATE people SET name = ?, dept = ?, role = ?, phone = ?, external_id = ?, notes = ?, updated_at = ? WHERE id = ?",
-            (name.strip(), dept.strip(), role.strip(), phone.strip(), external_id.strip() or None, notes.strip(), now_iso(), person_id),
+            "UPDATE people SET name = ?, dept = ?, role = ?, phone = ?, external_id = ?, bolero_id = ?, notes = ?, updated_at = ? WHERE id = ?",
+            (name.strip(), dept.strip(), role.strip(), phone.strip(), external_id.strip() or None, bolero_id.strip(), notes.strip(), now_iso(), person_id),
         )
     return _redirect(f"/admin/people/{person_id}", msg="Saved")
 
@@ -430,6 +439,57 @@ def assignments_clear(request: Request, confirm: str = Form("")):
     return _redirect("/admin/assignments", msg="All pre-assignments removed")
 
 
+# -- kit plans (type per person) -----------------------------------------------
+
+@router.get("/plans", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+def plans_page(request: Request, q: str = ""):
+    with get_db() as db:
+        like = f"%{q}%"
+        rows = db.execute(
+            """SELECT pl.*, p.name AS person_name, p.dept, p.role, p.bolero_id, t.name AS type_name,
+                      (SELECT COUNT(*) FROM devices d WHERE d.holder_id = pl.person_id AND d.type_id = pl.type_id AND d.status = 'out') AS held
+               FROM plans pl JOIN people p ON p.id = pl.person_id JOIN device_types t ON t.id = pl.type_id
+               WHERE p.name LIKE ? OR p.dept LIKE ? OR t.name LIKE ? OR p.bolero_id LIKE ?
+               ORDER BY p.name, t.sort_order""",
+            (like, like, like, like),
+        ).fetchall()
+        types = db.execute("SELECT * FROM device_types WHERE active = 1 ORDER BY sort_order, name").fetchall()
+        n_people = db.execute("SELECT COUNT(DISTINCT person_id) FROM plans").fetchone()[0]
+        n_specific = db.execute("SELECT COUNT(*) FROM assignments").fetchone()[0]
+    grouped: dict[int, dict] = {}
+    for r in rows:
+        g = grouped.setdefault(r["person_id"], {"person_id": r["person_id"], "name": r["person_name"], "dept": r["dept"], "role": r["role"], "bolero_id": r["bolero_id"], "rows": []})
+        g["rows"].append(r)
+    return render(request, "admin/plans.html", groups=list(grouped.values()), types=types, q=q, n_people=n_people, n_specific=n_specific, active="plans")
+
+
+@router.post("/plans", dependencies=[Depends(require_admin)])
+def plan_add(request: Request, person_id: int = Form(...), type_id: int = Form(...), qty: int = Form(1), note: str = Form(""), bolero_id: str = Form("")):
+    with get_db() as db:
+        if inventory.person_by_id(db, person_id) is None:
+            return _redirect("/admin/plans", err="Unknown person")
+        inventory.set_plan(db, person_id, type_id, qty, note, current_tech(request))
+        if bolero_id.strip():
+            db.execute("UPDATE people SET bolero_id = ?, updated_at = ? WHERE id = ?", (bolero_id.strip(), now_iso(), person_id))
+    return _redirect("/admin/plans", msg="Plan saved")
+
+
+@router.post("/plans/{person_id}/{type_id}/delete", dependencies=[Depends(require_admin)])
+def plan_delete(request: Request, person_id: int, type_id: int):
+    with get_db() as db:
+        inventory.set_plan(db, person_id, type_id, 0, tech=current_tech(request))
+    return _redirect("/admin/plans", msg="Removed")
+
+
+@router.post("/plans/clear", dependencies=[Depends(require_admin)])
+def plans_clear(confirm: str = Form("")):
+    if confirm != "CLEAR":
+        return _redirect("/admin/plans", err="Type CLEAR to confirm")
+    with get_db() as db:
+        db.execute("DELETE FROM plans")
+    return _redirect("/admin/plans", msg="All kit plans removed")
+
+
 @router.get("/people-search", dependencies=[Depends(require_admin)])
 def admin_people_search(q: str = ""):
     with get_db() as db:
@@ -547,7 +607,7 @@ async def import_commit(request: Request, token: str):
     with get_db() as db:
         result = importer.commit(db, staged, decisions, current_tech(request))
     parts = [f"{v} {k.replace('_', ' ')}" for k, v in result.items()]
-    target = {"people": "/admin/people", "devices": "/admin/devices", "assignments": "/admin/assignments"}[staged["kind"]]
+    target = {"people": "/admin/people", "devices": "/admin/devices", "assignments": "/admin/assignments", "plans": "/admin/plans"}[staged["kind"]]
     return _redirect(target, msg="Import done: " + ", ".join(parts))
 
 
@@ -564,7 +624,8 @@ def settings_page(request: Request, fetch: int = 0):
         }
         mirror["transcode"] = get_setting(db, "stream_transcode") == "1"
     cfg = load_config()
-    https = {"on": bool(cfg.get("https")), "port": cfg.get("https_port", 8443), "cert": certs.status()}
+    https = {"on": bool(cfg.get("https")), "port": cfg.get("https_port", 8443), "cert": certs.status(),
+             "listening": _port_open(int(cfg.get("https_port", 8443))) if cfg.get("https") else None, "log": _tail(DATA_DIR / "https.log")}
     return render(request, "admin/settings.html", info=info, update_log=updater.last_output(), lan=lan_addresses(), mirror=mirror,
                   https=https, streams=streams.status(), active="settings")
 
@@ -654,6 +715,22 @@ def settings_demo():
 
 # -- HTTPS --------------------------------------------------------------------
 
+def _port_open(port: int) -> bool:
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def _tail(path, lines: int = 12) -> list[str]:
+    try:
+        return path.read_text("utf-8", errors="replace").strip().splitlines()[-lines:]
+    except OSError:
+        return []
+
+
 @router.post("/settings/https", dependencies=[Depends(require_admin)])
 def settings_https(action: str = Form("enable"), https_port: int = Form(8443), extra_hosts: str = Form("")):
     cfg = load_config()
@@ -682,7 +759,14 @@ def reports_page(request: Request, format: str = "html", report: str = "outstand
     with get_db() as db:
         if format == "csv":
             buf = io.StringIO(); w = csv.writer(buf)
-            if report == "stock":
+            if report == "endofevent":
+                w.writerow(["Person", "Department", "Role", "Phone", "Bolero ID", "Last seen", "Item", "SI", "Type", "Status", "Issued at", "Issued at site", "Issued by"])
+                for person in reports.end_of_event(db):
+                    for d in person["items"]:
+                        w.writerow([person["name"], person["dept"], person["role"], person["phone"], person["bolero_id"], person["last_seen"],
+                                    d["label"], d["si"], d["type_name"], d["status"], d["issued_at"], d["issued_site"], d["issued_by"]])
+                name = "rdr-end-of-event.csv"
+            elif report == "stock":
                 w.writerow(["Site", "Type", "Own in", "Own total", "Shared in", "Shared total", "Out", "Issued here", "Lost/damaged"])
                 for block in reports.stock_by_site(db):
                     for t in block["types"]:
@@ -696,6 +780,7 @@ def reports_page(request: Request, format: str = "html", report: str = "outstand
             buf.seek(0)
             return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{name}"'})
         ctx = {
+            "end_of_event": reports.end_of_event(db),
             "stock": reports.stock_by_site(db), "outstanding": reports.outstanding(db),
             "depts": reports.dept_summary(db), "activity": reports.activity_by_site(db),
         }
@@ -716,7 +801,35 @@ def backup_page(request: Request, token: str = ""):
             except ValueError as e:
                 staged.unlink(missing_ok=True)
                 return _redirect("/admin/backup", err=str(e))
-    return render(request, "admin/backup.html", pending=pending, active="backup")
+    return render(request, "admin/backup.html", pending=pending, snaps=snapshots.list_snapshots()[:40], snap_status=snapshots.status(), active="backup")
+
+
+@router.post("/backup/snapshot", dependencies=[Depends(require_admin)])
+def backup_snapshot_now():
+    p = snapshots.snapshot("manual")
+    return _redirect("/admin/backup", msg=f"Snapshot saved: {p.name}" if p else "No database to snapshot")
+
+
+@router.get("/backup/snapshots/{name}", dependencies=[Depends(require_admin)])
+def backup_snapshot_download(name: str):
+    if not snapshots._NAME.match(name) or not (snapshots.SNAP_DIR / name).exists():
+        raise HTTPException(404)
+    from fastapi.responses import FileResponse
+    return FileResponse(str(snapshots.SNAP_DIR / name), media_type="application/x-sqlite3", filename=name)
+
+
+@router.post("/backup/snapshots/{name}/restore", dependencies=[Depends(require_admin)])
+def backup_snapshot_restore(name: str, confirm: str = Form("")):
+    if confirm != "RESTORE":
+        return _redirect("/admin/backup", err="Type RESTORE next to the snapshot to confirm")
+    try:
+        snapshots.restore_snapshot(name)
+    except (ValueError, FileNotFoundError) as e:
+        return _redirect("/admin/backup", err=str(e))
+    updater.schedule_restart()
+    resp = RedirectResponse(f"/admin/settings?restarting=1&msg={quote('Snapshot restored. Restarting...')}", status_code=303)
+    resp.delete_cookie(ADMIN_COOKIE)
+    return resp
 
 
 @router.post("/backup/export", dependencies=[Depends(require_admin)])

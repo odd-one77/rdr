@@ -71,9 +71,12 @@ def main() -> int:
             if certs.ready():
                 hport = int(cfg.get("https_port", 8443))
                 print(f"  HTTPS ->  https://<this-pc>:{hport}/   (phones: open /trust once)\n", flush=True)
+                from app.config import DATA_DIR
+                https_log = open(DATA_DIR / "https.log", "a", encoding="utf-8")
+                https_log.write(f"\n== https server start {time.strftime('%Y-%m-%d %H:%M:%S')} port {hport}\n"); https_log.flush()
                 https_proc = subprocess.Popen(
-                    [sys.executable, "-m", "uvicorn", "app.main:app", "--host", host, "--port", str(hport), "--log-level", "warning",
-                     "--ssl-keyfile", str(certs.SRV_KEY), "--ssl-certfile", str(certs.SRV_CRT)], cwd=ROOT)
+                    [sys.executable, "-m", "uvicorn", "app.main:app", "--host", host, "--port", str(hport), "--log-level", "info",
+                     "--ssl-keyfile", str(certs.SRV_KEY), "--ssl-certfile", str(certs.SRV_CRT)], cwd=ROOT, stdout=https_log, stderr=subprocess.STDOUT)
             else:
                 print("  HTTPS is enabled but no certificate exists. Re-issue it in Admin > Settings.", flush=True)
         try:

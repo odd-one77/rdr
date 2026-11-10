@@ -19,12 +19,12 @@
     <div class="panel">
       <div class="panel-head"><h2>RDR sites / zones</h2></div>
       <div class="table-wrap"><table class="table-form">
-        <tr><th>Name</th><th>Stock</th><th>PGM feed (RTSP)</th><th>Active</th><th></th></tr>
+        <tr><th>Name</th><th>Stock</th><th>PGM feed (RTSP, HLS or YouTube URL)</th><th>Active</th><th></th></tr>
         {% for s in all_sites %}
         <tr><form method="post" action="/admin/sites/{{ s.id }}" class="contents">
           <td><input name="name" value="{{ s.name }}"></td>
           <td><select name="stock_mode"><option value="shared" {{ 'selected' if s.stock_mode == 'shared' }}>Shared</option><option value="specific" {{ 'selected' if s.stock_mode == 'specific' }}>Own stock</option></select></td>
-          <td><input name="rtsp_url" value="{{ s.rtsp_url or '' }}" placeholder="rtsp://…"></td>
+          <td><input name="rtsp_url" value="{{ s.rtsp_url or '' }}" placeholder="rtsp://… or https://youtube.com/…"></td>
           <td><input type="checkbox" name="active" value="1" {{ 'checked' if s.active }}></td>
           <td class="actions"><button class="btn sm" name="action" value="save">Save</button> <button class="btn sm danger" name="action" value="delete" data-confirm="Delete site {{ s.name }}? Its devices become shared stock.">✕</button></td>
         </form></tr>
@@ -32,7 +32,7 @@
         <tr><form method="post" action="/admin/sites" class="contents">
           <td><input name="name" placeholder="New site name" required></td>
           <td><select name="stock_mode"><option value="shared">Shared</option><option value="specific">Own stock</option></select></td>
-          <td><input name="rtsp_url" placeholder="rtsp://… (optional)"></td><td></td>
+          <td><input name="rtsp_url" placeholder="rtsp:// or YouTube (optional)"></td><td></td>
           <td class="right"><button class="btn sm primary" type="submit">Add</button></td>
         </form></tr>
       </table></div>

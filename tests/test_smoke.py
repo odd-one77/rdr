@@ -34,6 +34,9 @@ def test_start_sets_tech_cookie(client):
     r = client.post("/start", data={"tech_id": 1, "site_id": 1})
     assert r.status_code == 303 and "rdr_tech" in r.cookies
     assert client.get("/").status_code == 200
+    # picking a tech deliberately drops any admin login; log the admin back in for the rest of the tests
+    assert client.get("/admin").status_code == 303
+    client.post("/admin/login", data={"password": "test1234"})
 
 
 def test_people_and_devices_via_api(client):

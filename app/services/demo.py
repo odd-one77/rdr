@@ -5,7 +5,7 @@ import random
 import sqlite3
 
 from ..db import now_iso
-from .inventory import create_person, log, quick_create_device, set_assignment, sign_out
+from .inventory import create_person, log, quick_create_device, set_assignment, set_plan, sign_out
 
 PEOPLE = [
     ("Alex Morgan", "Broadcast", "Director", "+44 7700 900101"),
@@ -36,7 +36,7 @@ def load_demo(db: sqlite3.Connection) -> int:
     people = []
     for i, (name, dept, role, phone) in enumerate(PEOPLE, start=1):
         existing = db.execute("SELECT * FROM people WHERE name = ?", (name,)).fetchone()
-        people.append(existing or create_person(db, name, dept, role, phone, external_id=f"CREW{i:03d}"))
+        people.append(existing or create_person(db, name, dept, role, phone, external_id=f"CREW{i:03d}", bolero_id=(str(60 + i) if i <= 10 else "")))
 
     tech = {"tech_id": 1, "site_id": db.execute("SELECT MIN(id) FROM sites").fetchone()[0]}
     devices = []
@@ -66,10 +66,15 @@ def load_demo(db: sqlite3.Connection) -> int:
     for d in devices:
         by_type.setdefault(d["type_name"], []).append(d)
 
-    # pre-assign a Bolero + headset to the first six people, issue kit to some others
-    for p, bol, hs in zip(people[:6], by_type["Bolero Beltpack"][:6], by_type["Pro-D2 Headset"][:6]):
-        set_assignment(db, bol["id"], p["id"], tech, note="Show plan")
-        set_assignment(db, hs["id"], p["id"], tech, note="Show plan")
+    # kit plans: the first ten people get a Bolero (their own ID) and a Pro-D2 headset, the rest a radio + earpiece
+    for p in people[:10]:
+        set_plan(db, p["id"], types["Bolero Beltpack"], 1, tech=tech)
+        set_plan(db, p["id"], types["Pro-D2 Headset"], 1, tech=tech)
+    for p in people[10:]:
+        set_plan(db, p["id"], types["Radio"], 1, tech=tech)
+        set_plan(db, p["id"], types["Earpiece"], 1, tech=tech)
+    # one specific reservation to show the feature
+    set_assignment(db, by_type["Bolero Beltpack"][0]["id"], people[0]["id"], tech, note="Director's own pack")
     for p, bol, hs in zip(people[6:10], by_type["Bolero Beltpack"][6:10], by_type["Pro-D2 Headset"][6:10]):
         sign_out(db, [bol["id"], hs["id"]], p["id"], tech)
     for p, rad, ear in zip(people[9:12], by_type["Radio"][:3], by_type["Earpiece"][:3]):

@@ -35,9 +35,23 @@ KINDS = {
             ("dept", "Department"),
             ("role", "Role"),
             ("phone", "Phone"),
+            ("bolero_id", "Bolero / comms ID"),
+            ("kit", "Kit plan (types, comma separated, e.g. Bolero, Pro-D2)"),
             ("notes", "Notes"),
         ],
         "required": ["name|first_name"],
+    },
+    "plans": {
+        "title": "Kit plans (type per person)",
+        "fields": [
+            ("person_external_id", "Person unique ID"),
+            ("person_name", "Person name"),
+            ("person_phone", "Person phone"),
+            ("type", "Device type"),
+            ("qty", "Quantity (default 1)"),
+            ("note", "Note"),
+        ],
+        "required": ["type", "person_external_id|person_name|person_phone"],
     },
     "devices": {
         "title": "Devices (easyjob export)",
@@ -51,7 +65,7 @@ KINDS = {
         "required": ["si", "type"],
     },
     "assignments": {
-        "title": "Pre-assignments",
+        "title": "Specific device pre-assignments (by SI)",
         "fields": [
             ("si", "Device SI number"),
             ("person_external_id", "Person unique ID"),
@@ -73,7 +87,17 @@ GUESSES = {
         (("dept", "department", "team", "company"), "dept"),
         (("role", "position", "job", "title", "function"), "role"),
         (("phone", "mobile", "cell", "tel", "contact"), "phone"),
+        (("bolero", "beltpack", "comms id", "pack"), "bolero_id"),
+        (("kit", "headset", "equipment", "needs", "requires", "allocation"), "kit"),
         (("note", "comment", "remark"), "notes"),
+    ],
+    "plans": [
+        (("badge", "staff id", "employee", "unique", "person id"), "person_external_id"),
+        (("name", "person", "user"), "person_name"),
+        (("phone", "mobile", "tel"), "person_phone"),
+        (("type", "item", "device", "kit", "equipment"), "type"),
+        (("qty", "quantity", "count", "number"), "qty"),
+        (("note", "comment", "remark"), "note"),
     ],
     "devices": [
         (("si", "serial", "barcode", "asset", "inventory no", "inventar"), "si"),
@@ -205,7 +229,7 @@ def check_required(kind: str, mapping: dict) -> list[str]:
 
 def analyze(db: sqlite3.Connection, staged: dict) -> dict:
     kind = staged["kind"]
-    fn = {"people": _analyze_people, "devices": _analyze_devices, "assignments": _analyze_assignments}[kind]
+    fn = {"people": _analyze_people, "devices": _analyze_devices, "assignments": _analyze_assignments, "plans": _analyze_plans}[kind]
     plan = fn(db, staged["rows"], staged["mapping"])
     counts = {"create": 0, "update": 0, "conflict": 0, "skip": 0, "error": 0}
     for item in plan:
@@ -225,6 +249,8 @@ def _person_row(row, mapping) -> dict:
         "dept": _val(row, mapping, "dept"),
         "role": _val(row, mapping, "role"),
         "phone": _val(row, mapping, "phone"),
+        "bolero_id": _val(row, mapping, "bolero_id"),
+        "kit": _val(row, mapping, "kit"),
         "notes": _val(row, mapping, "notes"),
     }
 
@@ -358,6 +384,81 @@ def _analyze_assignments(db, rows, mapping) -> list[dict]:
     return plan
 
 
+def _find_person(people, by_ext, data) -> tuple:
+    """Shared person matching for plan/assignment sheets -> (match, candidates)."""
+    if data.get("person_external_id") and data["person_external_id"] in by_ext:
+        return by_ext[data["person_external_id"]], []
+    phone = norm_phone(data.get("person_phone", ""))
+    name = data.get("person_name", "").lower()
+    cands = [p for p in people if (name and p["name"].lower() == name) or (phone and norm_phone(p["phone"]) == phone)]
+    exact = [p for p in cands if (not name or p["name"].lower() == name) and (not phone or norm_phone(p["phone"]) == phone)]
+    if len(exact) == 1:
+        return exact[0], []
+    return None, cands
+
+
+def _analyze_plans(db, rows, mapping) -> list[dict]:
+    from .inventory import match_type
+    people = db.execute("SELECT id, external_id, name, dept, phone FROM people").fetchall()
+    by_ext = {p["external_id"]: p for p in people if p["external_id"]}
+    plan = []
+    for i, row in enumerate(rows):
+        data = {
+            "person_external_id": _val(row, mapping, "person_external_id"),
+            "person_name": _val(row, mapping, "person_name"),
+            "person_phone": _val(row, mapping, "person_phone"),
+            "type": _val(row, mapping, "type"),
+            "qty": _val(row, mapping, "qty") or "1",
+            "note": _val(row, mapping, "note"),
+        }
+        item = {"row": i, "data": data, "action": "create", "existing_id": None, "candidates": [], "message": ""}
+        if not data["type"]:
+            item.update(action="error", message="No device type"); plan.append(item); continue
+        t = match_type(db, data["type"])
+        if t is None:
+            item["message"] = f"New device type '{data['type']}' will be created"
+        else:
+            item["type_id"] = t["id"]
+        if not data["qty"].isdigit():
+            item.update(action="error", message=f"Quantity '{data['qty']}' is not a number"); plan.append(item); continue
+        match, cands = _find_person(people, by_ext, data)
+        if match is None and cands:
+            item.update(action="conflict", message="Several people match",
+                        candidates=[{"id": p["id"], "name": p["name"], "dept": p["dept"], "phone": p["phone"], "external_id": p["external_id"]} for p in cands])
+        elif match is None:
+            item.update(action="error", message="Person not found")
+        else:
+            item["person_id"] = match["id"]
+            item["message"] = (item["message"] + f" {data['qty']} x {t['name'] if t else data['type']} -> {match['name']}").strip()
+        plan.append(item)
+    return plan
+
+
+def _commit_plans(db, items, decisions, tech) -> dict:
+    from .inventory import set_plan
+    created = skipped = new_types = 0
+    types = {r["name"].lower(): r["id"] for r in db.execute("SELECT id, name FROM device_types").fetchall()}
+    for it in items:
+        person_id = it.get("person_id")
+        if it["action"] == "conflict":
+            dec = decisions.get(str(it["row"]), "skip")
+            if dec.startswith("update:"):
+                person_id = int(dec.split(":", 1)[1])
+        if it["action"] == "error" or not person_id:
+            skipped += 1
+            continue
+        type_id = it.get("type_id")
+        if type_id is None:
+            key = it["data"]["type"].lower()
+            if key not in types:
+                cur = db.execute("INSERT INTO device_types (name, short_code, sort_order) VALUES (?, ?, 500)", (it["data"]["type"], it["data"]["type"][:3].upper()))
+                types[key] = cur.lastrowid; new_types += 1
+            type_id = types[key]
+        set_plan(db, person_id, type_id, int(it["data"]["qty"]), it["data"]["note"], tech)
+        created += 1
+    return {"created": created, "skipped": skipped, "new_types": new_types}
+
+
 # -- commit -------------------------------------------------------------------
 
 def commit(db: sqlite3.Connection, staged: dict, decisions: dict[str, str], tech: Optional[dict] = None) -> dict:
@@ -366,10 +467,26 @@ def commit(db: sqlite3.Connection, staged: dict, decisions: dict[str, str], tech
     plan = staged.get("plan")
     if not plan:
         raise ValueError("Import has not been analysed")
-    fn = {"people": _commit_people, "devices": _commit_devices, "assignments": _commit_assignments}[kind]
+    fn = {"people": _commit_people, "devices": _commit_devices, "assignments": _commit_assignments, "plans": _commit_plans}[kind]
     result = fn(db, plan["items"], decisions, tech)
     discard(staged["token"])
     return result
+
+
+def _apply_kit(db, person_id: int, kit: str, tech) -> int:
+    """'Bolero, Pro-D2 x2' -> plan rows. Returns the number of types that matched."""
+    from .inventory import match_type, set_plan
+    n = 0
+    for part in [x.strip() for x in kit.replace(";", ",").replace("+", ",").split(",") if x.strip()]:
+        qty = 1
+        low = part.lower()
+        for sep in (" x", "x", "×", " *"):
+            if sep in low and low.rsplit(sep, 1)[-1].strip().isdigit():
+                qty = int(low.rsplit(sep, 1)[-1].strip()); part = part[: low.rfind(sep)].strip(); break
+        t = match_type(db, part)
+        if t:
+            set_plan(db, person_id, t["id"], qty, tech=tech); n += 1
+    return n
 
 
 def _commit_people(db, items, decisions, tech) -> dict:
@@ -387,10 +504,12 @@ def _commit_people(db, items, decisions, tech) -> dict:
                 action = "skip"
         d = it["data"]
         if action == "create":
-            db.execute(
-                "INSERT INTO people (external_id, name, dept, role, phone, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
-                (d["external_id"] or None, d["name"], d["dept"], d["role"], d["phone"], d["notes"], ts, ts),
+            cur = db.execute(
+                "INSERT INTO people (external_id, name, dept, role, phone, bolero_id, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (d["external_id"] or None, d["name"], d["dept"], d["role"], d["phone"], d["bolero_id"], d["notes"], ts, ts),
             )
+            if d.get("kit"):
+                _apply_kit(db, cur.lastrowid, d["kit"], tech)
             created += 1
         elif action == "update":
             db.execute(
@@ -399,11 +518,14 @@ def _commit_people(db, items, decisions, tech) -> dict:
                      name = ?, dept = CASE WHEN ? <> '' THEN ? ELSE dept END,
                      role = CASE WHEN ? <> '' THEN ? ELSE role END,
                      phone = CASE WHEN ? <> '' THEN ? ELSE phone END,
+                     bolero_id = CASE WHEN ? <> '' THEN ? ELSE bolero_id END,
                      notes = CASE WHEN ? <> '' THEN ? ELSE notes END,
                      updated_at = ?
                    WHERE id = ?""",
-                (d["external_id"], d["name"], d["dept"], d["dept"], d["role"], d["role"], d["phone"], d["phone"], d["notes"], d["notes"], ts, existing),
+                (d["external_id"], d["name"], d["dept"], d["dept"], d["role"], d["role"], d["phone"], d["phone"], d["bolero_id"], d["bolero_id"], d["notes"], d["notes"], ts, existing),
             )
+            if d.get("kit"):
+                _apply_kit(db, existing, d["kit"], tech)
             updated += 1
         else:
             skipped += 1

@@ -232,6 +232,9 @@ def apply_zip(blob: bytes, lines: list[str] | None = None) -> int:
 def update(restart: bool = True) -> dict:
     """Pull or download the newest code, reinstall requirements, and (optionally) restart."""
     lines = [f"== Update started {datetime.now():%Y-%m-%d %H:%M:%S} ({mode()} mode)"]
+    from .snapshots import snapshot
+    snap = snapshot("update")
+    lines.append(f"Database snapshot: {snap.name if snap else 'skipped (no database)'}")
     ok = _update_git(lines) if mode() == "git" else _update_release(lines)
     lines.append("== Update finished " + ("OK" if ok else "with errors or nothing to do"))
     with _lock:

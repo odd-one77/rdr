@@ -10,6 +10,7 @@
       <div class="field"><label>Full name</label><input name="name" value="{{ person.name if person else '' }}" required autofocus></div>
       <div class="grid cols-2"><div class="field"><label>Department</label><input name="dept" value="{{ person.dept if person else '' }}"></div><div class="field"><label>Role</label><input name="role" value="{{ person.role if person else '' }}"></div></div>
       <div class="grid cols-2"><div class="field"><label>Phone</label><input name="phone" value="{{ person.phone if person else '' }}"></div><div class="field"><label>Unique ID (badge / staff no, optional)</label><input name="external_id" value="{{ person.external_id or '' if person else '' }}"></div></div>
+      <div class="field"><label>Bolero ID (stays with the person across pack swaps)</label><input name="bolero_id" value="{{ person.bolero_id if person else '' }}" placeholder="e.g. 61"></div>
       <div class="field"><label>Notes</label><textarea name="notes" rows="2">{{ person.notes if person else '' }}</textarea></div>
       <div class="row"><button class="btn primary" name="action" value="save">Save</button>{% if person %}<button class="btn danger" name="action" value="delete" data-confirm="Delete {{ person.name }}? Their history is kept but unlinked.">Delete</button>{% endif %}</div>
     </div>
@@ -19,9 +20,13 @@
     <div class="panel"><div class="panel-head"><h2>Currently holding</h2></div>
       <div class="table-wrap"><table>{% for d in holdings %}<tr><td><span class="badge {{ d.status }}">{{ d.status }}</span></td><td><a href="/admin/devices/{{ d.id }}"><b>{{ d.label or d.si }}</b></a> <span class="si">{{ d.si }}</span></td><td class="muted">{{ d.type_name }}</td><td class="mono muted">{{ d.last_event_at }}</td></tr>{% endfor %}
       {% if not holdings %}<tr><td class="muted">Nothing signed out.</td></tr>{% endif %}</table></div></div>
-    <div class="panel"><div class="panel-head"><h2>Pre-assigned</h2><a class="btn sm ghost" href="/admin/assignments">Manage</a></div>
+    <div class="panel"><div class="panel-head"><h2>Kit plan</h2><a class="btn sm ghost" href="/admin/plans">All plans</a></div>
+      <div class="table-wrap"><table>{% for r in plan %}<tr><td>{{ r.qty }} × {{ r.type_name }}</td><td class="num {{ 'green' if r.held >= r.qty else 'muted' }}">{{ r.held }} / {{ r.qty }}</td><td class="actions"><form method="post" action="/admin/people/{{ person.id }}/plan"><input type="hidden" name="type_id" value="{{ r.type_id }}"><input type="hidden" name="qty" value="0"><button class="btn sm ghost">Remove</button></form></td></tr>{% endfor %}
+      {% if not plan %}<tr><td colspan="3" class="muted">No plan.</td></tr>{% endif %}</table></div>
+      <form method="post" action="/admin/people/{{ person.id }}/plan" class="panel-body row"><select name="type_id">{% for t in types %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select><input type="number" name="qty" value="1" min="1" style="max-width:80px"><button class="btn">Add</button></form></div>
+    <div class="panel"><div class="panel-head"><h2>Specific devices pre-assigned</h2><a class="btn sm ghost" href="/admin/assignments">Manage</a></div>
       <div class="table-wrap"><table>{% for d in assignments %}<tr><td><span class="badge {{ d.status }}">{{ d.status }}</span></td><td><a href="/admin/devices/{{ d.id }}"><b>{{ d.label or d.si }}</b></a> <span class="si">{{ d.si }}</span></td><td class="muted">{{ d.type_name }}</td><td class="amber">{{ ('with ' ~ d.holder_name) if d.holder_name else '' }}</td></tr>{% endfor %}
-      {% if not assignments %}<tr><td class="muted">None.</td></tr>{% endif %}</table></div></div>
+      {% if not assignments %}<tr><td class="muted">None. Plans by type are usually enough.</td></tr>{% endif %}</table></div></div>
   </div>
   {% endif %}
 </div>

@@ -73,6 +73,49 @@ def person_assignments(db: sqlite3.Connection, person_id: int) -> list[sqlite3.R
     ).fetchall()
 
 
+def person_plan(db: sqlite3.Connection, person_id: int) -> list[dict]:
+    """Kit plan by device type with how many of each the person currently holds."""
+    rows = db.execute(
+        """
+        SELECT pl.type_id, t.name AS type_name, t.short_code, pl.qty, pl.note,
+               (SELECT COUNT(*) FROM devices d WHERE d.holder_id = pl.person_id AND d.type_id = pl.type_id AND d.status = 'out') AS held
+        FROM plans pl JOIN device_types t ON t.id = pl.type_id
+        WHERE pl.person_id = ? ORDER BY t.sort_order, t.name
+        """,
+        (person_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_plan(db: sqlite3.Connection, person_id: int, type_id: int, qty: int = 1, note: str = "", tech: Optional[dict] = None) -> None:
+    if qty <= 0:
+        db.execute("DELETE FROM plans WHERE person_id = ? AND type_id = ?", (person_id, type_id))
+    else:
+        db.execute(
+            """INSERT INTO plans (person_id, type_id, qty, note) VALUES (?,?,?,?)
+               ON CONFLICT(person_id, type_id) DO UPDATE SET qty = excluded.qty, note = excluded.note""",
+            (person_id, type_id, qty, note),
+        )
+    t = db.execute("SELECT name FROM device_types WHERE id = ?", (type_id,)).fetchone()
+    log(db, "plan", None, person_id, tech, note=f"{qty} x {t['name'] if t else type_id}")
+
+
+def clear_plan(db: sqlite3.Connection, person_id: int) -> None:
+    db.execute("DELETE FROM plans WHERE person_id = ?", (person_id,))
+
+
+def match_type(db: sqlite3.Connection, text: str) -> Optional[sqlite3.Row]:
+    """Find a device type by exact or partial name ('Pro-D2' -> 'Pro-D2 Headset')."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    row = db.execute("SELECT * FROM device_types WHERE name = ? COLLATE NOCASE", (text,)).fetchone()
+    if row:
+        return row
+    rows = db.execute("SELECT * FROM device_types WHERE name LIKE ? COLLATE NOCASE OR ? LIKE '%' || name || '%' ORDER BY LENGTH(name) DESC", (f"%{text}%", text)).fetchall()
+    return rows[0] if rows else None
+
+
 def search_people(db: sqlite3.Connection, q: str, limit: int = 12) -> list[sqlite3.Row]:
     q = (q or "").strip()
     if not q:
@@ -90,11 +133,12 @@ def search_people(db: sqlite3.Connection, q: str, limit: int = 12) -> list[sqlit
         WHERE p.name LIKE ? COLLATE NOCASE
            OR p.external_id LIKE ? COLLATE NOCASE
            OR p.dept LIKE ? COLLATE NOCASE
+           OR p.bolero_id LIKE ? COLLATE NOCASE
            OR (? IS NOT NULL AND REPLACE(REPLACE(p.phone,' ',''),'-','') LIKE ?)
-        ORDER BY CASE WHEN p.name LIKE ? COLLATE NOCASE THEN 0 ELSE 1 END, p.name
+        ORDER BY CASE WHEN p.name LIKE ? COLLATE NOCASE THEN 0 WHEN p.bolero_id = ? COLLATE NOCASE THEN 0 ELSE 1 END, p.name
         LIMIT ?
         """,
-        (like, like, like, phone_like, phone_like, f"{q}%", limit),
+        (like, like, like, like, phone_like, phone_like, f"{q}%", q, limit),
     ).fetchall()
     return rows
 
@@ -356,12 +400,13 @@ def create_person(
     phone: str = "",
     external_id: str = "",
     notes: str = "",
+    bolero_id: str = "",
 ) -> sqlite3.Row:
     ts = now_iso()
     cur = db.execute(
-        """INSERT INTO people (external_id, name, dept, role, phone, notes, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?)""",
-        ((external_id or "").strip() or None, name.strip(), dept.strip(), role.strip(), phone.strip(), notes, ts, ts),
+        """INSERT INTO people (external_id, name, dept, role, phone, bolero_id, notes, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        ((external_id or "").strip() or None, name.strip(), dept.strip(), role.strip(), phone.strip(), (bolero_id or "").strip(), notes, ts, ts),
     )
     return person_by_id(db, cur.lastrowid)
 

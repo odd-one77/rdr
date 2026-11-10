@@ -8,6 +8,16 @@
     const t = e.target.closest('[data-toggle]');
     if (t) { e.preventDefault(); const el = document.querySelector(t.dataset.toggle); if (el) el.classList.toggle('hidden'); }
   });
+  // Filter forms apply themselves: selects/dates/checkboxes on change, text after a short pause.
+  document.querySelectorAll('form.filters').forEach(form => {
+    let t = null;
+    const go = () => { form.requestSubmit ? form.requestSubmit() : form.submit(); };
+    form.addEventListener('change', e => { if (e.target.matches('select, input[type=checkbox], input[type=date]')) go(); });
+    form.addEventListener('input', e => { if (e.target.matches('input[type=search], input[type=text]')) { clearTimeout(t); t = setTimeout(go, 350); } });
+    form.addEventListener('submit', () => { const f = form.querySelector('input[type=search], input[type=text]'); if (f) sessionStorage.setItem('rdr-filter-focus', f.name); });
+    const focusName = sessionStorage.getItem('rdr-filter-focus');
+    if (focusName) { const f = form.querySelector(`[name="${focusName}"]`); if (f) { f.focus(); const v = f.value; f.value = ''; f.value = v; } sessionStorage.removeItem('rdr-filter-focus'); }
+  });
   // Person pickers: a search input + hidden id + results dropdown.
   document.querySelectorAll('[data-person-picker]').forEach(input => {
     const box = input.closest('.search-box');

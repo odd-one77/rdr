@@ -86,6 +86,8 @@ def restore(blob: bytes, restore_config: bool = True) -> dict:
     """Replace the live data with the backup. Caller must restart the server afterwards."""
     info = inspect(blob)
     ensure_dirs()
+    from .snapshots import snapshot
+    snapshot("prerestore")
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
         tmp_db = DATA_DIR / "rdr.db.restore"
         tmp_db.write_bytes(zf.read("rdr.db"))

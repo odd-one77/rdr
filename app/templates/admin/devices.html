@@ -17,7 +17,6 @@
   <div class="field"><label>Type</label><select name="type_id"><option value="">All</option>{% for t in types %}<option value="{{ t.id }}" {{ 'selected' if f_type == t.id|string }}>{{ t.name }}</option>{% endfor %}</select></div>
   <div class="field"><label>Status</label><select name="status"><option value="">All</option>{% for s in ['in','out','lost','damaged'] %}<option value="{{ s }}" {{ 'selected' if f_status == s }}>{{ s }}</option>{% endfor %}</select></div>
   <div class="field"><label>Site</label><select name="site_id"><option value="">All</option><option value="shared" {{ 'selected' if f_site == 'shared' }}>Shared stock</option>{% for s in sites %}<option value="{{ s.id }}" {{ 'selected' if f_site == s.id|string }}>{{ s.name }}</option>{% endfor %}</select></div>
-  <button class="btn">Filter</button>
 </form>
 <div class="panel"><div class="table-wrap"><table>
   <tr><th>Status</th><th>Label</th><th>SI</th><th>Type</th><th>Site</th><th>Holder</th><th>Pre-assigned</th><th>Last event</th></tr>

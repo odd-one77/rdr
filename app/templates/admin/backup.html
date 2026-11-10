@@ -1,5 +1,14 @@
 {% extends "admin/base_admin.html" %}
-{% block title %}Backup & restore{% endblock %}
+{% block title %}Backup & restore<div class="panel" style="margin-top:16px"><div class="panel-head"><h2>Automatic snapshots</h2>
+  <div class="row"><span class="muted" style="font-size:12px">{% if snap_status.integrity_ok %}<span class="green">database OK</span>{% else %}<span class="red">integrity: {{ snap_status.integrity }}</span>{% endif %} · {{ snap_status.count }} snapshots{% if snap_status.error %} · <span class="red">{{ snap_status.error }}</span>{% endif %}</span><form method="post" action="/admin/backup/snapshot"><button class="btn sm">Snapshot now</button></form></div></div>
+  <div class="panel-body help" style="padding-bottom:0">A copy of the database is saved at start-up, at shutdown, before updates, resets and restores, and every 10 minutes while data changes. The last 72 are kept plus one per day for 30 days, in <span class="mono">{{ snap_status.dir }}</span>.</div>
+  <div class="table-wrap" style="max-height:360px"><table>
+    <tr><th>When</th><th>Reason</th><th class="num">Size</th><th></th></tr>
+    {% for s in snaps %}<tr><td class="mono">{{ s.when }}</td><td>{{ s.reason }}</td><td class="num">{{ (s.size / 1024) | round | int }} KB</td>
+      <td class="actions"><form method="post" action="/admin/backup/snapshots/{{ s.name }}/restore" class="inline-form" style="display:inline-flex;gap:6px;align-items:center"><a class="btn sm ghost" href="/admin/backup/snapshots/{{ s.name }}">Download</a><input name="confirm" placeholder="RESTORE" style="width:110px;height:28px;font-size:12px"><button class="btn sm danger" data-confirm="Replace the live database with this snapshot and restart?">Restore</button></form></td></tr>{% endfor %}
+    {% if not snaps %}<tr><td colspan="4" class="muted">No snapshots yet.</td></tr>{% endif %}
+  </table></div></div>
+{% endblock %}
 {% block admin %}
 <div class="page-head"><div><h1>Backup & restore</h1><div class="sub">Move the whole setup between machines, or keep a copy before a show.</div></div></div>
 <div class="grid cols-2" style="align-items:start">
@@ -31,4 +40,13 @@
       {% endif %}
     </div></div>
 </div>
+<div class="panel" style="margin-top:16px"><div class="panel-head"><h2>Automatic snapshots</h2>
+  <div class="row"><span class="muted" style="font-size:12px">{% if snap_status.integrity_ok %}<span class="green">database OK</span>{% else %}<span class="red">integrity: {{ snap_status.integrity }}</span>{% endif %} · {{ snap_status.count }} snapshots{% if snap_status.error %} · <span class="red">{{ snap_status.error }}</span>{% endif %}</span><form method="post" action="/admin/backup/snapshot"><button class="btn sm">Snapshot now</button></form></div></div>
+  <div class="panel-body help" style="padding-bottom:0">A copy of the database is saved at start-up, at shutdown, before updates, resets and restores, and every 10 minutes while data changes. The last 72 are kept plus one per day for 30 days, in <span class="mono">{{ snap_status.dir }}</span>.</div>
+  <div class="table-wrap" style="max-height:360px"><table>
+    <tr><th>When</th><th>Reason</th><th class="num">Size</th><th></th></tr>
+    {% for s in snaps %}<tr><td class="mono">{{ s.when }}</td><td>{{ s.reason }}</td><td class="num">{{ (s.size / 1024) | round | int }} KB</td>
+      <td class="actions"><form method="post" action="/admin/backup/snapshots/{{ s.name }}/restore" class="inline-form" style="display:inline-flex;gap:6px;align-items:center"><a class="btn sm ghost" href="/admin/backup/snapshots/{{ s.name }}">Download</a><input name="confirm" placeholder="RESTORE" style="width:110px;height:28px;font-size:12px"><button class="btn sm danger" data-confirm="Replace the live database with this snapshot and restart?">Restore</button></form></td></tr>{% endfor %}
+    {% if not snaps %}<tr><td colspan="4" class="muted">No snapshots yet.</td></tr>{% endif %}
+  </table></div></div>
 {% endblock %}

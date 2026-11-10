@@ -4,11 +4,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from ..auth import TECH_COOKIE, tech_token
+from ..auth import ADMIN_COOKIE, TECH_COOKIE, tech_token
 from ..db import get_db
 from ..main import render
 from ..config import load_config
-from ..main import lan_addresses
+from ..main import is_mobile, lan_addresses
 from ..services import certs, inventory
 
 router = APIRouter()
@@ -18,6 +18,8 @@ router = APIRouter()
 def kiosk_home(request: Request):
     from ..auth import current_tech
 
+    if is_mobile(request):
+        return RedirectResponse("/m", status_code=303)
     if current_tech(request) is None:
         return RedirectResponse("/start", status_code=303)
     with get_db() as db:
@@ -39,8 +41,10 @@ def start_post(request: Request, tech_id: int = Form(...), site_id: int = Form(.
         s = db.execute("SELECT id FROM sites WHERE id = ? AND active = 1", (site_id,)).fetchone()
     if not t or not s:
         return RedirectResponse("/start?err=Please+pick+a+tech+and+a+site", status_code=303)
-    resp = RedirectResponse(next if next.startswith("/") and not next.startswith("//") else "/", status_code=303)
+    target = "/m" if is_mobile(request) else (next if next.startswith("/") and not next.startswith("//") else "/")
+    resp = RedirectResponse(target, status_code=303)
     resp.set_cookie(TECH_COOKIE, tech_token(tech_id, site_id), max_age=60 * 60 * 24 * 30, samesite="lax")
+    resp.delete_cookie(ADMIN_COOKIE)  # a tech session never carries an admin login along
     return resp
 
 
@@ -48,6 +52,7 @@ def start_post(request: Request, tech_id: int = Form(...), site_id: int = Form(.
 def logout():
     resp = RedirectResponse("/start", status_code=303)
     resp.delete_cookie(TECH_COOKIE)
+    resp.delete_cookie(ADMIN_COOKIE)
     return resp
 
 
@@ -59,7 +64,11 @@ def mirror(request: Request, site: int | None = None):
             row = db.execute("SELECT id FROM sites WHERE active = 1 ORDER BY sort_order, name LIMIT 1").fetchone()
             site = row["id"] if row else 1
         s = db.execute("SELECT * FROM sites WHERE id = ?", (site,)).fetchone()
-    return render(request, "kiosk/mirror.html", mirror_site=dict(s) if s else {"id": site, "name": "RDR", "rtsp_url": None})
+    from ..services import streams
+    site_d = dict(s) if s else {"id": site, "name": "RDR", "rtsp_url": None}
+    kind = streams.classify_feed(site_d.get("rtsp_url") or "")
+    feed = {"kind": kind, "url": site_d.get("rtsp_url"), "embed": streams.youtube_embed(site_d["rtsp_url"]) if kind == "youtube" else None}
+    return render(request, "kiosk/mirror.html", mirror_site=site_d, feed=feed)
 
 
 def _https_url() -> str | None:
@@ -76,11 +85,13 @@ def phone(request: Request):
     """Phone-sized kiosk with camera scanning (camera needs the https address)."""
     from ..auth import current_tech
 
+    if not is_mobile(request):
+        return RedirectResponse("/", status_code=303)
     if current_tech(request) is None:
         return RedirectResponse("/start?next=/m", status_code=303)
     with get_db() as db:
         types = db.execute("SELECT * FROM device_types WHERE active = 1 ORDER BY sort_order, name").fetchall()
-    secure = request.url.scheme == "https" or request.url.hostname in ("localhost", "127.0.0.1")
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https" or request.url.hostname in ("localhost", "127.0.0.1")
     return render(request, "kiosk/phone.html", types=[dict(t) for t in types], secure=secure,
                   https_on=bool(load_config().get("https")), https_url=_https_url())
 

@@ -48,8 +48,11 @@ In this mode *Update & restart* uses `git pull`.
 - **Swap**: on the person's held item press *Swap*, scan the replacement, pick
   a reason. The returned item is marked damaged / lost / OK.
 - **Lost / damaged**: the `!` button on a held item.
-- **Pre-assignments**: Admin → Pre-assignments, or import a sheet. The kiosk
-  shows them under the person with one-click *Add all*.
+- **Kit plans**: Admin → Kit plans says what each person should get by type
+  (a Bolero, a Pro-D2 headset) and the kiosk ticks them off as devices are
+  scanned. A person's **Bolero ID** is stored on the person, not the pack, so
+  it survives pack swaps and is shown beside their name on kiosk and mirror.
+  Specific serial numbers can still be reserved for the rare case.
 - **Unknown barcode**: the kiosk offers to create the device on the spot.
 
 A USB barcode scanner works as a keyboard: the scan box always has focus and
@@ -57,7 +60,8 @@ Enter adds the item. F2 jumps to the name search, F4 back to the scan box.
 
 ## Phones
 
-Admin → Settings → **HTTPS for phones** → Turn on. RDR then also listens on
+Phones always get the phone view and desktops always get the kiosk; the
+server decides from the browser. Admin → Settings → **HTTPS for phones** → Turn on. RDR then also listens on
 `https://<pc-ip>:8443`. On each phone open `http://<pc-ip>:8080/trust`, install
 the certificate as described there, then use the https address and `/m`. The
 camera reads Code 128/39, EAN, QR and Data Matrix labels. Without HTTPS the
@@ -68,10 +72,23 @@ phone view still works for typing SI numbers.
 `/mirror?site=<id>` is the customer-facing screen. Idle, it shows the welcome
 line (or random sayings from Settings) and asks for name and role, naming the
 tech on that site's kiosk. During a transaction it greets the person and lists
-their items. Give a site an RTSP address under Event & sites and the mirror
-shows the programme feed next to it; the installer bundles ffmpeg, which
-relays RTSP to HLS on demand. Tick "Re-encode" in Settings if the source is
-not H.264.
+their items. Give a site a feed address under Event & sites and the mirror
+shows it next to the transaction: an RTSP address is relayed to HLS by the
+bundled ffmpeg, a YouTube link is embedded (handy for testing the layout), and
+direct `.m3u8` or `.mp4` links play as they are. Tick "Re-encode" in Settings
+if an RTSP source is not H.264.
+
+## Data safety
+
+Every change is committed to SQLite with full disk sync before the kiosk gets
+its answer. The database is snapshotted to `data/backups/` at start-up, at
+shutdown, before updates, resets and restores, and every 10 minutes while data
+changes; the last 72 plus one per day for 30 days are kept and can be
+downloaded or restored from Admin → Backup & restore. An integrity check runs
+at every start.
+
+Admin logins expire after 20 idle minutes and are dropped whenever a tech picks
+their name on the start screen, so a kiosk never carries an admin session.
 
 ## Backup and moving machines
 
@@ -140,14 +157,14 @@ devices, per-event archives, multi-event history.
 |---|---|
 | ![Phone](docs/screenshots/16-phone.png) | ![Trust](docs/screenshots/17-trust.png) |
 
-| Admin dashboard | Reports | Event & sites |
+| Admin dashboard | Reports (end of event) | Kit plans |
 |---|---|---|
-| ![Dashboard](docs/screenshots/06-admin-dashboard.png) | ![Reports](docs/screenshots/13-admin-reports.png) | ![Event](docs/screenshots/15-admin-event.png) |
+| ![Dashboard](docs/screenshots/06-admin-dashboard.png) | ![Reports](docs/screenshots/13-admin-reports.png) | ![Plans](docs/screenshots/18-admin-plans.png) |
 
-| Devices | Person | Backup & restore |
+| Event & sites | Devices | Person |
 |---|---|---|
-| ![Devices](docs/screenshots/07-admin-devices.png) | ![Person](docs/screenshots/08-admin-person.png) | ![Backup](docs/screenshots/14-admin-backup.png) |
+| ![Event](docs/screenshots/15-admin-event.png) | ![Devices](docs/screenshots/07-admin-devices.png) | ![Person](docs/screenshots/08-admin-person.png) |
 
-| Import: map columns | Import: review | Settings | Transactions |
+| Backup & restore | Import: map columns | Import: review | Settings |
 |---|---|---|---|
-| ![Map](docs/screenshots/09-admin-import-map.png) | ![Review](docs/screenshots/10-admin-import-review.png) | ![Settings](docs/screenshots/11-admin-settings.png) | ![Transactions](docs/screenshots/12-admin-transactions.png) |
+| ![Backup](docs/screenshots/14-admin-backup.png) | ![Map](docs/screenshots/09-admin-import-map.png) | ![Review](docs/screenshots/10-admin-import-review.png) | ![Settings](docs/screenshots/11-admin-settings.png) |

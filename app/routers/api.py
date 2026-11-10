@@ -43,6 +43,7 @@ def person_detail(person_id: int, tech: dict = Depends(require_tech)):
             "person": dict(p),
             "holdings": [dict(r) for r in inventory.person_holdings(db, person_id)],
             "assignments": [dict(r) for r in inventory.person_assignments(db, person_id)],
+            "plan": inventory.person_plan(db, person_id),
             "recent": [dict(r) for r in inventory.transactions(db, limit=15, person_id=person_id)],
         }
 
@@ -53,6 +54,7 @@ class PersonIn(BaseModel):
     role: str = ""
     phone: str = ""
     external_id: str = ""
+    bolero_id: str = ""
 
 
 @router.post("/people")
@@ -62,7 +64,7 @@ def person_create(body: PersonIn, tech: dict = Depends(require_tech)):
             dup = db.execute("SELECT id FROM people WHERE external_id = ?", (body.external_id.strip(),)).fetchone()
             if dup:
                 raise HTTPException(409, "That unique ID is already used")
-        p = inventory.create_person(db, body.name, body.dept, body.role, body.phone, body.external_id)
+        p = inventory.create_person(db, body.name, body.dept, body.role, body.phone, body.external_id, bolero_id=body.bolero_id)
         return {"person": dict(p)}
 
 
@@ -228,5 +230,8 @@ def stream_ping(site_id: int):
         site = db.execute("SELECT rtsp_url FROM sites WHERE id = ?", (site_id,)).fetchone()
         transcode = get_setting(db, "stream_transcode") == "1"
     if not site or not site["rtsp_url"]:
-        return {"running": False, "error": "No RTSP address set for this site"}
+        return {"running": False, "error": "No feed address set for this site"}
+    kind = streams.classify_feed(site["rtsp_url"])
+    if kind != "rtsp":
+        return {"running": False, "kind": kind, "error": "This feed does not need the relay"}
     return streams.ensure_running(site_id, site["rtsp_url"], transcode)

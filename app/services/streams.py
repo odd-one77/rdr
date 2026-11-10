@@ -23,6 +23,40 @@ _lock = threading.Lock()
 _procs: dict[int, dict] = {}   # site_id -> {proc, url, started, last_ping, transcode, log}
 
 
+def classify_feed(url: str) -> str:
+    """rtsp | youtube | hls | file | unknown, from the configured feed address."""
+    u = (url or "").strip().lower()
+    if not u:
+        return "unknown"
+    if u.startswith("rtsp://") or u.startswith("rtsps://"):
+        return "rtsp"
+    if "youtube.com/" in u or "youtu.be/" in u:
+        return "youtube"
+    if ".m3u8" in u:
+        return "hls"
+    if u.split("?")[0].endswith((".mp4", ".webm", ".mov", ".m4v")):
+        return "file"
+    return "unknown"
+
+
+def youtube_embed(url: str) -> str | None:
+    """Turn any YouTube watch/short/live/share link into a muted autoplaying embed URL."""
+    import re
+    from urllib.parse import parse_qs, urlparse
+    u = urlparse(url.strip())
+    vid = None
+    if "youtu.be" in u.netloc:
+        vid = u.path.strip("/").split("/")[0]
+    elif "youtube.com" in u.netloc:
+        if u.path.startswith(("/embed/", "/live/", "/shorts/", "/v/")):
+            vid = u.path.split("/")[2] if len(u.path.split("/")) > 2 else None
+        else:
+            vid = parse_qs(u.query).get("v", [None])[0]
+    if not vid or not re.fullmatch(r"[A-Za-z0-9_-]{6,20}", vid):
+        return None
+    return f"https://www.youtube.com/embed/{vid}?autoplay=1&mute=1&controls=0&loop=1&playlist={vid}&rel=0&modestbranding=1&playsinline=1"
+
+
 def ffmpeg_path() -> str | None:
     """ffmpeg bundled by the installer (tools/), next to the app, or on PATH."""
     exe = "ffmpeg.exe" if sys.platform.startswith("win") else "ffmpeg"

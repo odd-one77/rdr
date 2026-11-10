@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS people (
     dept        TEXT NOT NULL DEFAULT '',
     role        TEXT NOT NULL DEFAULT '',
     phone       TEXT NOT NULL DEFAULT '',
+    bolero_id   TEXT NOT NULL DEFAULT '',   -- the person's Bolero / comms ID; stays with them across pack swaps
     notes       TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
@@ -90,6 +91,16 @@ CREATE TABLE IF NOT EXISTS assignments (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS assignments_person ON assignments(person_id);
+
+CREATE TABLE IF NOT EXISTS plans (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    type_id   INTEGER NOT NULL REFERENCES device_types(id) ON DELETE CASCADE,
+    qty       INTEGER NOT NULL DEFAULT 1,
+    note      TEXT NOT NULL DEFAULT '',
+    UNIQUE(person_id, type_id)
+);
+CREATE INDEX IF NOT EXISTS plans_person ON plans(person_id);
 
 CREATE TABLE IF NOT EXISTS transactions (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -141,8 +152,9 @@ ACTION_LABELS = {
     "restored": "Restored to stock",
     "created": "Device created",
     "imported": "Device imported",
-    "assigned": "Pre-assigned",
+    "assigned": "Pre-assigned device",
     "unassigned": "Pre-assignment removed",
+    "plan": "Kit plan changed",
     "note": "Note",
 }
 
@@ -161,6 +173,7 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA synchronous = FULL")   # every commit reaches the disk before we answer
     try:
         conn.execute("PRAGMA journal_mode = WAL")
     except sqlite3.OperationalError:
@@ -182,9 +195,23 @@ def get_db() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+MIGRATIONS = [
+    # (table, column, definition) added after the first release
+    ("people", "bolero_id", "TEXT NOT NULL DEFAULT ''"),
+]
+
+
+def migrate(db: sqlite3.Connection) -> None:
+    for table, column, definition in MIGRATIONS:
+        cols = {r["name"] for r in db.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def init_db() -> None:
     with get_db() as db:
         db.executescript(SCHEMA)
+        migrate(db)
         seed(db)
 
 
@@ -209,7 +236,9 @@ def seed(db: sqlite3.Connection) -> None:
 
 
 def reset_db() -> None:
-    """Drop everything and start a brand new database."""
+    """Drop everything and start a brand new database. A snapshot is taken first."""
+    from .services.snapshots import snapshot
+    snapshot("reset")
     with get_db() as db:
         db.execute("PRAGMA foreign_keys = OFF")
         rows = db.execute(

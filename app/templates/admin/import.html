@@ -3,7 +3,7 @@
 {% block admin %}
 <div class="page-head"><h1>Import spreadsheets</h1></div>
 <p class="help" style="margin-bottom:16px">Upload an .xlsx or .csv with headings in the first row. You map the columns on the next screen. Existing records are updated; look-alikes are flagged for you to decide.</p>
-<div class="grid cols-3">
+<div class="grid cols-4">
   {% for key, k in kinds.items() %}
   <form class="panel" method="post" action="/admin/import/{{ key }}" enctype="multipart/form-data">
     <div class="panel-head"><h2>{{ k.title }}</h2></div>
@@ -18,6 +18,7 @@
 <div class="panel" style="margin-top:16px"><div class="panel-head"><h2>How matching works</h2></div><div class="panel-body help">
   <p><b>People</b> match on the unique ID when present, otherwise on name + phone. A matching name with a different phone (or vice versa) is flagged as a possible duplicate, and you choose: update the existing person, create a new one, or skip.</p>
   <p><b>Devices</b> match on SI number. Unknown device types from an easyjob export are created automatically. Status and current holder are never changed by an import.</p>
-  <p><b>Pre-assignments</b> need the device SI plus a way to find the person (unique ID, name or phone). Ambiguous names are flagged for you to pick.</p>
+  <p><b>Kit plans</b> need a device type plus a way to find the person (unique ID, name or phone); quantity defaults to 1. A people sheet can also carry a "Kit" column such as <span class="mono">Bolero, Pro-D2</span>. Ambiguous names are flagged for you to pick.</p>
+  <p><b>Specific device pre-assignments</b> work the same way but with the SI number, for the rare case where a particular unit must go to a particular person.</p>
 </div></div>
 {% endblock %}
