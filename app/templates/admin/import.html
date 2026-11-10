@@ -2,7 +2,7 @@
 {% block title %}Import{% endblock %}
 {% block admin %}
 <div class="page-head"><h1>Import spreadsheets</h1></div>
-<p class="help" style="margin-bottom:16px">Upload an .xlsx or .csv. The first row must be the column headings. You will map columns to fields on the next screen, so the sheet layout does not need to match anything in particular. Existing records are updated, not duplicated; look-alikes are flagged for you to decide.</p>
+<p class="help" style="margin-bottom:16px">Upload an .xlsx or .csv with headings in the first row. You map the columns on the next screen. Existing records are updated; look-alikes are flagged for you to decide.</p>
 <div class="grid cols-3">
   {% for key, k in kinds.items() %}
   <form class="panel" method="post" action="/admin/import/{{ key }}" enctype="multipart/form-data">

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import current_tech, is_admin
 from ..db import get_db, get_setting, now_iso
-from ..services import inventory
+from ..services import inventory, streams
 
 router = APIRouter(prefix="/api")
 
@@ -219,3 +219,14 @@ def mirror_state(site_id: int):
                 "prompt": get_setting(db, "mirror_prompt") or "Please give your name and role to {tech}",
             },
         }
+
+
+@router.get("/stream/{site_id}/ping")
+def stream_ping(site_id: int):
+    """The mirror calls this every few seconds while it shows the PGM feed."""
+    with get_db() as db:
+        site = db.execute("SELECT rtsp_url FROM sites WHERE id = ?", (site_id,)).fetchone()
+        transcode = get_setting(db, "stream_transcode") == "1"
+    if not site or not site["rtsp_url"]:
+        return {"running": False, "error": "No RTSP address set for this site"}
+    return streams.ensure_running(site_id, site["rtsp_url"], transcode)

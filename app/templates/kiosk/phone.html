@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Phone · {{ tech.site_name }}{% endblock %}
+{% block topnav %}
+  <div class="meta grow"><div class="who">{{ tech.display_name }}</div><div class="where">{{ tech.site_name }}</div></div>
+  <nav><a class="btn sm ghost" href="/logout">Switch</a></nav>
+{% endblock %}
+{% block content %}
+<div class="phone">
+  {% if not secure %}
+  <div class="flash err" style="margin:0">Camera scanning needs HTTPS. Open <span class="mono">{{ https_url or 'the https:// address' }}</span>{% if not https_on %} after an admin turns on HTTPS in Settings{% endif %}. Typing SI numbers still works here.</div>
+  {% endif %}
+  <div class="panel"><div class="panel-body" style="padding:12px">
+    <div class="search-box"><input type="search" id="personSearch" placeholder="Name, phone or ID" autocomplete="off"><div class="results hidden" id="personResults"></div></div>
+    <div id="personPanel" style="margin-top:8px"></div>
+  </div></div>
+
+  <div class="scanner" id="scanner">
+    <div id="reader"></div>
+    <div class="overlay"><div></div></div>
+    <div class="msg" id="scanMsg">{{ 'Starting camera…' if secure else 'Camera unavailable over http' }}</div>
+  </div>
+  <div class="row">
+    <input type="text" id="scanInput" class="mono" placeholder="Type SI number" autocomplete="off" style="text-transform:uppercase">
+    <button class="btn" id="btnAddManual">Add</button>
+    <button class="btn ghost hidden" id="btnTorch" title="Torch">&#9728;</button>
+  </div>
+
+  <div class="panel"><div class="panel-head"><h2>Items <span class="mono" id="basketCount">0</span></h2><button class="btn sm ghost" id="btnClear">Clear</button></div>
+    <div class="panel-body tight"><ul class="basket" id="basket"></ul><div class="empty-state" id="basketEmpty">Scan or type an SI number.</div></div></div>
+
+  <div class="action-bar">
+    <button class="btn success lg" id="btnSignIn" disabled>Sign in</button>
+    <button class="btn primary lg" id="btnSignOut" disabled>Sign out</button>
+  </div>
+</div>
+<div class="toasts" id="toasts"></div>
+<div id="modalRoot"></div>
+<script>window.RDR = { tech: {{ tech | tojson }}, types: {{ types | tojson }}, secure: {{ 'true' if secure else 'false' }} };</script>
+<script src="/static/vendor/html5-qrcode.min.js"></script>
+<script src="/static/js/phone.js"></script>
+{% endblock %}

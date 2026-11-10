@@ -7,9 +7,9 @@
     <div class="panel-head"><h2>Event</h2></div>
     <div class="panel-body">
       <div class="field"><label>Event name</label><input name="name" value="{{ event.name }}" required></div>
-      <div class="field"><label>Show name / leg (shown under the event)</label><input name="show_name" value="{{ event.show_name }}" placeholder="e.g. Night 3 – London"></div>
+      <div class="field"><label>Show / leg</label><input name="show_name" value="{{ event.show_name }}" placeholder="e.g. Night 3 – London"></div>
       <div class="grid cols-2"><div class="field"><label>Starts</label><input type="date" name="starts_on" value="{{ event.starts_on or '' }}"></div><div class="field"><label>Ends</label><input type="date" name="ends_on" value="{{ event.ends_on or '' }}"></div></div>
-      <div class="field"><label>Event logo (shown next to the Riedel logo)</label>
+      <div class="field"><label>Event logo</label>
         {% if event.logo_path %}<div class="row" style="margin-bottom:8px"><img src="{{ event.logo_path }}" alt="" style="max-height:60px;max-width:220px;background:#000;padding:6px;border-radius:6px"><label class="check"><input type="checkbox" name="remove_logo" value="1"> Remove</label></div>{% endif %}
         <input type="file" name="logo" accept=".png,.jpg,.jpeg,.svg,.webp,.gif"></div>
       <button class="btn primary" type="submit">Save event</button>
@@ -18,49 +18,49 @@
   <div class="stack">
     <div class="panel">
       <div class="panel-head"><h2>RDR sites / zones</h2></div>
-      <div class="table-wrap"><table>
-        <tr><th>Name</th><th>Stock</th><th>RTSP PGM feed (mirror)</th><th>Active</th><th></th></tr>
+      <div class="table-wrap"><table class="table-form">
+        <tr><th>Name</th><th>Stock</th><th>PGM feed (RTSP)</th><th>Active</th><th></th></tr>
         {% for s in all_sites %}
         <tr><form method="post" action="/admin/sites/{{ s.id }}" class="contents">
-          <td><input name="name" value="{{ s.name }}" style="padding:6px 8px"></td>
-          <td><select name="stock_mode" style="padding:6px 8px"><option value="shared" {{ 'selected' if s.stock_mode == 'shared' }}>Shared</option><option value="specific" {{ 'selected' if s.stock_mode == 'specific' }}>Own stock</option></select></td>
-          <td><input name="rtsp_url" value="{{ s.rtsp_url or '' }}" placeholder="rtsp://…" style="padding:6px 8px"></td>
+          <td><input name="name" value="{{ s.name }}"></td>
+          <td><select name="stock_mode"><option value="shared" {{ 'selected' if s.stock_mode == 'shared' }}>Shared</option><option value="specific" {{ 'selected' if s.stock_mode == 'specific' }}>Own stock</option></select></td>
+          <td><input name="rtsp_url" value="{{ s.rtsp_url or '' }}" placeholder="rtsp://…"></td>
           <td><input type="checkbox" name="active" value="1" {{ 'checked' if s.active }}></td>
-          <td class="right" style="white-space:nowrap"><button class="btn sm" name="action" value="save">Save</button> <button class="btn sm danger" name="action" value="delete" data-confirm="Delete site {{ s.name }}? Its devices become shared stock.">✕</button></td>
+          <td class="actions"><button class="btn sm" name="action" value="save">Save</button> <button class="btn sm danger" name="action" value="delete" data-confirm="Delete site {{ s.name }}? Its devices become shared stock.">✕</button></td>
         </form></tr>
         {% endfor %}
         <tr><form method="post" action="/admin/sites" class="contents">
-          <td><input name="name" placeholder="New site name" required style="padding:6px 8px"></td>
-          <td><select name="stock_mode" style="padding:6px 8px"><option value="shared">Shared</option><option value="specific">Own stock</option></select></td>
-          <td><input name="rtsp_url" placeholder="rtsp://… (optional)" style="padding:6px 8px"></td><td></td>
+          <td><input name="name" placeholder="New site name" required></td>
+          <td><select name="stock_mode"><option value="shared">Shared</option><option value="specific">Own stock</option></select></td>
+          <td><input name="rtsp_url" placeholder="rtsp://… (optional)"></td><td></td>
           <td class="right"><button class="btn sm primary" type="submit">Add</button></td>
         </form></tr>
       </table></div>
-      <div class="panel-body help">“Shared” means the site hands out the event-wide pool. “Own stock” sites also get devices tagged to them; summaries show both.</div>
+      <div class="panel-body help">Shared sites hand out the event-wide pool. Own-stock sites also hold devices tagged to them.</div>
     </div>
     <div class="panel">
       <div class="panel-head"><h2>Technicians</h2></div>
-      <div class="table-wrap"><table>
+      <div class="table-wrap"><table class="table-form">
         <tr><th>Username</th><th>Display name</th><th>Role</th><th>Default site</th><th>Active</th><th></th></tr>
         {% for t in techs %}
         <tr><form method="post" action="/admin/techs/{{ t.id }}" class="contents">
-          <td><input name="username" value="{{ t.username }}" style="padding:6px 8px;max-width:120px"></td>
-          <td><input name="display_name" value="{{ t.display_name }}" style="padding:6px 8px"></td>
-          <td><select name="role" style="padding:6px 8px"><option value="tech" {{ 'selected' if t.role == 'tech' }}>Tech</option><option value="lead" {{ 'selected' if t.role == 'lead' }}>Lead</option></select></td>
-          <td><select name="site_id" style="padding:6px 8px"><option value="">Any</option>{% for s in all_sites %}<option value="{{ s.id }}" {{ 'selected' if t.site_id == s.id }}>{{ s.name }}</option>{% endfor %}</select></td>
+          <td><input name="username" value="{{ t.username }}"></td>
+          <td><input name="display_name" value="{{ t.display_name }}"></td>
+          <td><select name="role"><option value="tech" {{ 'selected' if t.role == 'tech' }}>Tech</option><option value="lead" {{ 'selected' if t.role == 'lead' }}>Lead</option></select></td>
+          <td><select name="site_id"><option value="">Any</option>{% for s in all_sites %}<option value="{{ s.id }}" {{ 'selected' if t.site_id == s.id }}>{{ s.name }}</option>{% endfor %}</select></td>
           <td><input type="checkbox" name="active" value="1" {{ 'checked' if t.active }}></td>
-          <td class="right" style="white-space:nowrap"><button class="btn sm" name="action" value="save">Save</button> <button class="btn sm danger" name="action" value="delete" data-confirm="Delete tech {{ t.display_name }}?">✕</button></td>
+          <td class="actions"><button class="btn sm" name="action" value="save">Save</button> <button class="btn sm danger" name="action" value="delete" data-confirm="Delete tech {{ t.display_name }}?">✕</button></td>
         </form></tr>
         {% endfor %}
         <tr><form method="post" action="/admin/techs" class="contents">
-          <td><input name="username" placeholder="username" required style="padding:6px 8px;max-width:120px"></td>
-          <td><input name="display_name" placeholder="Display name" style="padding:6px 8px"></td>
-          <td><select name="role" style="padding:6px 8px"><option value="tech">Tech</option><option value="lead">Lead</option></select></td>
-          <td><select name="site_id" style="padding:6px 8px"><option value="">Any</option>{% for s in all_sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></td><td></td>
+          <td><input name="username" placeholder="username" required></td>
+          <td><input name="display_name" placeholder="Display name"></td>
+          <td><select name="role"><option value="tech">Tech</option><option value="lead">Lead</option></select></td>
+          <td><select name="site_id"><option value="">Any</option>{% for s in all_sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></td><td></td>
           <td class="right"><button class="btn sm primary" type="submit">Add</button></td>
         </form></tr>
       </table></div>
-      <div class="panel-body help">Techs have no password: they pick their name and site on the kiosk start screen. Every transaction records who and where.</div>
+      <div class="panel-body help">Techs pick their name and site on the kiosk start screen. No password.</div>
     </div>
   </div>
 </div>

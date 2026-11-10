@@ -45,8 +45,32 @@
       <div class="panel-body"><form method="post" action="/admin/settings/mirror">
         <div class="field"><label>Welcome line</label><input name="mirror_title" value="{{ mirror.title }}" placeholder="Welcome to RDR"></div>
         <div class="field"><label>Random sayings (one per line, shown instead of the welcome line when set)</label><textarea name="mirror_sayings" rows="4" placeholder="Comms is life.&#10;Have you tried turning it off and on again?&#10;Return your kit, keep your deposit.">{{ mirror.sayings }}</textarea></div>
-        <div class="field"><label>Prompt line</label><input name="mirror_prompt" value="{{ mirror.prompt }}" placeholder="Please give your name and role to {tech}"><div class="help" style="margin-top:4px"><span class="mono">{tech}</span> becomes the name of the tech logged into that site's kiosk.</div></div>
-        <button class="btn">Save mirror screen</button></form></div></div>
+        <div class="field"><label>Prompt line</label><input name="mirror_prompt" value="{{ mirror.prompt }}" placeholder="Please give your name and role to {tech}"><div class="help" style="margin-top:4px"><span class="mono">{tech}</span> is the tech on that site's kiosk.</div></div>
+        <label class="check" style="margin-bottom:12px"><input type="checkbox" name="stream_transcode" value="1" {{ 'checked' if mirror.transcode }}> Re-encode the PGM feed (only if the RTSP source is not H.264)</label>
+        <button class="btn">Save mirror screen</button></form>
+        <p class="help" style="margin-top:12px">PGM feed: set each site's RTSP address under Event & sites. ffmpeg: {% if streams.ffmpeg %}<span class="green mono">{{ streams.ffmpeg }}</span>{% else %}<span class="amber">not found. Put ffmpeg.exe in the tools folder next to the app.</span>{% endif %}{% for sid, st in streams.streams.items() %}<br>Site {{ sid }}: {{ 'running' if st.running else 'stopped' }}{% if st.error %} · <span class="red">{{ st.error }}</span>{% endif %}{% endfor %}</p>
+      </div></div>
+    <div class="panel"><div class="panel-head"><h2>HTTPS for phones</h2>{% if https.on %}<span class="badge in">on · port {{ https.port }}</span>{% else %}<span class="badge neutral">off</span>{% endif %}</div>
+      <div class="panel-body">
+        <p class="help">Phone browsers only allow the camera on a secure address. Turning this on adds an https server with a local certificate; phones install it once from <span class="mono">/trust</span>.</p>
+        {% if https.on %}
+        <dl class="kv" style="margin:10px 0"><dt>Address</dt><dd>{% for ip in lan %}https://{{ ip }}:{{ https.port }}<br>{% endfor %}</dd><dt>Valid for</dt><dd>{{ https.cert.hosts | join(', ') }}</dd><dt>Expires</dt><dd>{{ https.cert.expires or '—' }}</dd></dl>
+        <form method="post" action="/admin/settings/https" class="row wrap">
+          <input type="hidden" name="https_port" value="{{ https.port }}">
+          <input name="extra_hosts" placeholder="Extra hostnames or IPs (optional)" style="max-width:260px">
+          <button class="btn" name="action" value="enable" data-confirm="Re-issue the certificate for the current network addresses and restart?">Re-issue certificate</button>
+          <button class="btn danger" name="action" value="disable" data-confirm="Turn HTTPS off and restart?">Turn off</button>
+        </form>
+        <p class="help" style="margin-top:8px">If the PC gets a new IP address, re-issue the certificate. Phones keep their trust.</p>
+        {% else %}
+        <form method="post" action="/admin/settings/https" class="row wrap">
+          <div class="field" style="margin:0;max-width:120px"><label>Port</label><input type="number" name="https_port" value="{{ https.port }}"></div>
+          <div class="field grow" style="margin:0"><label>Extra hostnames / IPs (optional)</label><input name="extra_hosts" placeholder="e.g. rdr.local 192.168.10.5"></div>
+          <button class="btn primary" name="action" value="enable" data-confirm="Create a certificate, turn HTTPS on and restart?" {{ 'disabled' if not https.cert.available }}>Turn on</button>
+        </form>
+        {% if not https.cert.available %}<p class="amber" style="margin-top:8px">The cryptography package is not installed yet. Update & restart first.</p>{% endif %}
+        {% endif %}
+      </div></div>
     <div class="panel"><div class="panel-head"><h2>Admin password</h2></div>
       <div class="panel-body"><form method="post" action="/admin/settings/password">
         <div class="field"><label>Current password</label><input type="password" name="current" required></div>

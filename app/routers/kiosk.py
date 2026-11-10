@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from ..auth import TECH_COOKIE, tech_token
 from ..db import get_db
 from ..main import render
-from ..services import inventory
+from ..config import load_config
+from ..main import lan_addresses
+from ..services import certs, inventory
 
 router = APIRouter()
 
@@ -31,13 +33,13 @@ def start(request: Request):
 
 
 @router.post("/start")
-def start_post(request: Request, tech_id: int = Form(...), site_id: int = Form(...)):
+def start_post(request: Request, tech_id: int = Form(...), site_id: int = Form(...), next: str = Form("/")):
     with get_db() as db:
         t = db.execute("SELECT id FROM techs WHERE id = ? AND active = 1", (tech_id,)).fetchone()
         s = db.execute("SELECT id FROM sites WHERE id = ? AND active = 1", (site_id,)).fetchone()
     if not t or not s:
         return RedirectResponse("/start?err=Please+pick+a+tech+and+a+site", status_code=303)
-    resp = RedirectResponse("/", status_code=303)
+    resp = RedirectResponse(next if next.startswith("/") and not next.startswith("//") else "/", status_code=303)
     resp.set_cookie(TECH_COOKIE, tech_token(tech_id, site_id), max_age=60 * 60 * 24 * 30, samesite="lax")
     return resp
 
@@ -58,3 +60,38 @@ def mirror(request: Request, site: int | None = None):
             site = row["id"] if row else 1
         s = db.execute("SELECT * FROM sites WHERE id = ?", (site,)).fetchone()
     return render(request, "kiosk/mirror.html", mirror_site=dict(s) if s else {"id": site, "name": "RDR", "rtsp_url": None})
+
+
+def _https_url() -> str | None:
+    cfg = load_config()
+    if not cfg.get("https"):
+        return None
+    ips = lan_addresses()
+    host = ips[0] if ips else "localhost"
+    return f"https://{host}:{cfg.get('https_port', 8443)}/m"
+
+
+@router.get("/m", response_class=HTMLResponse)
+def phone(request: Request):
+    """Phone-sized kiosk with camera scanning (camera needs the https address)."""
+    from ..auth import current_tech
+
+    if current_tech(request) is None:
+        return RedirectResponse("/start?next=/m", status_code=303)
+    with get_db() as db:
+        types = db.execute("SELECT * FROM device_types WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    secure = request.url.scheme == "https" or request.url.hostname in ("localhost", "127.0.0.1")
+    return render(request, "kiosk/phone.html", types=[dict(t) for t in types], secure=secure,
+                  https_on=bool(load_config().get("https")), https_url=_https_url())
+
+
+@router.get("/trust", response_class=HTMLResponse)
+def trust(request: Request):
+    return render(request, "kiosk/trust.html", https_on=bool(load_config().get("https")), https_url=_https_url(), cert=certs.status())
+
+
+@router.get("/trust/rdr-ca.crt")
+def trust_cert():
+    if not certs.CA_CRT.exists():
+        return RedirectResponse("/trust", status_code=303)
+    return FileResponse(str(certs.CA_CRT), media_type="application/x-x509-ca-cert", filename="rdr-ca.crt")

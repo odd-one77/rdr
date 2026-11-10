@@ -1,0 +1,37 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Reports{% endblock %}
+{% block admin %}
+<div class="page-head"><div><h1>Reports</h1><div class="sub">Live figures. Export the outstanding list before de-rig.</div></div>
+  <div class="row"><a class="btn" href="/admin/reports?format=csv&report=outstanding">Outstanding CSV</a><a class="btn" href="/admin/reports?format=csv&report=stock">Stock CSV</a><button class="btn ghost" onclick="print()">Print</button></div></div>
+
+<div class="grid cols-2" style="align-items:start">
+  {% for block in stock %}
+  <div class="panel">
+    <div class="panel-head"><h2>{{ block.site.name }}</h2><span class="muted" style="font-size:12px">{{ 'own stock + shared' if block.site.stock_mode == 'specific' else 'shared stock' }}</span></div>
+    <div class="table-wrap"><table>
+      <tr><th>Type</th>{% if block.site.stock_mode == 'specific' %}<th class="num">Own in / total</th>{% endif %}<th class="num">Shared in / total</th><th class="num">Out</th><th class="num">Issued here</th><th class="num">Lost / dmg</th></tr>
+      {% for t in block.types %}<tr><td>{{ t.type_name }}</td>{% if block.site.stock_mode == 'specific' %}<td class="num"><span class="green">{{ t.own_in }}</span> / {{ t.own_total }}</td>{% endif %}<td class="num"><span class="green">{{ t.shared_in }}</span> / {{ t.shared_total }}</td><td class="num red">{{ t.n_out or '' }}</td><td class="num">{{ t.issued_here or '' }}</td><td class="num amber">{{ t.n_bad or '' }}</td></tr>{% endfor %}
+      {% if not block.types %}<tr><td colspan="6" class="muted">No devices.</td></tr>{% endif %}
+    </table></div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="grid cols-2" style="margin-top:16px;align-items:start">
+  <div class="panel"><div class="panel-head"><h2>Out by department</h2></div>
+    <div class="table-wrap"><table><tr><th>Department</th><th class="num">People</th><th class="num">Items</th><th>Types</th></tr>
+    {% for r in depts %}<tr><td>{{ r.dept }}</td><td class="num">{{ r.people }}</td><td class="num">{{ r.items }}</td><td class="muted">{{ r.types }}</td></tr>{% endfor %}
+    {% if not depts %}<tr><td colspan="4" class="muted">Nothing out.</td></tr>{% endif %}</table></div></div>
+  <div class="panel"><div class="panel-head"><h2>Activity by site and tech</h2></div>
+    <div class="table-wrap"><table><tr><th>Site</th><th>Tech</th><th class="num">Out</th><th class="num">In</th><th class="num">Flagged</th><th>First</th><th>Last</th></tr>
+    {% for r in activity %}<tr><td>{{ r.site or '—' }}</td><td>{{ r.tech or '—' }}</td><td class="num">{{ r.outs }}</td><td class="num">{{ r.ins }}</td><td class="num">{{ r.flagged or '' }}</td><td class="mono muted">{{ r.first_ts[11:16] if r.first_ts }}</td><td class="mono muted">{{ r.last_ts[11:16] if r.last_ts }}</td></tr>{% endfor %}
+    {% if not activity %}<tr><td colspan="7" class="muted">No activity yet.</td></tr>{% endif %}</table></div></div>
+</div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><h2>Outstanding items ({{ outstanding | length }})</h2><span class="muted" style="font-size:12px">everything not in stock, by department and person</span></div>
+  <div class="table-wrap" style="max-height:none"><table>
+    <tr><th>Status</th><th>Department</th><th>Person</th><th>Item</th><th>SI</th><th>Type</th><th>Since</th></tr>
+    {% for d in outstanding %}<tr><td><span class="badge {{ d.status }}">{{ d.status }}</span></td><td>{{ d.holder_dept or '' }}</td><td>{% if d.holder_id %}<a href="/admin/people/{{ d.holder_id }}">{{ d.holder_name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td><td><a href="/admin/devices/{{ d.id }}">{{ d.label or d.si }}</a></td><td class="mono">{{ d.si }}</td><td>{{ d.type_name }}</td><td class="mono muted">{{ d.last_event_at or '' }}</td></tr>{% endfor %}
+    {% if not outstanding %}<tr><td colspan="7" class="muted">Everything is in stock.</td></tr>{% endif %}
+  </table></div></div>
+{% endblock %}

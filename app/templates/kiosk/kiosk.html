@@ -8,9 +8,10 @@
   </div>
   <div class="clock" id="clock">--:--</div>
   <nav>
-    <a class="btn sm ghost" href="/mirror?site={{ tech.site_id }}" target="_blank" title="Open the customer-facing mirror on a second screen">Mirror</a>
+    <a class="btn sm ghost" href="/mirror?site={{ tech.site_id }}" target="_blank" title="Open the customer-facing screen">Mirror</a>
+    <a class="btn sm ghost" href="/m" title="Phone view">Phone</a>
     <a class="btn sm ghost" href="/admin">Admin</a>
-    <a class="btn sm ghost" href="/logout" title="Switch tech or site">Switch</a>
+    <a class="btn sm ghost" href="/logout" title="Change tech or site">Switch</a>
   </nav>
 {% endblock %}
 {% block content %}
@@ -26,13 +27,12 @@
       <div class="panel-head"><h2>Who</h2><button class="btn sm ghost" id="btnNewPerson">+ New person</button></div>
       <div class="panel-body" style="padding:12px 12px 0;overflow:visible">
         <div class="search-box">
-          <span class="icon">&#9906;</span>
-          <input type="search" id="personSearch" placeholder="Name, phone or ID…  (F2)" autocomplete="off">
+          <input type="search" id="personSearch" placeholder="Name, phone or ID  (F2)" autocomplete="off">
           <div class="results hidden" id="personResults"></div>
         </div>
       </div>
       <div id="personPanel" class="grow" style="min-height:0;overflow:auto">
-        <div class="basket-empty"><div class="big">&#128100;</div>Ask “What’s your name?” and start typing.<br><small class="dim">Items can be signed IN without a person.</small></div>
+        <div class="empty-state">Type a name to start. Items can be signed in without a person.</div>
       </div>
     </div>
   </div>
@@ -41,32 +41,31 @@
     <div class="panel">
       <div class="panel-body" style="padding:12px 14px">
         <div class="search-box scan-box">
-          <span class="icon">&#9638;</span>
-          <input type="text" id="scanInput" placeholder="Scan or type SI number…" autocomplete="off" autofocus>
+          <input type="text" id="scanInput" placeholder="Scan SI number" autocomplete="off" autofocus>
         </div>
-        <div class="scan-hint">Scan items one after another. Enter adds to the list. F4 jumps here. Unknown SI → quick create.</div>
+        <div class="scan-hint">Enter adds the item. F4 returns here. Unknown numbers can be created on the spot.</div>
       </div>
     </div>
     <div class="panel fill">
-      <div class="panel-head"><h2>Items <span class="muted mono" id="basketCount">0</span></h2>
+      <div class="panel-head"><h2>Items <span class="mono" id="basketCount">0</span></h2>
         <div class="row"><button class="btn sm ghost hidden" id="btnAddAssigned">Add pre-assigned</button><button class="btn sm ghost" id="btnClear">Clear</button></div></div>
       <div class="panel-body tight" style="overflow:auto">
         <ul class="basket" id="basket"></ul>
-        <div class="basket-empty" id="basketEmpty"><div class="big">&#9638;</div>Nothing scanned yet.</div>
+        <div class="empty-state" id="basketEmpty">Nothing scanned yet.</div>
       </div>
     </div>
   </div>
 
   <div class="col col-right">
     <div class="panel fill">
-      <div class="panel-head"><h2>Activity</h2><span class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.1em" id="feedScope">this site</span></div>
+      <div class="panel-head"><h2>Activity</h2><span class="muted" style="font-size:12px" id="feedScope">this site</span></div>
       <div class="panel-body tight" style="overflow:auto"><ul class="feed" id="feed"></ul></div>
     </div>
   </div>
 </div>
 
 <div class="action-bar">
-  <span class="count" id="actionHint">Select a person and scan items to sign OUT. Scan items alone to sign IN.</span>
+  <span class="count" id="actionHint">Pick a person and scan items to sign out. Scan items alone to sign in.</span>
   <div class="grow"></div>
   <button class="btn success lg" id="btnSignIn" disabled>&#8595; Sign IN</button>
   <button class="btn primary lg" id="btnSignOut" disabled>&#8593; Sign OUT</button>

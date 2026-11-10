@@ -65,9 +65,29 @@ def main() -> int:
         cmd = [sys.executable, "-m", "uvicorn", "app.main:app", "--host", host, "--port", str(port), "--log-level", "warning"]
         if args.reload:
             cmd.append("--reload")
+        https_proc = None
+        if cfg.get("https"):
+            from app.services import certs
+            if certs.ready():
+                hport = int(cfg.get("https_port", 8443))
+                print(f"  HTTPS ->  https://<this-pc>:{hport}/   (phones: open /trust once)\n", flush=True)
+                https_proc = subprocess.Popen(
+                    [sys.executable, "-m", "uvicorn", "app.main:app", "--host", host, "--port", str(hport), "--log-level", "warning",
+                     "--ssl-keyfile", str(certs.SRV_KEY), "--ssl-certfile", str(certs.SRV_CRT)], cwd=ROOT)
+            else:
+                print("  HTTPS is enabled but no certificate exists. Re-issue it in Admin > Settings.", flush=True)
         try:
             code = subprocess.call(cmd, cwd=ROOT)
         except KeyboardInterrupt:
+            code = 0
+        finally:
+            if https_proc is not None and https_proc.poll() is None:
+                https_proc.terminate()
+                try:
+                    https_proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    https_proc.kill()
+        if code == 0:
             return 0
         if code != RESTART_EXIT_CODE:
             return code

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Mirror · {{ mirror_site.name }}{% endblock %}
 {% block body %}
+{% if mirror_site.rtsp_url %}<script src="/static/vendor/hls.min.js"></script>{% endif %}
 <div class="mirror">
   <div class="mirror-head">
     <div class="row" style="gap:24px">
@@ -11,13 +12,13 @@
   </div>
   <div class="mirror-body {% if not mirror_site.rtsp_url %}no-video{% endif %}">
     <div id="main">
-      <div class="idle"><div class="big">Welcome to RDR</div><div>Please give your name and role to the technician</div></div>
+      <div class="idle"><div class="big">Welcome to RDR</div><div class="sub">Please give your name and role to the technician</div></div>
     </div>
     {% if mirror_site.rtsp_url %}
-    <div class="video"><span class="pgm">PGM</span><div style="text-align:center"><div style="font-size:40px;opacity:.3">&#9654;</div>Programme feed<br><small class="mono">{{ mirror_site.rtsp_url }}</small><br><small>Stream player arrives in phase 2</small></div></div>
+    <div class="video" id="video"><span class="pgm">PGM</span><video id="pgm" muted autoplay playsinline></video><div class="status" id="pgmStatus">Connecting to programme feed…</div></div>
     {% endif %}
   </div>
-  <div class="mirror-foot"><span>{{ mirror_site.name }}</span><span id="foot"></span><span id="mclock"></span></div>
+  <div class="mirror-foot"><span>{{ mirror_site.name }}</span><span id="mclock"></span></div>
 </div>
 <script>
 (function(){
@@ -30,7 +31,7 @@
     if (list.length > 1) { let i; do { i = Math.floor(Math.random() * list.length); } while (i === sayingIdx); sayingIdx = i; return list[i]; }
     return list[0];
   };
-  const idleHtml = () => `<div class="idle"><div class="big" id="saying">${esc(pick())}</div><div>${esc((greeting.prompt || 'Please give your name and role to {tech}').replace('{tech}', techName || 'the technician'))}</div></div>`;
+  const idleHtml = () => `<div class="idle"><div class="big" id="saying">${esc(pick())}</div><div class="sub">${esc((greeting.prompt || 'Please give your name and role to {tech}').replace('{tech}', techName || 'the technician'))}</div></div>`;
   async function tick(){
     try {
       const r = await fetch(`/api/mirror/${SITE}`, {cache:'no-store'});
@@ -40,12 +41,10 @@
       if (s.tech_name) techName = s.tech_name;
       const j = JSON.stringify(s) + JSON.stringify(greeting);
       if (j !== lastJson) { lastJson = j; render(s); }
-      const t = data.summary.totals;
-      document.getElementById('foot').textContent = `${t.n_out} out · ${t.n_in} in stock`;
     } catch (e) {}
   }
-  const item = (i, small) => `<li${small ? ' style="font-size:18px;padding:10px 16px"' : ''}><span><span class="type">${esc(i.type)}</span><br>${esc(i.label || i.si)}</span><span class="si">${esc(i.si)}</span></li>`;
-  const heading = t => `<div class="muted" style="margin-top:18px;text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:700">${t}</div>`;
+  const item = (i, small) => `<li${small ? ' class="small"' : ''}><span><span class="type">${esc(i.type)}</span><br>${esc(i.label || i.si)}</span><span class="si">${esc(i.si)}</span></li>`;
+  const heading = t => `<div class="heading">${t}</div>`;
   function render(s){
     if (s.result && s.result.items && s.result.items.length) {
       const kind = s.result.kind;
@@ -62,11 +61,38 @@
     idleShown = false;
     const p = s.person || {};
     main.innerHTML = `
-      <div class="who">${esc(p.name || 'Items')}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || 'Returning items')}</small></div>
+      <div class="who">${p.name ? 'Hi! ' + esc(p.name) : 'Returning items'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'Items are being checked in'))}</small></div>
       ${(s.holdings && s.holdings.length) ? heading('Currently with you') + `<ul class="items" style="margin-top:8px">${s.holdings.map(i => item(i, true)).join('')}</ul>` : ''}
       ${(s.basket && s.basket.length) ? heading('Being processed') + `<ul class="items" style="margin-top:8px">${s.basket.map(i => item(i)).join('')}</ul>` : ''}`;
   }
   setInterval(tick, 1000); tick();
+  // Programme feed: ask the server to relay RTSP -> HLS and play it.
+  const videoEl = document.getElementById('pgm');
+  if (videoEl) {
+    const statusEl = document.getElementById('pgmStatus');
+    let hls = null, attached = false;
+    async function pingStream() {
+      try {
+        const r = await fetch(`/api/stream/${SITE}/ping`, {cache: 'no-store'});
+        const st = await r.json();
+        if (st.error && !st.running) { statusEl.textContent = st.error; statusEl.classList.remove('hidden'); attached = false; if (hls) { hls.destroy(); hls = null; } return; }
+        if (st.ready && !attached) {
+          attached = true;
+          const src = st.playlist + '?t=' + Date.now();
+          if (window.Hls && Hls.isSupported()) {
+            hls = new Hls({lowLatencyMode: true, liveSyncDurationCount: 2, liveMaxLatencyDurationCount: 4, maxBufferLength: 4, backBufferLength: 0});
+            hls.loadSource(src); hls.attachMedia(videoEl);
+            hls.on(Hls.Events.ERROR, (e, data) => { if (data.fatal) { attached = false; hls.destroy(); hls = null; statusEl.textContent = 'Feed interrupted, reconnecting…'; statusEl.classList.remove('hidden'); } });
+          } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+            videoEl.src = src;
+          } else { statusEl.textContent = 'This browser cannot play HLS'; return; }
+          videoEl.play().catch(() => {});
+          statusEl.classList.add('hidden');
+        } else if (!st.ready) { statusEl.textContent = 'Starting programme feed…'; statusEl.classList.remove('hidden'); }
+      } catch (e) { /* server away; try again */ }
+    }
+    setInterval(pingStream, 4000); pingStream();
+  }
   // Rotate through the sayings while idle.
   setInterval(() => { const el = document.getElementById('saying'); if (idleShown && el && greeting.sayings && greeting.sayings.length > 1) { el.style.opacity = 0; setTimeout(() => { el.textContent = pick(); el.style.opacity = 1; }, 400); } }, 9000);
   const clock = () => { document.getElementById('mclock').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); };

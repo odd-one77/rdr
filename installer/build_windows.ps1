@@ -53,6 +53,24 @@ Copy-Item "run.py", "requirements.txt", "README.md" $Out
 Copy-Item (Join-Path $PSScriptRoot "RDR.cmd") $Out
 Set-Content -Path (Join-Path $Out "VERSION") -Value $Version -NoNewline
 
+# 3b. ffmpeg for the mirror's RTSP programme feed (GPL build from BtbN/FFmpeg-Builds on GitHub)
+if ($env:RDR_SKIP_FFMPEG -ne "1") {
+    $FfZip = Join-Path $Dist "ffmpeg-win64.zip"
+    if (-not (Test-Path $FfZip)) {
+        Invoke-WebRequest "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile $FfZip
+    }
+    $FfTmp = Join-Path $Dist "ffmpeg-tmp"
+    if (Test-Path $FfTmp) { Remove-Item $FfTmp -Recurse -Force }
+    Expand-Archive $FfZip -DestinationPath $FfTmp -Force
+    $FfExe = Get-ChildItem -Recurse $FfTmp -Filter "ffmpeg.exe" | Select-Object -First 1
+    New-Item -ItemType Directory -Force -Path (Join-Path $Out "tools") | Out-Null
+    Copy-Item $FfExe.FullName (Join-Path $Out "tools\ffmpeg.exe")
+    $FfLicense = Get-ChildItem -Recurse $FfTmp -Filter "LICENSE*" | Select-Object -First 1
+    if ($FfLicense) { Copy-Item $FfLicense.FullName (Join-Path $Out "tools\ffmpeg-LICENSE.txt") }
+    Remove-Item $FfTmp -Recurse -Force
+    Write-Host "== bundled ffmpeg"
+}
+
 # 4. App-only zip for the in-app updater
 $AppZip = Join-Path $Dist "rdr-app-$Version.zip"
 if (Test-Path $AppZip) { Remove-Item $AppZip }

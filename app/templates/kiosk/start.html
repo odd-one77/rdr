@@ -6,11 +6,11 @@
   {% if event.logo_path %}<img src="{{ event.logo_path }}" alt="" style="max-height:90px;max-width:360px;object-fit:contain">{% endif %}
   <div style="text-align:center">
     <h1>{{ event.name }}</h1>
-    {% if event.show_name %}<div class="muted" style="text-transform:uppercase;letter-spacing:.14em">{{ event.show_name }}</div>{% endif %}
+    {% if event.show_name %}<div class="muted">{{ event.show_name }}</div>{% endif %}
   </div>
   {% if err %}<div class="flash err" style="margin:0">{{ err }}</div>{% endif %}
   <form class="panel card" method="post" action="/start" id="startForm">
-    <div class="panel-head"><h2>Who are you and where are you?</h2><a class="btn sm ghost" href="/admin/login">Admin</a></div>
+    <div class="panel-head"><h2>Who is on the counter?</h2><a class="btn sm ghost" href="/admin/login">Admin</a></div>
     <div class="panel-body stack" style="gap:22px">
       <div>
         <label>Technician</label>
@@ -19,7 +19,7 @@
           <div class="choice" data-name="tech_id" data-value="{{ t.id }}" data-site="{{ t.site_id or '' }}">{{ t.display_name }}<small>{{ t.username }}{% if t.role == 'lead' %} · lead{% endif %}</small></div>
           {% endfor %}
         </div>
-        {% if not techs %}<p class="muted">No techs yet. Add usernames in Admin → Event.</p>{% endif %}
+        {% if not techs %}<p class="muted">No techs yet. Add them in Admin → Event.</p>{% endif %}
       </div>
       <div>
         <label>RDR site / zone</label>
@@ -29,7 +29,7 @@
           {% endfor %}
         </div>
       </div>
-      <input type="hidden" name="tech_id" id="tech_id"><input type="hidden" name="site_id" id="site_id">
+      <input type="hidden" name="tech_id" id="tech_id"><input type="hidden" name="site_id" id="site_id"><input type="hidden" name="next" value="{{ request.query_params.get('next', '/') }}">
       <button class="btn primary lg block" type="submit" id="go" disabled>Open kiosk</button>
     </div>
   </form>

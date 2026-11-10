@@ -143,7 +143,7 @@
     const panel = $('#personPanel');
     const p = state.person;
     if (!p) {
-      panel.innerHTML = `<div class="basket-empty"><div class="big">&#128100;</div>Ask “What’s your name?” and start typing.<br><small class="dim">Items can be signed IN without a person.</small></div>`;
+      panel.innerHTML = `<div class="empty-state">Type a name to start. Items can be signed in without a person.</div>`;
       $('#btnAddAssigned').classList.add('hidden');
       return;
     }
@@ -158,13 +158,13 @@
           <span class="badge ${d.status}">${esc(d.status)}</span>
           <span><div class="label">${esc(d.label || d.si)}</div><div class="type">${esc(d.type_name)} <span class="si">${esc(d.si)}</span></div></span>
           <span class="actions"><button class="btn sm" data-swap="${d.id}" title="Straight swap for another item">Swap</button><button class="btn sm ghost" data-flag="${d.id}" title="Mark lost or damaged">!</button><button class="btn sm ghost" data-add="${d.id}" title="Add to list to sign in">+</button></span>
-        </li>`).join('') || '<li class="dim" style="padding:6px 8px">Nothing signed out.</li>'}</ul>
+        </li>`).join('') || '<li class="empty">Nothing signed out.</li>'}</ul>
       <div class="section-title"><h3>Pre-assigned <span class="mono">${pre.length}</span></h3>${pre.length ? '<button class="btn sm ghost" data-add-all>Add all</button>' : ''}</div>
       <ul class="dev-list">${pre.map(d => `<li>
           <span class="badge ${d.status}">${esc(d.status)}</span>
           <span><div class="label">${esc(d.label || d.si)}</div><div class="type">${esc(d.type_name)} <span class="si">${esc(d.si)}</span>${d.holder_name ? ` · <span class="amber">with ${esc(d.holder_name)}</span>` : ''}</div></span>
           <span class="actions"><button class="btn sm" data-add="${d.id}">+ Add</button></span>
-        </li>`).join('') || '<li class="dim" style="padding:6px 8px">No pre-assigned items.</li>'}</ul>`;
+        </li>`).join('') || '<li class="empty">None.</li>'}</ul>`;
     $('#btnClearPerson').onclick = clearPerson;
     panel.querySelectorAll('[data-add]').forEach(b => b.onclick = () => addById(+b.dataset.add));
     const addAll = panel.querySelector('[data-add-all]'); if (addAll) addAll.onclick = () => pre.forEach(d => addToBasket(d, true));
@@ -239,13 +239,13 @@
     $('#btnSignIn').disabled = !n;
     $('#btnSignOut').disabled = !n || !p;
     $('#btnSignOut').innerHTML = p ? `&#8593; Sign OUT to ${esc(p.name.split(' ')[0])}` : '&#8593; Sign OUT';
-    $('#actionHint').textContent = !n ? (p ? `Scan the items for ${p.name}.` : 'Select a person and scan items to sign OUT. Scan items alone to sign IN.')
-      : (p ? `${n} item${n > 1 ? 's' : ''} ready.` : `${n} item${n > 1 ? 's' : ''} ready to sign IN. Pick a person to sign OUT instead.`);
+    $('#actionHint').textContent = !n ? (p ? `Scan the items for ${p.name}.` : 'Pick a person and scan items to sign out. Scan items alone to sign in.')
+      : (p ? `${n} item${n > 1 ? 's' : ''} ready.` : `${n} item${n > 1 ? 's' : ''} ready to sign in. Pick a person to sign out instead.`);
   }
 
   function openQuickCreate(si) {
-    modal('Unknown SI — create device', `
-      <p class="help">“<span class="mono">${esc(si)}</span>” is not in the database. Create it now and it will be added to the list.</p>
+    modal('New device', `
+      <p class="help"><span class="mono">${esc(si)}</span> is not in the database yet.</p>
       <div class="field"><label>SI number</label><input id="qc_si" value="${esc(si)}" class="mono"></div>
       <div class="grid cols-2">
         <div class="field"><label>Type</label><select id="qc_type">${TYPES.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
@@ -313,8 +313,8 @@
     } catch (e) { toast('err', 'Sign out failed', e.message); }
   }
   function openConflicts(conflicts, person) {
-    modal('Some items need a decision', `
-      <p class="help">These items are not available. Tick the ones you want to force to <b>${esc(person.name)}</b> anyway; the rest stay in the list.</p>
+    modal('Items not available', `
+      <p class="help">Tick the ones to give to <b>${esc(person.name)}</b> anyway. The rest stay in the list.</p>
       <ul class="conflict-list" style="list-style:none;padding:0;margin:0">${conflicts.map(c => `<li>
         <span><div style="font-weight:800">${esc(c.label || c.si)} <span class="si">${esc(c.si)}</span></div><div class="red" style="font-size:13px">${esc(c.message)}</div></span>
         <label class="check"><input type="checkbox" data-force="${c.id}"> ${c.status === 'out' ? 'Reassign' : 'Issue anyway'}</label></li>`).join('')}</ul>`,
@@ -331,7 +331,7 @@
   function openSwap(old) {
     if (!old) return;
     modal(`Swap ${old.label || old.si}`, `
-      <p class="help">${esc(state.person.name)} hands back <b>${esc(old.label || old.si)}</b> (${esc(old.type_name)}) and receives the replacement you scan now.</p>
+      <p class="help">${esc(state.person.name)} returns <b>${esc(old.label || old.si)}</b> and gets the item you scan now.</p>
       <div class="field"><label>Scan replacement SI</label><input id="sw_si" class="mono" placeholder="Scan…" autocomplete="off"></div>
       <div class="grid cols-2">
         <div class="field"><label>Reason</label><select id="sw_reason"><option>Damaged</option><option>Faulty</option><option>Battery issue</option><option>Wrong item</option><option>Lost</option><option>Other</option></select></div>
@@ -355,7 +355,7 @@
   function openFlag(d) {
     if (!d) return;
     modal(`Flag ${d.label || d.si}`, `
-      <p class="help">Mark this item as lost or damaged. It comes off <b>${esc(state.person.name)}</b>’s list and is logged against them.</p>
+      <p class="help">The item comes off <b>${esc(state.person.name)}</b>'s list and the change is logged against them.</p>
       <div class="grid cols-2">
         <div class="field"><label>Status</label><select id="fl_status"><option value="damaged">Damaged</option><option value="lost">Lost</option></select></div>
         <div class="field"><label>Reason</label><input id="fl_reason" placeholder="e.g. cable cut, dropped"></div>

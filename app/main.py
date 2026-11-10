@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import socket
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -70,12 +71,22 @@ def render(request: Request, name: str, **ctx) -> HTMLResponse:
     return templates.TemplateResponse(request, name, full)
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    yield
+    from .services.streams import stop_all
+    stop_all()
+
+
 def create_app() -> FastAPI:
     ensure_dirs()
     init_db()
-    app = FastAPI(title="RDR", version=__version__, docs_url=None, redoc_url=None)
+    app = FastAPI(title="RDR", version=__version__, docs_url=None, redoc_url=None, lifespan=_lifespan)
     app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
     app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+    from .services.streams import STREAM_DIR
+    STREAM_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/streams", StaticFiles(directory=str(STREAM_DIR)), name="streams")
 
     from .routers import admin, api, kiosk  # noqa: WPS433 (local import keeps startup order simple)
 

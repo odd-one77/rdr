@@ -13,10 +13,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from ..auth import (
     ADMIN_COOKIE, admin_password_set, admin_token, check_admin_password, current_tech, is_admin, set_admin_password,
 )
-from ..config import UPLOAD_DIR, load_config, save_config
+from ..config import IMPORT_DIR, UPLOAD_DIR, load_config, save_config
 from ..db import ACTION_LABELS, get_db, get_setting, now_iso, reset_db, set_setting
 from ..main import lan_addresses, render
-from ..services import importer, inventory, updater
+from ..services import backup, certs, importer, inventory, reports, streams, updater
 
 router = APIRouter(prefix="/admin")
 
@@ -562,7 +562,11 @@ def settings_page(request: Request, fetch: int = 0):
             "prompt": get_setting(db, "mirror_prompt") or "",
             "sayings": get_setting(db, "mirror_sayings") or "",
         }
-    return render(request, "admin/settings.html", info=info, update_log=updater.last_output(), lan=lan_addresses(), mirror=mirror, active="settings")
+        mirror["transcode"] = get_setting(db, "stream_transcode") == "1"
+    cfg = load_config()
+    https = {"on": bool(cfg.get("https")), "port": cfg.get("https_port", 8443), "cert": certs.status()}
+    return render(request, "admin/settings.html", info=info, update_log=updater.last_output(), lan=lan_addresses(), mirror=mirror,
+                  https=https, streams=streams.status(), active="settings")
 
 
 @router.post("/settings/password", dependencies=[Depends(require_admin)])
@@ -594,8 +598,9 @@ def settings_update():
 
 
 @router.post("/settings/mirror", dependencies=[Depends(require_admin)])
-def settings_mirror(mirror_title: str = Form(""), mirror_prompt: str = Form(""), mirror_sayings: str = Form("")):
+def settings_mirror(mirror_title: str = Form(""), mirror_prompt: str = Form(""), mirror_sayings: str = Form(""), stream_transcode: str = Form("")):
     with get_db() as db:
+        set_setting(db, "stream_transcode", "1" if stream_transcode else None)
         set_setting(db, "mirror_title", mirror_title.strip() or None)
         set_setting(db, "mirror_prompt", mirror_prompt.strip() or None)
         set_setting(db, "mirror_sayings", "\n".join(ln.strip() for ln in mirror_sayings.splitlines() if ln.strip()) or None)
@@ -645,3 +650,108 @@ def settings_demo():
     with get_db() as db:
         n = load_demo(db)
     return _redirect("/admin", msg=f"Demo data loaded ({n} devices)")
+
+
+# -- HTTPS --------------------------------------------------------------------
+
+@router.post("/settings/https", dependencies=[Depends(require_admin)])
+def settings_https(action: str = Form("enable"), https_port: int = Form(8443), extra_hosts: str = Form("")):
+    cfg = load_config()
+    if action == "disable":
+        cfg["https"] = False
+        save_config(cfg)
+        updater.schedule_restart()
+        return _redirect("/admin/settings?restarting=1", msg="HTTPS off. Restarting...")
+    if not certs.available():
+        return _redirect("/admin/settings", err="The 'cryptography' package is missing. Run Update & restart to install requirements, then try again.")
+    try:
+        certs.issue_server_cert([h for h in extra_hosts.replace(",", " ").split() if h])
+    except Exception as e:  # noqa: BLE001
+        return _redirect("/admin/settings", err=f"Could not create certificate: {e}")
+    cfg["https"] = True
+    cfg["https_port"] = max(1, min(65535, https_port))
+    save_config(cfg)
+    updater.schedule_restart()
+    return _redirect("/admin/settings?restarting=1", msg="HTTPS on. Restarting... phones then use the https address and /trust.")
+
+
+# -- reports ------------------------------------------------------------------
+
+@router.get("/reports", dependencies=[Depends(require_admin)])
+def reports_page(request: Request, format: str = "html", report: str = "outstanding"):
+    with get_db() as db:
+        if format == "csv":
+            buf = io.StringIO(); w = csv.writer(buf)
+            if report == "stock":
+                w.writerow(["Site", "Type", "Own in", "Own total", "Shared in", "Shared total", "Out", "Issued here", "Lost/damaged"])
+                for block in reports.stock_by_site(db):
+                    for t in block["types"]:
+                        w.writerow([block["site"]["name"], t["type_name"], t["own_in"], t["own_total"], t["shared_in"], t["shared_total"], t["n_out"], t["issued_here"], t["n_bad"]])
+                name = "rdr-stock.csv"
+            else:
+                w.writerow(["Status", "Department", "Person", "Phone", "Item", "SI", "Type", "Since"])
+                for d in reports.outstanding(db):
+                    w.writerow([d["status"], d["holder_dept"] or "", d["holder_name"] or "", d["holder_phone"] or "", d["label"], d["si"], d["type_name"], d["last_event_at"] or ""])
+                name = "rdr-outstanding.csv"
+            buf.seek(0)
+            return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+        ctx = {
+            "stock": reports.stock_by_site(db), "outstanding": reports.outstanding(db),
+            "depts": reports.dept_summary(db), "activity": reports.activity_by_site(db),
+        }
+    return render(request, "admin/reports.html", active="reports", **ctx)
+
+
+# -- backup / restore -----------------------------------------------------------
+
+@router.get("/backup", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+def backup_page(request: Request, token: str = ""):
+    pending = None
+    if token:
+        staged = IMPORT_DIR / f"backup-{token}.zip"
+        if staged.exists() and token.replace("-", "").replace("_", "").isalnum():
+            try:
+                pending = backup.inspect(staged.read_bytes())
+                pending["token"] = token
+            except ValueError as e:
+                staged.unlink(missing_ok=True)
+                return _redirect("/admin/backup", err=str(e))
+    return render(request, "admin/backup.html", pending=pending, active="backup")
+
+
+@router.post("/backup/export", dependencies=[Depends(require_admin)])
+def backup_export(include_token: str = Form("")):
+    name, blob = backup.create(include_token=bool(include_token))
+    return StreamingResponse(iter([blob]), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@router.post("/backup/inspect", dependencies=[Depends(require_admin)])
+async def backup_inspect(file: UploadFile = File(...)):
+    import secrets
+    blob = await file.read()
+    try:
+        backup.inspect(blob)
+    except (ValueError, Exception) as e:  # noqa: BLE001 - bad zip, bad db
+        return _redirect("/admin/backup", err=f"Not a usable backup: {e}")
+    token = secrets.token_urlsafe(8)
+    IMPORT_DIR.mkdir(parents=True, exist_ok=True)
+    (IMPORT_DIR / f"backup-{token}.zip").write_bytes(blob)
+    return _redirect(f"/admin/backup?token={token}")
+
+
+@router.post("/backup/restore", dependencies=[Depends(require_admin)])
+def backup_restore(token: str = Form(...), confirm: str = Form(""), restore_config: str = Form("")):
+    staged = IMPORT_DIR / f"backup-{token}.zip"
+    if not staged.exists():
+        return _redirect("/admin/backup", err="That upload has expired. Upload the backup again.")
+    if confirm != "RESTORE":
+        return _redirect(f"/admin/backup?token={token}", err="Type RESTORE to confirm")
+    try:
+        info = backup.restore(staged.read_bytes(), restore_config=bool(restore_config))
+    except Exception as e:  # noqa: BLE001
+        return _redirect("/admin/backup", err=f"Restore failed: {e}")
+    staged.unlink(missing_ok=True)
+    updater.schedule_restart()
+    resp = RedirectResponse(f"/admin/settings?restarting=1&msg={quote('Restored ' + info['event'] + '. Restarting...')}", status_code=303)
+    resp.delete_cookie(ADMIN_COOKIE)
+    return resp

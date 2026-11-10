@@ -55,6 +55,8 @@ Source: "{#DistDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#DistDir}\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#DistDir}\RDR.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "rdr.ico"; DestDir: "{app}"; Flags: ignoreversion
+; ffmpeg for the mirror programme feed (optional at build time)
+Source: "{#DistDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
 [InstallDelete]
 ; Remove the previous app tree so deleted modules do not linger across upgrades

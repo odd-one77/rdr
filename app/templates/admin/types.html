@@ -3,25 +3,25 @@
 {% block admin %}
 <div class="page-head"><h1>Device types</h1></div>
 <div class="panel">
-  <div class="table-wrap"><table>
+  <div class="table-wrap"><table class="table-form">
     <tr><th>Name</th><th>Code</th><th>Order</th><th class="num">Devices</th><th>Active</th><th></th></tr>
     {% for t in types %}
     <tr><form method="post" action="/admin/types/{{ t.id }}" class="contents">
-      <td><input name="name" value="{{ t.name }}" style="padding:6px 8px"></td>
-      <td><input name="short_code" value="{{ t.short_code }}" style="padding:6px 8px;max-width:90px"></td>
-      <td><input type="number" name="sort_order" value="{{ t.sort_order }}" style="padding:6px 8px;max-width:90px"></td>
+      <td><input name="name" value="{{ t.name }}"></td>
+      <td><input name="short_code" value="{{ t.short_code }}"></td>
+      <td><input type="number" name="sort_order" value="{{ t.sort_order }}"></td>
       <td class="num"><a href="/admin/devices?type_id={{ t.id }}">{{ t.n }}</a></td>
       <td><input type="checkbox" name="active" value="1" {{ 'checked' if t.active }}></td>
-      <td class="right" style="white-space:nowrap"><button class="btn sm" name="action" value="save">Save</button> <button class="btn sm danger" name="action" value="delete" data-confirm="Delete type {{ t.name }}?">✕</button></td>
+      <td class="actions"><button class="btn sm" name="action" value="save">Save</button> <button class="btn sm danger" name="action" value="delete" data-confirm="Delete type {{ t.name }}?">✕</button></td>
     </form></tr>
     {% endfor %}
     <tr><form method="post" action="/admin/types" class="contents">
-      <td><input name="name" placeholder="New type, e.g. Bolero Beltpack" required style="padding:6px 8px"></td>
-      <td><input name="short_code" placeholder="BOL" style="padding:6px 8px;max-width:90px"></td>
-      <td><input type="number" name="sort_order" value="100" style="padding:6px 8px;max-width:90px"></td>
+      <td><input name="name" placeholder="New type, e.g. Bolero Beltpack" required></td>
+      <td><input name="short_code" placeholder="BOL"></td>
+      <td><input type="number" name="sort_order" value="100"></td>
       <td></td><td></td><td class="right"><button class="btn sm primary">Add</button></td>
     </form></tr>
   </table></div>
-  <div class="panel-body help">Types drive the kiosk summary and the search results. Unknown types in an easyjob export are added automatically on import; tidy them here.</div>
+  <div class="panel-body help">Unknown types from an easyjob import are added here automatically.</div>
 </div>
 {% endblock %}
