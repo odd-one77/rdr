@@ -608,7 +608,7 @@ async def import_commit(request: Request, token: str):
     with get_db() as db:
         result = importer.commit(db, staged, decisions, current_tech(request))
     parts = [f"{v} {k.replace('_', ' ')}" for k, v in result.items()]
-    target = {"people": "/admin/people", "devices": "/admin/devices", "assignments": "/admin/assignments"}[staged["kind"]]
+    target = {"people": "/admin/people", "devices": "/admin/devices"}[staged["kind"]]
     return _redirect(target, msg="Import done: " + ", ".join(parts))
 
 

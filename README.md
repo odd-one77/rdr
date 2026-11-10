@@ -138,9 +138,9 @@ zip, check the summary, type RESTORE. The server restarts on the restored data.
 
 ## Imports
 
-Admin → Import sheets accepts `.xlsx` / `.csv` for **people**, **devices**
-(easyjob export) and **reserved devices**, and an easyjob **delivery note
-PDF** for devices: every barcode (`@si…`) becomes a device and the
+Admin → Import has two sources. **easyjob import** takes the delivery note
+PDF or the easyjob export (`.xlsx` / `.csv`) for devices; **Allocation**
+takes the comms allocation sheet for people. From the delivery note PDF, every barcode (`@si…`) becomes a device and the
 description picks the type (BL-BPK → Bolero Beltpack, PRO-D1 / PRO-D2 /
 AIR-D1 / MAX-E1 / Covert → that headset, HC Headset Cord → Radio Headset
 Adapter, Hytera / Motorola → Radio, RSM → RSM). Panels, antennas, chargers,

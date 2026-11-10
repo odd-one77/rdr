@@ -193,17 +193,6 @@ def test_import_devices_new_type(client):
     assert client.get("/api/devices/lookup?si=SI-BOL-1001").json()["device"]["status"] == "in"
 
 
-def test_import_assignments_csv(client):
-    csv = "SI,Name\nSI-RAD-2001,Tom Becker\nSI-NEW-9001,Nobody Here\n"
-    loc = _follow(client, client.post("/admin/import/assignments", files={"file": ("pre.csv", csv.encode(), "text/csv")}))
-    token = loc.rsplit("/", 1)[1]
-    loc2 = _follow(client, client.post(loc, data={"map_si": "0", "map_person_name": "1"}))
-    assert "Person not found" in client.get(loc2).text
-    _follow(client, client.post(f"/admin/import/s/{token}/commit", data={"action": "commit"}))
-    tom = client.get("/api/people/search?q=tom").json()["results"][0]["id"]
-    assert [a["si"] for a in client.get(f"/api/people/{tom}").json()["assignments"]] == ["SI-RAD-2001"]
-
-
 def test_admin_pages_render(client):
     for path in ("/admin", "/admin/event", "/admin/types", "/admin/people", "/admin/devices", "/admin/assignments",
                  "/admin/transactions", "/admin/import", "/admin/settings", "/admin/people/1", "/admin/devices/1",

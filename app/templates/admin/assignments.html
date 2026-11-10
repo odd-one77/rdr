@@ -2,7 +2,7 @@
 {% block title %}Pre-assignments{% endblock %}
 {% block admin %}
 <div class="page-head"><div><h1>Reserved devices <span class="muted mono" style="font-size:16px">{{ rows | length }}</span></h1><div class="sub">A particular unit held for a particular person. Normally not needed: Bolero IDs live on the person.</div></div>
-  <div class="row"><a class="btn" href="/admin/import">Import sheet</a><button class="btn danger" data-toggle="#clearAll">Clear all</button></div></div>
+  <div class="row"><button class="btn danger" data-toggle="#clearAll">Clear all</button></div></div>
 <form class="panel hidden" id="clearAll" method="post" action="/admin/assignments/clear" style="margin-bottom:14px"><div class="panel-body row"><span class="help">Remove every pre-assignment (devices and people are kept). Type <b>CLEAR</b> to confirm.</span><input name="confirm" style="max-width:140px"><button class="btn danger">Clear all</button></div></form>
 <div class="grid cols-2" style="align-items:start">
   <form class="panel" method="post" action="/admin/assignments">

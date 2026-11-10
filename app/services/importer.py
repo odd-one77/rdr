@@ -26,26 +26,9 @@ from ..db import now_iso
 from .inventory import log, norm_phone, norm_si
 
 KINDS = {
-    "people": {
-        "title": "People",
-        "fields": [
-            ("external_id", "Unique ID / badge (optional)"),
-            ("name", "Full name"),
-            ("first_name", "First name (if split)"),
-            ("last_name", "Last name (if split)"),
-            ("dept", "Department"),
-            ("role", "Role"),
-            ("phone", "Phone"),
-            ("bolero_id", "Bolero ID"),
-            ("faceplate", "Faceplate colour (cell colour or text)"),
-            ("pack", "Pack allocation (e.g. Bolero)"),
-            ("headset", "Headset allocation (e.g. Pro-D1)"),
-            ("notes", "Notes"),
-        ],
-        "required": ["name|first_name"],
-    },
     "devices": {
-        "title": "Devices (easyjob export)",
+        "title": "easyjob import",
+        "blurb": "Delivery note PDF, or the easyjob export (.xlsx / .csv). Beltpacks, headsets and radios only.",
         "fields": [
             ("si", "SI number / barcode"),
             ("type", "Device type"),
@@ -57,16 +40,24 @@ KINDS = {
         ],
         "required": ["si", "type"],
     },
-    "assignments": {
-        "title": "Specific device pre-assignments (by SI)",
+    "people": {
+        "title": "Allocation",
+        "blurb": "The comms allocation sheet (.xlsx / .csv): Bolero #, colour column, Position, Role Name, Person, Pack, Headset.",
         "fields": [
-            ("si", "Device SI number"),
-            ("person_external_id", "Person unique ID"),
-            ("person_name", "Person name"),
-            ("person_phone", "Person phone"),
-            ("note", "Note"),
+            ("external_id", "Unique ID / badge (optional)"),
+            ("name", "Full name"),
+            ("first_name", "First name (if split)"),
+            ("last_name", "Last name (if split)"),
+            ("dept", "Position / department"),
+            ("role", "Role name"),
+            ("phone", "Phone"),
+            ("bolero_id", "Bolero ID"),
+            ("faceplate", "Faceplate colour (cell colour or text)"),
+            ("pack", "Pack allocation (e.g. Bolero)"),
+            ("headset", "Headset allocation (e.g. Pro-D1)"),
+            ("notes", "Notes"),
         ],
-        "required": ["si", "person_external_id|person_name|person_phone"],
+        "required": ["name|first_name|dept|role"],
     },
 }
 
@@ -94,13 +85,6 @@ GUESSES = {
         (("site", "zone", "location", "rdr"), "site"),
         (("description", "note", "comment", "remark"), "notes"),
         (("qty", "quantity"), "qty"),
-    ],
-    "assignments": [
-        (("si", "serial", "barcode", "asset"), "si"),
-        (("badge", "staff id", "employee", "unique", "person id"), "person_external_id"),
-        (("name", "person", "user", "assigned to"), "person_name"),
-        (("phone", "mobile", "tel"), "person_phone"),
-        (("note", "comment", "remark"), "note"),
     ],
 }
 
@@ -424,8 +408,7 @@ def analyze(db: sqlite3.Connection, staged: dict) -> dict:
     if kind == "people":
         plan = _analyze_people(db, staged["rows"], staged["mapping"], staged.get("row_fills"))
     else:
-        fn = {"devices": _analyze_devices, "assignments": _analyze_assignments}[kind]
-        plan = fn(db, staged["rows"], staged["mapping"])
+        plan = _analyze_devices(db, staged["rows"], staged["mapping"])
     counts = {"create": 0, "update": 0, "conflict": 0, "skip": 0, "error": 0}
     for item in plan:
         counts[item["action"]] = counts.get(item["action"], 0) + 1
@@ -576,55 +559,6 @@ def _analyze_devices(db, rows, mapping) -> list[dict]:
     return plan
 
 
-def _analyze_assignments(db, rows, mapping) -> list[dict]:
-    devices = {r["si"].upper(): r for r in db.execute("SELECT id, si FROM devices").fetchall()}
-    people = db.execute("SELECT id, external_id, name, dept, phone FROM people").fetchall()
-    by_ext = {p["external_id"]: p for p in people if p["external_id"]}
-    plan, seen = [], set()
-    for i, row in enumerate(rows):
-        data = {
-            "si": norm_si(_val(row, mapping, "si")),
-            "person_external_id": _val(row, mapping, "person_external_id"),
-            "person_name": _val(row, mapping, "person_name"),
-            "person_phone": _val(row, mapping, "person_phone"),
-            "note": _val(row, mapping, "note"),
-        }
-        item = {"row": i, "data": data, "action": "create", "existing_id": None, "candidates": [], "message": ""}
-        if not data["si"]:
-            item.update(action="error", message="No SI number"); plan.append(item); continue
-        dev = devices.get(data["si"])
-        if dev is None:
-            item.update(action="error", message=f"Unknown device {data['si']}"); plan.append(item); continue
-        if data["si"] in seen:
-            item.update(action="skip", message="Device listed twice in file"); plan.append(item); continue
-        seen.add(data["si"])
-        item["device_id"] = dev["id"]
-        match = None
-        if data["person_external_id"] and data["person_external_id"] in by_ext:
-            match = by_ext[data["person_external_id"]]
-        else:
-            phone = norm_phone(data["person_phone"])
-            name = data["person_name"].lower()
-            cands = [p for p in people if (name and p["name"].lower() == name) or (phone and norm_phone(p["phone"]) == phone)]
-            exact = [p for p in cands if (not name or p["name"].lower() == name) and (not phone or norm_phone(p["phone"]) == phone)]
-            if len(exact) == 1:
-                match = exact[0]
-            elif cands:
-                item.update(
-                    action="conflict",
-                    message="Several people match",
-                    candidates=[{"id": p["id"], "name": p["name"], "dept": p["dept"], "phone": p["phone"], "external_id": p["external_id"]} for p in cands],
-                )
-                plan.append(item); continue
-        if match is None:
-            item.update(action="error", message="Person not found")
-        else:
-            item["person_id"] = match["id"]
-            item["message"] = f"{data['si']} -> {match['name']}"
-        plan.append(item)
-    return plan
-
-
 # -- commit -------------------------------------------------------------------
 
 def commit(db: sqlite3.Connection, staged: dict, decisions: dict[str, str], tech: Optional[dict] = None) -> dict:
@@ -633,7 +567,7 @@ def commit(db: sqlite3.Connection, staged: dict, decisions: dict[str, str], tech
     plan = staged.get("plan")
     if not plan:
         raise ValueError("Import has not been analysed")
-    fn = {"people": _commit_people, "devices": _commit_devices, "assignments": _commit_assignments}[kind]
+    fn = {"people": _commit_people, "devices": _commit_devices}[kind]
     result = fn(db, plan["items"], decisions, tech)
     discard(staged["token"])
     return result
@@ -719,25 +653,3 @@ def _commit_devices(db, items, decisions, tech) -> dict:
             )
             updated += 1
     return {"created": created, "updated": updated, "skipped": skipped, "new_types": new_types}
-
-
-def _commit_assignments(db, items, decisions, tech) -> dict:
-    created = skipped = 0
-    ts = now_iso()
-    for it in items:
-        person_id = it.get("person_id")
-        if it["action"] == "conflict":
-            dec = decisions.get(str(it["row"]), "skip")
-            if dec.startswith("update:"):
-                person_id = int(dec.split(":", 1)[1])
-        if it["action"] in ("error", "skip") or not person_id:
-            skipped += 1
-            continue
-        db.execute(
-            """INSERT INTO assignments (device_id, person_id, note, created_at) VALUES (?,?,?,?)
-               ON CONFLICT(device_id) DO UPDATE SET person_id = excluded.person_id, note = excluded.note, created_at = excluded.created_at""",
-            (it["device_id"], person_id, it["data"]["note"], ts),
-        )
-        log(db, "assigned", it["device_id"], person_id, tech, note="Imported")
-        created += 1
-    return {"created": created, "skipped": skipped}
