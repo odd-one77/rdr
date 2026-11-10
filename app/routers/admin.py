@@ -239,11 +239,11 @@ def person_new(request: Request):
 
 
 @router.post("/people/new", dependencies=[Depends(require_admin)])
-def person_create(name: str = Form(...), dept: str = Form(""), role: str = Form(""), phone: str = Form(""), external_id: str = Form(""), bolero_id: str = Form(""), notes: str = Form("")):
+def person_create(name: str = Form(...), dept: str = Form(""), role: str = Form(""), phone: str = Form(""), external_id: str = Form(""), bolero_id: str = Form(""), notes: str = Form(""), faceplate: str = Form(""), allocation: str = Form("")):
     with get_db() as db:
         if external_id.strip() and db.execute("SELECT 1 FROM people WHERE external_id = ?", (external_id.strip(),)).fetchone():
             return _redirect("/admin/people/new", err="That unique ID is already used")
-        p = inventory.create_person(db, name, dept, role, phone, external_id, notes, bolero_id=bolero_id)
+        p = inventory.create_person(db, name, dept, role, phone, external_id, notes, bolero_id=bolero_id, faceplate=faceplate if faceplate != "none" else "", allocation=allocation)
     return _redirect(f"/admin/people/{p['id']}", msg="Person created")
 
 
@@ -260,7 +260,7 @@ def person_page(request: Request, person_id: int):
 
 
 @router.post("/people/{person_id}", dependencies=[Depends(require_admin)])
-def person_save(person_id: int, action: str = Form("save"), name: str = Form(""), dept: str = Form(""), role: str = Form(""), phone: str = Form(""), external_id: str = Form(""), bolero_id: str = Form(""), notes: str = Form("")):
+def person_save(person_id: int, action: str = Form("save"), name: str = Form(""), dept: str = Form(""), role: str = Form(""), phone: str = Form(""), external_id: str = Form(""), bolero_id: str = Form(""), notes: str = Form(""), faceplate: str = Form(""), allocation: str = Form("")):
     with get_db() as db:
         if action == "delete":
             held = db.execute("SELECT COUNT(*) FROM devices WHERE holder_id = ?", (person_id,)).fetchone()[0]
@@ -271,8 +271,9 @@ def person_save(person_id: int, action: str = Form("save"), name: str = Form("")
         if external_id.strip() and db.execute("SELECT 1 FROM people WHERE external_id = ? AND id <> ?", (external_id.strip(), person_id)).fetchone():
             return _redirect(f"/admin/people/{person_id}", err="That unique ID is already used by someone else")
         db.execute(
-            "UPDATE people SET name = ?, dept = ?, role = ?, phone = ?, external_id = ?, bolero_id = ?, notes = ?, updated_at = ? WHERE id = ?",
-            (name.strip(), dept.strip(), role.strip(), phone.strip(), external_id.strip() or None, bolero_id.strip(), notes.strip(), now_iso(), person_id),
+            "UPDATE people SET name = ?, dept = ?, role = ?, phone = ?, external_id = ?, bolero_id = ?, faceplate = ?, allocation = ?, notes = ?, updated_at = ? WHERE id = ?",
+            (name.strip(), dept.strip(), role.strip(), phone.strip(), external_id.strip() or None, bolero_id.strip(),
+             "" if faceplate in ("", "none") else faceplate.strip().lstrip("#").upper(), allocation.strip(), notes.strip(), now_iso(), person_id),
         )
         inventory.link_reserved_packs(db, person_id)
     return _redirect(f"/admin/people/{person_id}", msg="Saved")
@@ -441,7 +442,7 @@ class FieldEdit(_BM):
     value: str = ""
 
 
-PEOPLE_FIELDS = {"name", "dept", "role", "phone", "external_id", "bolero_id"}
+PEOPLE_FIELDS = {"name", "dept", "role", "phone", "external_id", "bolero_id", "allocation"}
 TYPE_FIELDS = {"name", "short_code", "sort_order", "active"}
 
 
@@ -546,7 +547,8 @@ def import_mapping(request: Request, token: str):
     except FileNotFoundError:
         return _redirect("/admin/import", err="That import session has expired")
     kind = importer.KINDS[staged["kind"]]
-    return render(request, "admin/import_map.html", staged=staged, kind=kind, preview=staged["rows"][:8], active="import")
+    return render(request, "admin/import_map.html", staged=staged, kind=kind, preview=staged["rows"][:8], preview_fills=staged.get("row_fills", [])[:8],
+                  header_options=[(i, " | ".join(c for c in r if c)[:90] or "(blank)") for i, r in enumerate(staged.get("raw", [])[:6])], active="import")
 
 
 @router.post("/import/s/{token}", dependencies=[Depends(require_admin)])
@@ -556,6 +558,9 @@ async def import_mapping_post(request: Request, token: str):
     except FileNotFoundError:
         return _redirect("/admin/import", err="That import session has expired")
     form = await request.form()
+    if form.get("action") == "header":
+        importer.set_header_row(staged, int(form.get("header_row", staged.get("header_row", 0)) or 0))
+        return _redirect(f"/admin/import/s/{token}")
     mapping = {}
     for field, _ in importer.KINDS[staged["kind"]]["fields"]:
         v = form.get(f"map_{field}", "")

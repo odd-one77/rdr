@@ -37,7 +37,9 @@ def load_demo(db: sqlite3.Connection) -> int:
     for i, (name, dept, role, phone) in enumerate(PEOPLE, start=1):
         existing = db.execute("SELECT * FROM people WHERE name = ?", (name,)).fetchone()
         # the first eight are planned with a Bolero ID; the rest are radio-only or have nothing yet
-        people.append(existing or create_person(db, name, dept, role, phone, external_id=f"CREW{i:03d}", bolero_id=(str(60 + i) if i <= 8 else "")))
+        face = {"Broadcast": "00B0F0", "Lighting": "00B050", "Audio": "E9516A", "Stage": "000000", "Production": "FFFF00", "Security": "FF0000", "Rigging": "00B050", "Cameras": "00B0F0"}.get(dept, "")
+        people.append(existing or create_person(db, name, dept, role, phone, external_id=f"CREW{i:03d}", bolero_id=(str(60 + i) if i <= 8 else ""),
+                                                faceplate=face if i <= 8 else "", allocation=("Bolero · Pro-D1 headset" if i <= 8 else ("Radio · Earpiece" if i > 9 else ""))))
 
     tech = {"tech_id": 1, "site_id": db.execute("SELECT MIN(id) FROM sites").fetchone()[0]}
     devices = []

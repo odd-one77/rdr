@@ -453,18 +453,21 @@ def create_person(
     external_id: str = "",
     notes: str = "",
     bolero_id: str = "",
+    faceplate: str = "",
+    allocation: str = "",
 ) -> sqlite3.Row:
     ts = now_iso()
     cur = db.execute(
-        """INSERT INTO people (external_id, name, dept, role, phone, bolero_id, notes, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?)""",
-        ((external_id or "").strip() or None, name.strip(), dept.strip(), role.strip(), phone.strip(), (bolero_id or "").strip(), notes, ts, ts),
+        """INSERT INTO people (external_id, name, dept, role, phone, bolero_id, faceplate, allocation, notes, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ((external_id or "").strip() or None, name.strip(), dept.strip(), role.strip(), phone.strip(), (bolero_id or "").strip(),
+         (faceplate or "").strip().lstrip("#").upper(), (allocation or "").strip(), notes, ts, ts),
     )
     return person_by_id(db, cur.lastrowid)
 
 
 def update_person(db: sqlite3.Connection, person_id: int, **fields) -> sqlite3.Row:
-    allowed = {"name", "dept", "role", "phone", "external_id", "bolero_id", "notes"}
+    allowed = {"name", "dept", "role", "phone", "external_id", "bolero_id", "notes", "faceplate", "allocation"}
     sets, vals = [], []
     for k, v in fields.items():
         if k in allowed and v is not None:

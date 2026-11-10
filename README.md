@@ -139,9 +139,19 @@ zip, check the summary, type RESTORE. The server restarts on the restored data.
 ## Imports
 
 Admin → Import sheets accepts `.xlsx` / `.csv` for **people**, **devices**
-(easyjob export) and **pre-assignments**. Columns are mapped on screen, so the
-layout of the sheet does not matter. Re-importing updates existing records;
-look-alike people are flagged with options (update / create / skip).
+(easyjob export) and **reserved devices**. Columns are mapped on screen, so the
+layout of the sheet does not matter; a title row above the headings is
+handled (pick the header row on the mapping screen if the guess is wrong).
+Re-importing updates existing records; look-alike people are flagged with
+options (update / create / skip).
+
+The comms **allocation sheet** imports as people: Bolero # → Bolero ID,
+Position → department, Role Name → role, Person → name, Pack and Headset →
+an allocation line, and the coloured blank column → **faceplate colour**,
+read from the cell fill. Placeholder names (TBA, blank) are kept as
+"Position (TBA)" so the ID is not lost; a name repeated with another ID
+becomes a second entry named by position. The faceplate colour shows as a
+band on the Bolero chip beside the person's name on the kiosk and mirror.
 
 ## Releasing a new version
 

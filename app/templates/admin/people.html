@@ -10,7 +10,7 @@
 <div class="panel"><div class="table-wrap"><table class="editable" data-endpoint="/admin/people/{id}/field">
   <tr><th>Name</th><th>Dept</th><th>Role</th><th>Phone</th><th>ID</th><th>Bolero</th><th class="num">Signed out</th><th class="num">Reserved</th><th></th></tr>
   {% for p in people %}
-  <tr data-id="{{ p.id }}"><td data-field="name"><a href="/admin/people/{{ p.id }}"><b>{{ p.name }}</b></a></td><td data-field="dept">{{ p.dept }}</td><td class="muted" data-field="role">{{ p.role }}</td><td class="mono" data-field="phone">{{ p.phone }}</td><td class="si" data-field="external_id">{{ p.external_id or '' }}</td><td data-field="bolero_id">{{ p.bolero_id }}</td>
+  <tr data-id="{{ p.id }}"><td data-field="name"><a href="/admin/people/{{ p.id }}"><b>{{ p.name }}</b></a></td><td data-field="dept">{{ p.dept }}</td><td class="muted" data-field="role">{{ p.role }}</td><td class="mono" data-field="phone">{{ p.phone }}</td><td class="si" data-field="external_id">{{ p.external_id or '' }}</td><td data-field="bolero_id">{% if p.faceplate %}<span class="swatch" style="background:#{{ p.faceplate }}" title="Faceplate #{{ p.faceplate }}"></span>{% endif %}{{ p.bolero_id }}</td>
     <td class="num">{% if p.held %}<span class="badge out">{{ p.held }}</span>{% endif %}</td><td class="num">{{ p.assigned or '' }}</td>
     <td class="right"><a class="btn sm ghost" href="/admin/people/{{ p.id }}/report">Report</a></td></tr>
   {% endfor %}

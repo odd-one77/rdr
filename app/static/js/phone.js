@@ -55,7 +55,7 @@
   function renderPerson() {
     const p = state.person, el = $('#personPanel');
     if (!p) { el.innerHTML = ''; return; }
-    el.innerHTML = `<div class="row"><div class="grow"><b style="font-size:17px">${esc(p.name)}</b><div class="muted" style="font-size:12px">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div></div>${p.bolero_id ? `<span class="bolero">Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson">&#10005;</button></div>
+    el.innerHTML = `<div class="row"><div class="grow"><b style="font-size:17px">${esc(p.name)}</b><div class="muted" style="font-size:12px">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div></div>${p.bolero_id ? `<span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : ''}>Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson">&#10005;</button></div>
       ${state.holdings.length ? `<div class="muted" style="font-size:12px;margin-top:6px">Signed out ${state.holdings.length}: ${state.holdings.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-return-all>Return all</button></div>` : ''}
       ${state.assignments.length ? `<div class="muted" style="font-size:12px;margin-top:6px">Reserved: ${state.assignments.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-add-all>Add all</button></div>` : ''}`;
     $('#btnClearPerson').onclick = clearPerson;

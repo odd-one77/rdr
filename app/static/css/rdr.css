@@ -204,6 +204,14 @@ td.actions { white-space: nowrap; text-align: right; }
 .person-card .meta { color: var(--muted); margin-top: 2px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bolero { display: inline-block; border: 1px solid var(--red); color: #fff; border-radius: 4px; padding: 1px 8px; font-size: 12px; font-weight: 700; white-space: nowrap; vertical-align: middle; }
 .bolero.radio { border-color: var(--muted); color: var(--text); }
+/* faceplate colour: a quiet band on the left of the Bolero chip, matching the pack's faceplate */
+.bolero { position: relative; }
+.bolero.faced { padding-left: 14px; }
+.bolero.faced::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 7px; background: var(--face); border-radius: 4px 0 0 4px; box-shadow: inset -1px 0 0 rgba(255,255,255,.45); }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; border: 1px solid rgba(255,255,255,.25); }
+.person-card .meta.alloc b { font-weight: 600; }
+.mirror .bolero.faced { padding-left: 16px; }
+.mirror .bolero.faced::before { width: 9px; }
 .person-card .meta.collector { color: var(--text); }
 .collect-strip { padding: 10px var(--s4); border-bottom: 1px solid var(--border); background: rgba(226,0,26,.08); box-shadow: inset 3px 0 0 var(--red); }
 .collect-strip .t { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }

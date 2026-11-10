@@ -36,6 +36,9 @@ KINDS = {
             ("role", "Role"),
             ("phone", "Phone"),
             ("bolero_id", "Bolero ID"),
+            ("faceplate", "Faceplate colour (cell colour or text)"),
+            ("pack", "Pack allocation (e.g. Bolero)"),
+            ("headset", "Headset allocation (e.g. Pro-D1)"),
             ("notes", "Notes"),
         ],
         "required": ["name|first_name"],
@@ -69,13 +72,16 @@ KINDS = {
 GUESSES = {
     "people": [
         (("badge", "staff id", "staffid", "employee", "crew id", "id number", "unique"), "external_id"),
-        (("full name", "fullname", "name"), "name"),
+        (("bolero #", "bolero no", "bolero id", "bolero", "beltpack id", "comms id"), "bolero_id"),
+        (("full name", "fullname", "person", "name"), "name"),
         (("first", "given", "forename"), "first_name"),
         (("last", "surname", "family"), "last_name"),
-        (("dept", "department", "team", "company"), "dept"),
-        (("role", "position", "job", "title", "function"), "role"),
+        (("position", "dept", "department", "team", "company"), "dept"),
+        (("role", "job", "title", "function"), "role"),
         (("phone", "mobile", "cell", "tel", "contact"), "phone"),
-        (("bolero", "beltpack", "comms id", "pack"), "bolero_id"),
+        (("faceplate", "colour", "color"), "faceplate"),
+        (("headset",), "headset"),
+        (("pack", "device"), "pack"),
         (("note", "comment", "remark"), "notes"),
     ],
     "devices": [
@@ -104,15 +110,55 @@ def _clean(v) -> str:
     return str(v).strip()
 
 
-def parse_file(filename: str, content: bytes) -> tuple[list[str], list[list[str]], list[str]]:
-    """Return (headers, rows, sheet_names). Uses the first non-empty row as the header."""
+THEME_INDEX = ["lt1", "dk1", "lt2", "dk2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6"]
+DEFAULT_THEME = {"lt1": "FFFFFF", "dk1": "000000", "lt2": "E7E6E6", "dk2": "44546A", "accent1": "4472C4", "accent2": "ED7D31",
+                 "accent3": "A5A5A5", "accent4": "FFC000", "accent5": "5B9BD5", "accent6": "70AD47"}
+
+
+def _theme_colours(wb) -> dict:
+    import re
+    theme = wb.loaded_theme
+    if isinstance(theme, bytes):
+        theme = theme.decode("utf-8", "ignore")
+    out = dict(DEFAULT_THEME)
+    if theme:
+        for n in THEME_INDEX:
+            m = re.search(rf"<a:{n}>(.*?)</a:{n}>", theme, re.S)
+            if m:
+                c = re.search(r'(?:srgbClr val|lastClr)="([0-9A-Fa-f]{6})"', m.group(1))
+                if c:
+                    out[n] = c.group(1).upper()
+    return out
+
+
+def _fill_hex(cell, theme: dict) -> str:
+    """Solid fill of a cell as RRGGBB, or '' (white and no-fill count as none)."""
+    f = cell.fill
+    if f is None or f.fill_type != "solid":
+        return ""
+    fg = f.fgColor
+    rgb = ""
+    if fg.type == "rgb" and fg.rgb:
+        rgb = str(fg.rgb)[-6:].upper()
+    elif fg.type == "theme" and fg.theme is not None and fg.theme < len(THEME_INDEX):
+        rgb = theme.get(THEME_INDEX[fg.theme], "")
+    return "" if rgb in ("", "FFFFFF") else rgb
+
+
+def parse_file(filename: str, content: bytes) -> tuple[list[list[str]], list[list[str]], list[str]]:
+    """Return (raw rows, raw fills, sheet names). The header row is chosen afterwards."""
     name = filename.lower()
     sheets: list[str] = []
+    fills: list[list[str]] = []
     if name.endswith((".xlsx", ".xlsm")):
-        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        wb = load_workbook(io.BytesIO(content), data_only=True)
         sheets = wb.sheetnames
         ws = wb[sheets[0]]
-        raw = [[_clean(c) for c in row] for row in ws.iter_rows(values_only=True)]
+        theme = _theme_colours(wb)
+        raw, fills = [], []
+        for row in ws.iter_rows():
+            raw.append([_clean(c.value) for c in row])
+            fills.append([_fill_hex(c, theme) for c in row])
     elif name.endswith((".csv", ".txt", ".tsv")):
         text = content.decode("utf-8-sig", errors="replace")
         dialect = csv.excel_tab if name.endswith(".tsv") else csv.excel
@@ -121,34 +167,60 @@ def parse_file(filename: str, content: bytes) -> tuple[list[str], list[list[str]
         except csv.Error:
             pass
         raw = [[_clean(c) for c in row] for row in csv.reader(io.StringIO(text), dialect)]
+        fills = [["" for _ in r] for r in raw]
     else:
         raise ValueError("Unsupported file type. Please upload .xlsx or .csv")
-
-    raw = [r for r in raw if any(c for c in r)]
+    keep = [i for i, r in enumerate(raw) if any(c for c in r) or any(fills[i])]
+    raw = [raw[i] for i in keep]
+    fills = [fills[i] for i in keep]
     if not raw:
         raise ValueError("The file has no data rows")
-    headers = raw[0]
     width = max(len(r) for r in raw)
-    headers = [h or f"Column {i + 1}" for i, h in enumerate(headers + [""] * (width - len(headers)))]
-    rows = [r + [""] * (width - len(r)) for r in raw[1:]]
-    return headers, rows, sheets
+    raw = [r + [""] * (width - len(r)) for r in raw]
+    fills = [f + [""] * (width - len(f)) for f in fills]
+    return raw, fills, sheets
+
+
+def guess_header_row(raw: list[list[str]]) -> int:
+    """The header is the row among the first six with the most filled cells (a title row above it loses)."""
+    best, best_n = 0, -1
+    for i, r in enumerate(raw[:6]):
+        n = sum(1 for c in r if c)
+        if n > best_n:
+            best, best_n = i, n
+    return best
+
+
+def split_header(raw: list[list[str]], fills: list[list[str]], header_row: int) -> tuple[list[str], list[list[str]], list[list[str]]]:
+    header_row = max(0, min(header_row, len(raw) - 1))
+    headers = [h or f"Column {i + 1}" for i, h in enumerate(raw[header_row])]
+    return headers, raw[header_row + 1:], fills[header_row + 1:]
 
 
 def stage_upload(kind: str, filename: str, content: bytes) -> dict:
     if kind not in KINDS:
         raise ValueError("Unknown import kind")
-    headers, rows, sheets = parse_file(filename, content)
+    raw, fills, sheets = parse_file(filename, content)
+    header_row = guess_header_row(raw)
+    headers, rows, row_fills = split_header(raw, fills, header_row)
     ensure_dirs()
     token = secrets.token_urlsafe(10)
+    mapping = guess_mapping(kind, headers)
+    if kind == "people" and mapping.get("faceplate") is None:
+        mapping["faceplate"] = guess_colour_column(rows, row_fills, headers)
     staged = {
         "token": token,
         "kind": kind,
         "filename": filename,
+        "raw": raw,
+        "fills": fills,
+        "header_row": header_row,
         "headers": headers,
         "rows": rows,
+        "row_fills": row_fills,
         "sheets": sheets,
         "created_at": now_iso(),
-        "mapping": guess_mapping(kind, headers),
+        "mapping": mapping,
         "plan": None,
     }
     _path(token).write_text(json.dumps(staged), "utf-8")
@@ -178,15 +250,57 @@ def discard(token: str) -> None:
         p.unlink()
 
 
+def set_header_row(staged: dict, header_row: int) -> None:
+    """Re-split a staged upload on a different header row and re-guess the mapping."""
+    staged["header_row"] = header_row
+    staged["headers"], staged["rows"], staged["row_fills"] = split_header(staged["raw"], staged["fills"], header_row)
+    staged["mapping"] = guess_mapping(staged["kind"], staged["headers"])
+    if staged["kind"] == "people" and staged["mapping"].get("faceplate") is None:
+        staged["mapping"]["faceplate"] = guess_colour_column(staged["rows"], staged["row_fills"], staged["headers"])
+    staged["plan"] = None
+    save_staged(staged)
+
+
 def guess_mapping(kind: str, headers: list[str]) -> dict[str, Optional[int]]:
+    """Field by field in priority order; for each field, keywords in order of specificity, and an
+    exact header match beats a contains match ("Person" wins the name field over "Role Name")."""
     mapping: dict[str, Optional[int]] = {f: None for f, _ in KINDS[kind]["fields"]}
-    for idx, h in enumerate(headers):
-        hl = h.lower().replace("_", " ").replace("-", " ")
-        for keywords, field in GUESSES[kind]:
-            if mapping[field] is None and any(k in hl for k in keywords):
-                mapping[field] = idx
+    used: set[int] = set()
+    norm = [h.lower().replace("_", " ").replace("-", " ").strip() for h in headers]
+    for keywords, field in GUESSES[kind]:
+        if mapping[field] is not None:
+            continue
+        found = None
+        for exact in (True, False):
+            for k in keywords:
+                for idx, hl in enumerate(norm):
+                    if idx in used:
+                        continue
+                    if (hl == k) if exact else (k in hl):
+                        found = idx
+                        break
+                if found is not None:
+                    break
+            if found is not None:
                 break
+        if found is not None:
+            mapping[field] = found
+            used.add(found)
     return mapping
+
+
+def guess_colour_column(rows: list[list[str]], row_fills: list[list[str]], headers: list[str]) -> Optional[int]:
+    """A column that is mostly empty text but carries several different fill colours is the faceplate column."""
+    best, best_score = None, 0
+    n = max(1, min(len(rows), 300))
+    for idx in range(len(headers)):
+        texts = sum(1 for r in rows[:n] if idx < len(r) and r[idx])
+        colours = {f[idx] for f in row_fills[:n] if idx < len(f) and f[idx]}
+        if texts <= n * 0.05 and len(colours) >= 2:
+            score = len(colours) * 10 + sum(1 for f in row_fills[:n] if idx < len(f) and f[idx]) / n
+            if score > best_score:
+                best, best_score = idx, score
+    return best
 
 
 def _val(row: list[str], mapping: dict, field: str) -> str:
@@ -209,8 +323,11 @@ def check_required(kind: str, mapping: dict) -> list[str]:
 
 def analyze(db: sqlite3.Connection, staged: dict) -> dict:
     kind = staged["kind"]
-    fn = {"people": _analyze_people, "devices": _analyze_devices, "assignments": _analyze_assignments}[kind]
-    plan = fn(db, staged["rows"], staged["mapping"])
+    if kind == "people":
+        plan = _analyze_people(db, staged["rows"], staged["mapping"], staged.get("row_fills"))
+    else:
+        fn = {"devices": _analyze_devices, "assignments": _analyze_assignments}[kind]
+        plan = fn(db, staged["rows"], staged["mapping"])
     counts = {"create": 0, "update": 0, "conflict": 0, "skip": 0, "error": 0}
     for item in plan:
         counts[item["action"]] = counts.get(item["action"], 0) + 1
@@ -219,22 +336,51 @@ def analyze(db: sqlite3.Connection, staged: dict) -> dict:
     return staged["plan"]
 
 
-def _person_row(row, mapping) -> dict:
+PLACEHOLDERS = {"tba", "tbc", "tbd", "n/a", "na", "-", "?", "none", "vacant"}
+COLOUR_NAMES = {"red": "FF0000", "green": "00B050", "blue": "00B0F0", "yellow": "FFFF00", "black": "000000", "white": "FFFFFF",
+                "grey": "A5A5A5", "gray": "A5A5A5", "pink": "E9516A", "orange": "ED7D31", "purple": "7030A0", "silver": "A5A5A5"}
+
+
+def _faceplate(row, fills, mapping) -> str:
+    idx = mapping.get("faceplate")
+    if idx is None or idx == "":
+        return ""
+    idx = int(idx)
+    text = (row[idx] if idx < len(row) else "").strip().lstrip("#")
+    if text:
+        if len(text) == 6 and all(ch in "0123456789abcdefABCDEF" for ch in text):
+            return text.upper()
+        return COLOUR_NAMES.get(text.lower(), "")
+    return (fills[idx] if fills and idx < len(fills) else "") or ""
+
+
+def _person_row(row, mapping, fills=None) -> dict:
     name = _val(row, mapping, "name")
     if not name:
         name = " ".join(x for x in (_val(row, mapping, "first_name"), _val(row, mapping, "last_name")) if x)
+    dept = _val(row, mapping, "dept")
+    if name.strip().lower() in PLACEHOLDERS or (not name and dept):
+        # no real name yet: keep the position as a placeholder person the tech can rename at the counter
+        name = f"{dept} ({name.strip() or 'TBA'})" if dept else ""
+    bolero_id = _val(row, mapping, "bolero_id")
+    if bolero_id and not any(ch.isdigit() for ch in bolero_id):
+        bolero_id = ""                                       # 'xx', '-' and the like are not IDs
+    pack, headset = _val(row, mapping, "pack"), _val(row, mapping, "headset")
+    allocation = " · ".join(x for x in (pack, (headset + " headset") if headset else "") if x)
     return {
         "external_id": _val(row, mapping, "external_id"),
         "name": name,
-        "dept": _val(row, mapping, "dept"),
+        "dept": dept,
         "role": _val(row, mapping, "role"),
         "phone": _val(row, mapping, "phone"),
-        "bolero_id": _val(row, mapping, "bolero_id"),
+        "bolero_id": bolero_id,
+        "faceplate": _faceplate(row, fills, mapping),
+        "allocation": allocation,
         "notes": _val(row, mapping, "notes"),
     }
 
 
-def _analyze_people(db, rows, mapping) -> list[dict]:
+def _analyze_people(db, rows, mapping, row_fills=None) -> list[dict]:
     people = db.execute("SELECT id, external_id, name, dept, phone FROM people").fetchall()
     by_ext = {p["external_id"]: p for p in people if p["external_id"]}
     by_name: dict[str, list] = {}
@@ -246,8 +392,9 @@ def _analyze_people(db, rows, mapping) -> list[dict]:
             by_phone.setdefault(ph, []).append(p)
     plan = []
     seen_in_file: set[tuple[str, str]] = set()
+    ids_in_file: dict[tuple[str, str], set[str]] = {}
     for i, row in enumerate(rows):
-        data = _person_row(row, mapping)
+        data = _person_row(row, mapping, row_fills[i] if row_fills and i < len(row_fills) else None)
         item = {"row": i, "data": data, "action": "create", "existing_id": None, "candidates": [], "message": ""}
         if not data["name"]:
             item.update(action="error", message="No name")
@@ -255,10 +402,21 @@ def _analyze_people(db, rows, mapping) -> list[dict]:
             continue
         key = (data["name"].lower(), norm_phone(data["phone"]))
         if key in seen_in_file:
-            item.update(action="skip", message="Duplicate row within the file")
-            plan.append(item)
-            continue
+            # the same name again: a second allocation (another pack / position) becomes its own entry,
+            # named by position so both show up at the counter; a true repeat is skipped
+            if data["bolero_id"] and data["bolero_id"] not in ids_in_file.get(key, set()) and data["dept"]:
+                if data["name"].startswith(data["dept"]):      # already a position placeholder: tell them apart by ID
+                    data["name"] = f"{data['dept']} (TBA #{data['bolero_id']})"
+                else:
+                    data["name"] = f"{data['name']} ({data['dept']})"
+                item["message"] = "Same name again with another Bolero ID: kept as a separate entry"
+                key = (data["name"].lower(), norm_phone(data["phone"]))
+            else:
+                item.update(action="skip", message="Duplicate row within the file")
+                plan.append(item)
+                continue
         seen_in_file.add(key)
+        ids_in_file.setdefault(key, set()).add(data["bolero_id"])
 
         ext = data["external_id"]
         if ext and ext in by_ext:
@@ -394,8 +552,8 @@ def _commit_people(db, items, decisions, tech) -> dict:
         d = it["data"]
         if action == "create":
             db.execute(
-                "INSERT INTO people (external_id, name, dept, role, phone, bolero_id, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (d["external_id"] or None, d["name"], d["dept"], d["role"], d["phone"], d["bolero_id"], d["notes"], ts, ts),
+                "INSERT INTO people (external_id, name, dept, role, phone, bolero_id, faceplate, allocation, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (d["external_id"] or None, d["name"], d["dept"], d["role"], d["phone"], d["bolero_id"], d.get("faceplate", ""), d.get("allocation", ""), d["notes"], ts, ts),
             )
             created += 1
         elif action == "update":
@@ -406,10 +564,13 @@ def _commit_people(db, items, decisions, tech) -> dict:
                      role = CASE WHEN ? <> '' THEN ? ELSE role END,
                      phone = CASE WHEN ? <> '' THEN ? ELSE phone END,
                      bolero_id = CASE WHEN ? <> '' THEN ? ELSE bolero_id END,
+                     faceplate = CASE WHEN ? <> '' THEN ? ELSE faceplate END,
+                     allocation = CASE WHEN ? <> '' THEN ? ELSE allocation END,
                      notes = CASE WHEN ? <> '' THEN ? ELSE notes END,
                      updated_at = ?
                    WHERE id = ?""",
-                (d["external_id"], d["name"], d["dept"], d["dept"], d["role"], d["role"], d["phone"], d["phone"], d["bolero_id"], d["bolero_id"], d["notes"], d["notes"], ts, existing),
+                (d["external_id"], d["name"], d["dept"], d["dept"], d["role"], d["role"], d["phone"], d["phone"], d["bolero_id"], d["bolero_id"],
+                 d.get("faceplate", ""), d.get("faceplate", ""), d.get("allocation", ""), d.get("allocation", ""), d["notes"], d["notes"], ts, existing),
             )
             updated += 1
         else:

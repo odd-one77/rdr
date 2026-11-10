@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS people (
     role        TEXT NOT NULL DEFAULT '',
     phone       TEXT NOT NULL DEFAULT '',
     bolero_id   TEXT NOT NULL DEFAULT '',   -- the person's Bolero / comms ID; stays with them across pack swaps
+    faceplate   TEXT NOT NULL DEFAULT '',   -- faceplate colour (hex) from the allocation sheet, e.g. 00B050
+    allocation  TEXT NOT NULL DEFAULT '',   -- planned kit as text from the allocation sheet, e.g. "Bolero · Pro-D1"
     notes       TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
@@ -122,6 +124,10 @@ DEFAULT_DEVICE_TYPES = [
     ("Radio", "RAD", 30),
     ("RSM", "RSM", 40),
     ("Pro-D2 Headset", "HS", 50),
+    ("Pro-D1 Headset", "HS", 51),
+    ("Air-D1 Headset", "HS", 52),
+    ("Covert Headset", "HS", 53),
+    ("Max-E1 Headset", "HS", 54),
     ("Headset", "HS", 55),
     ("Earpiece", "EAR", 60),
     ("Charger", "CHG", 70),
@@ -189,6 +195,8 @@ MIGRATIONS = [
     # (table, column, definition) added after the first release
     ("people", "bolero_id", "TEXT NOT NULL DEFAULT ''"),
     ("devices", "linked_id", "TEXT NOT NULL DEFAULT ''"),
+    ("people", "faceplate", "TEXT NOT NULL DEFAULT ''"),
+    ("people", "allocation", "TEXT NOT NULL DEFAULT ''"),
 ]
 DROPPED_TABLES = ["plans"]   # short-lived 0.3.0 feature, replaced by the person's Bolero ID alone
 

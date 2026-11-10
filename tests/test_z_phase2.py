@@ -375,3 +375,63 @@ def test_movie_quotes_toggle(client):
     assert 'name="movie_quotes" value="1" checked' in client.get("/admin/settings").text
     client.post("/admin/settings/mirror", data={"mirror_title": "", "mirror_prompt": "", "mirror_sayings": "", "pgm_size": "half"})
     assert client.get("/api/mirror/1").json()["greeting"]["sayings"] == []
+
+
+def _allocation_workbook():
+    """A sheet in the real allocation layout: a title row, the header on row 2, a blank colour column (B),
+    'xx' IDs, TBA names, pack and headset columns."""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import PatternFill
+    wb = Workbook(); ws = wb.active; ws.title = "2026 Device Allocation"
+    ws.append(["BOLERO UNITS"])
+    ws.append(["Bolero #", "Column2", "Position", "Role Name", "Person", "Team Leader", "Pack", "Headset"])
+    rows = [
+        (1, "E9516A", "Audio Crew 1", "AUDIO 1", "Sam Porter", "", "Bolero", "Pro-D1"),
+        (2, "00B050", "Lx Crew 1", "LX 1", "Alex Reed", "", "Bolero", ""),
+        (3, "00B050", "Followspot 1", "SPOT 1", "TBA", "", "Bolero", "Pro-D2"),
+        (4, "000000", "Floor Manager", "STAGE MANAGER", "Dana Hill", "", "Bolero", "Pro-D1"),
+        ("xx", "FF0000", "Riedel 1", "COMMS 1", "Chris Lane", "", "Bolero", ""),
+        (5, "", "Choir Manager", "CHOIR MGR", "", "", "", ""),
+        (6, "00B050", "Pyro Crew 1", "PYRO 1", "Flame Crew", "", "Bolero", "Max-E1"),
+        (7, "00B050", "Pyro Crew 2", "PYRO 2", "Flame Crew", "", "Bolero", ""),
+        (8, "00B0F0", "Guest listen", "GUEST 1", "TBA", "", "Bolero", ""),
+        (9, "00B0F0", "Guest listen", "GUEST 2", "TBA", "", "Bolero", ""),
+    ]
+    for i, (bid, colour, pos, role, name, tl, pack, hs) in enumerate(rows, start=3):
+        ws.append([bid, None, pos, role, name, tl, pack, hs])
+        if colour:
+            ws.cell(i, 2).fill = PatternFill("solid", fgColor="FF" + colour)
+    buf = io.BytesIO(); wb.save(buf)
+    return buf.getvalue()
+
+
+def test_allocation_sheet_import(client):
+    client.post("/admin/login", data={"password": "test1234"})
+    loc = client.post("/admin/import/people", files={"file": ("Comms_allocation.xlsx", _allocation_workbook(), "application/octet-stream")}).headers["location"]
+    token = loc.rsplit("/", 1)[1]
+    from app.services import importer
+    staged = importer.load_staged(token)
+    assert staged["header_row"] == 1 and staged["headers"][0] == "Bolero #"
+    m = staged["mapping"]
+    assert m["bolero_id"] == 0 and m["faceplate"] == 1 and m["dept"] == 2 and m["role"] == 3 and m["name"] == 4 and m["pack"] == 6 and m["headset"] == 7
+    client.post(loc, data={f"map_{k}": ("" if v is None else str(v)) for k, v in m.items()})
+    plan = importer.load_staged(token)["plan"]
+    by_name = {it["data"]["name"]: it for it in plan["items"]}
+    assert by_name["Sam Porter"]["data"]["faceplate"] == "E9516A" and by_name["Sam Porter"]["data"]["allocation"] == "Bolero · Pro-D1 headset"
+    assert by_name["Followspot 1 (TBA)"]["data"]["bolero_id"] == "3"          # placeholder keeps its position as the name
+    assert by_name["Dana Hill"]["data"]["faceplate"] == "000000"
+    assert by_name["Chris Lane"]["data"]["bolero_id"] == "" and by_name["Chris Lane"]["data"]["faceplate"] == "FF0000"   # 'xx' is not an ID
+    assert by_name["Choir Manager (TBA)"]["data"]["bolero_id"] == "5"
+    assert by_name["Flame Crew"]["data"]["bolero_id"] == "6" and by_name["Flame Crew (Pyro Crew 2)"]["data"]["bolero_id"] == "7"   # one crew, two packs
+    assert by_name["Guest listen (TBA)"]["data"]["bolero_id"] == "8" and by_name["Guest listen (TBA #9)"]["data"]["bolero_id"] == "9"
+    client.post(f"/admin/import/s/{token}/commit", data={"action": "commit"})
+    sam = client.get("/api/people/search?q=Sam+Porter").json()["results"][0]
+    assert sam["faceplate"] == "E9516A" and sam["bolero_id"] == "1" and sam["dept"] == "Audio Crew 1" and sam["role"] == "AUDIO 1"
+    # colour text also works, and the header-row override re-guesses the mapping
+    csv = "Name,Bolero,Colour\nText Colour,90,green\n"
+    loc = client.post("/admin/import/people", files={"file": ("c.csv", csv.encode(), "text/csv")}).headers["location"]
+    token = loc.rsplit("/", 1)[1]
+    client.post(loc, data={"map_name": "0", "map_bolero_id": "1", "map_faceplate": "2"})
+    client.post(f"/admin/import/s/{token}/commit", data={"action": "commit"})
+    assert client.get("/api/people/search?q=Text+Colour").json()["results"][0]["faceplate"] == "00B050"

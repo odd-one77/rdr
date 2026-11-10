@@ -12,7 +12,8 @@
     const out = [];
     const pack = (holdings || []).find(isPack);
     const bol = p.bolero_id ? idOf(p.bolero_id) : (pack ? idOf(pack.linked_id || pack.label) : (p.held_bolero ? idOf(p.held_bolero) : ''));
-    if (bol || pack) out.push(`<span class="bolero" title="Bolero ID">${bol ? 'Bolero ' + esc(bol) : 'Bolero'}</span>`);
+    const face = p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : '';
+    if (bol || pack) out.push(`<span class="bolero${p.faceplate ? ' faced' : ''}"${face} title="Bolero ID${p.faceplate ? ' · faceplate colour' : ''}">${bol ? 'Bolero ' + esc(bol) : 'Bolero'}</span>`);
     const radio = (holdings || []).find(d => /radio/i.test(d.type_name || ''));
     const radioLabel = radio ? (radio.label || 'Radio') : (p.radio_label || '');
     if (radioLabel) out.push(`<span class="bolero radio" title="Radio">${esc(radioLabel)}</span>`);
@@ -97,7 +98,7 @@
     pushTimer = setTimeout(() => {
       const brief = d => ({ si: d.si, label: d.label, type: d.type_name || d.type, linked_id: d.linked_id || '' });
       post('/api/kiosk/state', { state: {
-        person: state.person ? { name: state.person.name, dept: state.person.dept, role: state.person.role, bolero_id: state.person.bolero_id, radio: (state.holdings.find(d => /radio/i.test(d.type_name)) || {}).label || '', collector: state.collector ? state.collector.name : '' } : null,
+        person: state.person ? { name: state.person.name, dept: state.person.dept, role: state.person.role, bolero_id: state.person.bolero_id, faceplate: state.person.faceplate || '', radio: (state.holdings.find(d => /radio/i.test(d.type_name)) || {}).label || '', collector: state.collector ? state.collector.name : '' } : null,
         holdings: state.holdings.map(brief),
         basket: state.basket.map(brief),
         result: state.result,
@@ -210,17 +211,18 @@
     // Assigned list: one row per device, led by its type, then linked ID and SI.
     const devRow = (d, actions) => `<li>
           <span class="badge ${d.status}">${esc(d.status)}</span>
-          <span class="txt"><div class="label">${esc(d.type_name)}${d.linked_id ? ` <span class="bolero">ID ${esc(d.linked_id)}</span>` : ''}</div><div class="type">${d.label && d.label !== d.type_name ? esc(d.label) + ' · ' : ''}<span class="si">${esc(d.si)}</span>${d.holder_name && (!p || d.holder_id !== p.id) ? ` · <span class="amber">with ${esc(d.holder_name)}</span>` : ''}</div></span>
+          <span class="txt"><div class="label">${esc(d.type_name)}${d.linked_id ? ` <span class="bolero${p.faceplate && isPack(d) ? ' faced' : ''}"${p.faceplate && isPack(d) ? ` style="--face:#${esc(p.faceplate)}"` : ''}>ID ${esc(d.linked_id)}</span>` : ''}</div><div class="type">${d.label && d.label !== d.type_name ? esc(d.label) + ' · ' : ''}<span class="si">${esc(d.si)}</span>${d.holder_name && (!p || d.holder_id !== p.id) ? ` · <span class="amber">with ${esc(d.holder_name)}</span>` : ''}</div></span>
           <span class="actions">${actions}</span></li>`;
     const byType = [...hold].sort((a, b) => (a.type_name > b.type_name ? 1 : a.type_name < b.type_name ? -1 : 0));
     const hasPack = hold.some(isPack);
     const myId = idOf(p.bolero_id);
     const reservedPack = pre.find(d => isPack(d) && (!d.linked_id || idOf(d.linked_id) === myId));
-    const plannedRow = p.bolero_id && !hasPack ? `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">Bolero Beltpack <span class="bolero">ID ${esc(myId)}</span></div><div class="type">${reservedPack ? `linked to reserved ${esc(reservedPack.label || reservedPack.si)} · <span class="si">${esc(reservedPack.si)}</span>, scan it to issue` : 'no pack linked yet, scan one to this person'}</div></span></li>` : '';
+    const plannedRow = p.bolero_id && !hasPack ? `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">Bolero Beltpack <span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : ''}>ID ${esc(myId)}</span></div><div class="type">${reservedPack ? `linked to reserved ${esc(reservedPack.label || reservedPack.si)} · <span class="si">${esc(reservedPack.si)}</span>, scan it to issue` : 'no pack linked yet, scan one to this person'}</div></span></li>` : '';
     panel.innerHTML = `
       <div class="person-card">
         <div class="row"><div class="name grow">${esc(p.name)}</div>${chips(p, hold)}<button class="btn sm ghost" id="btnEditPerson" title="Edit details">Edit</button><button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
         ${line1 ? `<div class="meta">${line1}</div>` : ''}${line2 ? `<div class="meta">${line2}</div>` : ''}
+        ${p.allocation ? `<div class="meta alloc">Allocation: <b>${esc(p.allocation)}</b></div>` : ''}
         ${state.collector ? `<div class="meta collector">Devices go to <b>${esc(p.name)}</b>, collected by <b>${esc(state.collector.name)}</b></div>` : ''}
       </div>
       <div class="section-title"><h3>Assigned <span class="mono">${hold.length}</span></h3>${hold.length ? '<button class="btn sm ghost" data-return-all>Return all</button>' : ''}</div>
@@ -261,10 +263,10 @@
       <div class="field"><label>Full name</label><input id="ep_name" value="${esc(p.name)}"></div>
       <div class="grid cols-2"><div class="field"><label>Department</label><input id="ep_dept" value="${esc(p.dept || '')}"></div><div class="field"><label>Role</label><input id="ep_role" value="${esc(p.role || '')}"></div></div>
       <div class="grid cols-2"><div class="field"><label>Phone</label><input id="ep_phone" value="${esc(p.phone || '')}"></div><div class="field"><label>Bolero ID</label><input id="ep_bolero" value="${esc(p.bolero_id || '')}" placeholder="e.g. 61"></div></div>
-      <div class="field"><label>Unique ID</label><input id="ep_ext" value="${esc(p.external_id || '')}"></div>`,
+      <div class="grid cols-2"><div class="field"><label>Unique ID</label><input id="ep_ext" value="${esc(p.external_id || '')}"></div><div class="field"><label>Allocation</label><input id="ep_alloc" value="${esc(p.allocation || '')}" placeholder="e.g. Bolero · Pro-D1 headset"></div></div>`,
       [{ label: 'Cancel' }, { label: 'Save', cls: 'primary', onClick: async root => {
         try {
-          await post(`/api/people/${p.id}`, { name: $('#ep_name', root).value, dept: $('#ep_dept', root).value, role: $('#ep_role', root).value, phone: $('#ep_phone', root).value, bolero_id: $('#ep_bolero', root).value, external_id: $('#ep_ext', root).value });
+          await post(`/api/people/${p.id}`, { name: $('#ep_name', root).value, dept: $('#ep_dept', root).value, role: $('#ep_role', root).value, phone: $('#ep_phone', root).value, bolero_id: $('#ep_bolero', root).value, external_id: $('#ep_ext', root).value, allocation: $('#ep_alloc', root).value });
           closeModal(); toast('ok', 'Details saved'); await selectPerson(p.id);
         } catch (e) { toast('err', 'Could not save', e.message); }
       } }]);
@@ -401,7 +403,7 @@
   }
   function setResult(kind, results, personName) {
     const ok = results.filter(r => OK_OUTCOMES.includes(r.outcome));
-    state.result = ok.length ? { kind, person: personName || null, personInfo: state.person ? { bolero_id: state.person.bolero_id } : null, items: ok.map(r => ({ si: r.si, label: r.label, type: r.type, linked_id: r.linked_id || '' })), ts: Date.now() } : null;
+    state.result = ok.length ? { kind, person: personName || null, personInfo: state.person ? { bolero_id: state.person.bolero_id, faceplate: state.person.faceplate || '' } : null, items: ok.map(r => ({ si: r.si, label: r.label, type: r.type, linked_id: r.linked_id || '' })), ts: Date.now() } : null;
     if (state.result) setTimeout(() => { if (state.result && Date.now() - state.result.ts >= 11500) { state.result = null; pushState(); } }, 12000);
   }
   async function refreshPerson() {
@@ -484,7 +486,7 @@
     try {
       const d = await post('/api/swap', { old_device_id: old.id, new_si: newSi, reason: $('#sw_reason', root).value, note: $('#sw_note', root).value, old_status: $('#sw_status', root).value });
       closeModal(); toast('ok', 'Swapped', `${d.old.label || d.old.si} → ${d.new.label || d.new.si}`);
-      state.result = { kind: 'out', person: state.person.name, personInfo: { bolero_id: state.person.bolero_id }, items: [{ si: d.new.si, label: d.new.label, type: d.new.type, linked_id: d.new.linked_id || '' }], ts: Date.now() };
+      state.result = { kind: 'out', person: state.person.name, personInfo: { bolero_id: state.person.bolero_id, faceplate: state.person.faceplate || '' }, items: [{ si: d.new.si, label: d.new.label, type: d.new.type, linked_id: d.new.linked_id || '' }], ts: Date.now() };
       await selectPerson(state.person.id); refreshSummary(); refreshFeed();
     } catch (e) { toast('err', 'Swap failed', e.message); }
   }

@@ -60,7 +60,9 @@
   }
   // Animate only what is new: a screen change animates everything, an added item animates just itself.
   let lastMode = '', lastKeys = new Set(), seenKeys = new Set(), fresh = true;
-  const item = (g, small) => { const isNew = fresh || !lastKeys.has(g.key); seenKeys.add(g.key); return `<li class="${isNew ? 'anim' : ''}${small ? ' small' : ''}"${isNew ? ` style="animation-delay:${(stagger++) * 60}ms"` : ''}><span>${g.n > 1 ? `<span class="count">${g.n} ×</span> ` : ''}${esc(g.type)}${g.id ? ` <span class="bolero">Bolero ${esc(String(g.id).replace(/^bolero\s*/i, ''))}</span>` : ''}</span></li>`; };
+  let faceplate = '';
+  const chip = id => `<span class="bolero${faceplate ? ' faced' : ''}"${faceplate ? ` style="--face:#${esc(faceplate)}"` : ''}>Bolero ${esc(String(id).replace(/^bolero\s*/i, ''))}</span>`;
+  const item = (g, small) => { const isNew = fresh || !lastKeys.has(g.key); seenKeys.add(g.key); return `<li class="${isNew ? 'anim' : ''}${small ? ' small' : ''}"${isNew ? ` style="animation-delay:${(stagger++) * 60}ms"` : ''}><span>${g.n > 1 ? `<span class="count">${g.n} ×</span> ` : ''}${esc(g.type)}${g.id ? ' ' + chip(g.id) : ''}</span></li>`; };
   const heading = t => `<div class="heading">${t}</div>`;
   // Swap screens with a short fade/slide instead of a hard cut.
   let swapping = null;
@@ -78,7 +80,7 @@
     if (s.result && s.result.items && s.result.items.length) {
       const kind = s.result.kind;
       const mode = 'result:' + (s.result.ts || '');
-      begin(mode);
+      begin(mode); faceplate = (s.result.personInfo || {}).faceplate || '';
       const groups = group(s.result.items, s.result.personInfo);
       swap(`
         <div class="who ${fresh ? 'anim' : ''}">${esc(s.result.person || 'Returned devices')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
@@ -95,10 +97,10 @@
     idleShown = false;
     const p = s.person || {};
     const mode = 'person:' + (p.name || '');
-    begin(mode);
+    begin(mode); faceplate = p.faceplate || '';
     const held = group(s.holdings, p), now = group(s.basket, p, true);
     swap(`
-      <div class="who ${fresh ? 'anim' : ''}">${p.name ? 'Hi! ' + esc(p.name) : 'Returning devices'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'Devices are being checked in'))}${p.bolero_id ? ` <span class="bolero">Bolero ${esc(String(p.bolero_id).replace(/^bolero\s*/i, ''))}</span>` : ''}${p.radio ? ` <span class="bolero radio">${esc(p.radio)}</span>` : ''}${p.collector ? `<br>Collected by ${esc(p.collector)}` : ''}</small></div>
+      <div class="who ${fresh ? 'anim' : ''}">${p.name ? 'Hi! ' + esc(p.name) : 'Returning devices'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'Devices are being checked in'))}${p.bolero_id ? ' ' + chip(p.bolero_id) : ''}${p.radio ? ` <span class="bolero radio">${esc(p.radio)}</span>` : ''}${p.collector ? `<br>Collected by ${esc(p.collector)}` : ''}</small></div>
       ${held.length ? heading('Already with you') + `<ul class="items">${held.map(g => item(g, true)).join('')}</ul>` : ''}
       ${now.length ? heading('Being processed') + `<ul class="items">${now.map(g => item(g)).join('')}</ul>` : ''}`, mode);
   }

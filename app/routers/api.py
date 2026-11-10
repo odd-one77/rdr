@@ -82,6 +82,7 @@ class PersonUpdate(BaseModel):
     phone: str | None = None
     external_id: str | None = None
     bolero_id: str | None = None
+    allocation: str | None = None
 
 
 @router.post("/people/{person_id}")
