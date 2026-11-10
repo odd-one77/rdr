@@ -47,7 +47,7 @@ small, .muted { color: var(--muted); }
 input, select, textarea, button {
   font: inherit; color: inherit;
 }
-input[type=text], input[type=search], input[type=password], input[type=number], input[type=date], input[type=file], select, textarea {
+input:not([type]), input[type=text], input[type=search], input[type=password], input[type=number], input[type=date], input[type=file], select, textarea {
   width: 100%; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
   padding: 10px 12px; color: var(--text); outline: none; transition: border-color .15s, box-shadow .15s;
 }
@@ -261,7 +261,8 @@ td.num, th.num { text-align: right; font-family: var(--mono); }
 .mirror .items li .type { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-weight: 700; }
 .mirror .items li .si { margin-left: auto; font-size: 14px; }
 .mirror .idle { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); text-align: center; gap: 12px; }
-.mirror .idle .big { font-size: 40px; font-weight: 800; color: var(--text); text-transform: uppercase; letter-spacing: .04em; }
+.mirror .idle .big { font-size: 40px; font-weight: 800; color: var(--text); text-transform: uppercase; letter-spacing: .04em; transition: opacity .4s; max-width: 90vw; }
+.mirror .idle > div:last-child { font-size: 22px; }
 .mirror .result { margin-top: 20px; padding: 16px 20px; border-radius: 10px; font-size: 24px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
 .mirror .result.out { background: rgba(226,0,26,.18); border: 1px solid var(--red); }
 .mirror .result.in { background: rgba(34,197,94,.14); border: 1px solid var(--green); color: #86efac; }

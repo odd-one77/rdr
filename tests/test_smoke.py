@@ -229,3 +229,15 @@ def test_reset_database(client):
     r = client.post("/admin/settings/demo")
     assert r.status_code == 303 and "Demo" in r.headers["location"]
     assert client.get("/api/summary").json()["all"]["totals"]["total"] > 50
+
+
+def test_mirror_greeting_and_tech_name(client):
+    r = client.post("/admin/settings/mirror", data={"mirror_title": "", "mirror_prompt": "", "mirror_sayings": "One\n\n Two \n"})
+    assert r.status_code == 303
+    client.post("/api/kiosk/state", json={"state": {"person": None, "basket": []}})
+    d = client.get("/api/mirror/1").json()
+    assert d["greeting"]["sayings"] == ["One", "Two"]
+    assert d["greeting"]["title"] == "Welcome to RDR"
+    assert "{tech}" in d["greeting"]["prompt"]
+    assert d["state"]["tech_name"] == "RDR Tech"
+    assert "Save mirror screen" in client.get("/admin/settings").text

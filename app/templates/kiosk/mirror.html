@@ -11,7 +11,7 @@
   </div>
   <div class="mirror-body {% if not mirror_site.rtsp_url %}no-video{% endif %}">
     <div id="main">
-      <div class="idle"><div class="big">Radio Distribution</div><div>Please give your name to the technician</div></div>
+      <div class="idle"><div class="big">Welcome to RDR</div><div>Please give your name and role to the technician</div></div>
     </div>
     {% if mirror_site.rtsp_url %}
     <div class="video"><span class="pgm">PGM</span><div style="text-align:center"><div style="font-size:40px;opacity:.3">&#9654;</div>Programme feed<br><small class="mono">{{ mirror_site.rtsp_url }}</small><br><small>Stream player arrives in phase 2</small></div></div>
@@ -24,13 +24,21 @@
   const SITE = {{ mirror_site.id }};
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const main = document.getElementById('main');
-  let lastJson = '';
+  let lastJson = '', greeting = {title: 'Welcome to RDR', sayings: [], prompt: 'Please give your name and role to {tech}'}, techName = null, sayingIdx = -1, idleShown = false;
+  const pick = () => {
+    const list = greeting.sayings && greeting.sayings.length ? greeting.sayings : [greeting.title || 'Welcome to RDR'];
+    if (list.length > 1) { let i; do { i = Math.floor(Math.random() * list.length); } while (i === sayingIdx); sayingIdx = i; return list[i]; }
+    return list[0];
+  };
+  const idleHtml = () => `<div class="idle"><div class="big" id="saying">${esc(pick())}</div><div>${esc((greeting.prompt || 'Please give your name and role to {tech}').replace('{tech}', techName || 'the technician'))}</div></div>`;
   async function tick(){
     try {
       const r = await fetch(`/api/mirror/${SITE}`, {cache:'no-store'});
       const data = await r.json();
       const s = data.state || {};
-      const j = JSON.stringify(s);
+      if (data.greeting) greeting = data.greeting;
+      if (s.tech_name) techName = s.tech_name;
+      const j = JSON.stringify(s) + JSON.stringify(greeting);
       if (j !== lastJson) { lastJson = j; render(s); }
       const t = data.summary.totals;
       document.getElementById('foot').textContent = `${t.n_out} out · ${t.n_in} in stock`;
@@ -48,9 +56,10 @@
       return;
     }
     if (!s.person && !(s.basket && s.basket.length)) {
-      main.innerHTML = `<div class="idle"><div class="big">Radio Distribution</div><div>Please give your name to the technician</div></div>`;
+      main.innerHTML = idleHtml(); idleShown = true;
       return;
     }
+    idleShown = false;
     const p = s.person || {};
     main.innerHTML = `
       <div class="who">${esc(p.name || 'Items')}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || 'Returning items')}</small></div>
@@ -58,6 +67,8 @@
       ${(s.basket && s.basket.length) ? heading('Being processed') + `<ul class="items" style="margin-top:8px">${s.basket.map(i => item(i)).join('')}</ul>` : ''}`;
   }
   setInterval(tick, 1000); tick();
+  // Rotate through the sayings while idle.
+  setInterval(() => { const el = document.getElementById('saying'); if (idleShown && el && greeting.sayings && greeting.sayings.length > 1) { el.style.opacity = 0; setTimeout(() => { el.textContent = pick(); el.style.opacity = 1; }, 400); } }, 9000);
   const clock = () => { document.getElementById('mclock').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); };
   setInterval(clock, 1000); clock();
 })();

@@ -14,7 +14,7 @@ from ..auth import (
     ADMIN_COOKIE, admin_password_set, admin_token, check_admin_password, current_tech, is_admin, set_admin_password,
 )
 from ..config import UPLOAD_DIR, load_config, save_config
-from ..db import ACTION_LABELS, get_db, now_iso, reset_db
+from ..db import ACTION_LABELS, get_db, get_setting, now_iso, reset_db, set_setting
 from ..main import lan_addresses, render
 from ..services import importer, inventory, updater
 
@@ -556,7 +556,13 @@ async def import_commit(request: Request, token: str):
 @router.get("/settings", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
 def settings_page(request: Request, fetch: int = 0):
     info = updater.status(fetch=bool(fetch))
-    return render(request, "admin/settings.html", info=info, update_log=updater.last_output(), lan=lan_addresses(), active="settings")
+    with get_db() as db:
+        mirror = {
+            "title": get_setting(db, "mirror_title") or "",
+            "prompt": get_setting(db, "mirror_prompt") or "",
+            "sayings": get_setting(db, "mirror_sayings") or "",
+        }
+    return render(request, "admin/settings.html", info=info, update_log=updater.last_output(), lan=lan_addresses(), mirror=mirror, active="settings")
 
 
 @router.post("/settings/password", dependencies=[Depends(require_admin)])
@@ -585,6 +591,15 @@ def settings_update():
     if report["ok"]:
         return _redirect("/admin/settings?restarting=1", msg="Update installed. Restarting the server now...")
     return _redirect("/admin/settings", err="No update applied. See the log below.")
+
+
+@router.post("/settings/mirror", dependencies=[Depends(require_admin)])
+def settings_mirror(mirror_title: str = Form(""), mirror_prompt: str = Form(""), mirror_sayings: str = Form("")):
+    with get_db() as db:
+        set_setting(db, "mirror_title", mirror_title.strip() or None)
+        set_setting(db, "mirror_prompt", mirror_prompt.strip() or None)
+        set_setting(db, "mirror_sayings", "\n".join(ln.strip() for ln in mirror_sayings.splitlines() if ln.strip()) or None)
+    return _redirect("/admin/settings", msg="Mirror screen saved")
 
 
 @router.post("/settings/github", dependencies=[Depends(require_admin)])

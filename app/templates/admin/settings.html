@@ -41,6 +41,12 @@
       </div></div>
   </div>
   <div class="stack">
+    <div class="panel"><div class="panel-head"><h2>Mirror screen</h2><a class="btn sm ghost" href="/mirror" target="_blank">Open mirror</a></div>
+      <div class="panel-body"><form method="post" action="/admin/settings/mirror">
+        <div class="field"><label>Welcome line</label><input name="mirror_title" value="{{ mirror.title }}" placeholder="Welcome to RDR"></div>
+        <div class="field"><label>Random sayings (one per line, shown instead of the welcome line when set)</label><textarea name="mirror_sayings" rows="4" placeholder="Comms is life.&#10;Have you tried turning it off and on again?&#10;Return your kit, keep your deposit.">{{ mirror.sayings }}</textarea></div>
+        <div class="field"><label>Prompt line</label><input name="mirror_prompt" value="{{ mirror.prompt }}" placeholder="Please give your name and role to {tech}"><div class="help" style="margin-top:4px"><span class="mono">{tech}</span> becomes the name of the tech logged into that site's kiosk.</div></div>
+        <button class="btn">Save mirror screen</button></form></div></div>
     <div class="panel"><div class="panel-head"><h2>Admin password</h2></div>
       <div class="panel-body"><form method="post" action="/admin/settings/password">
         <div class="field"><label>Current password</label><input type="password" name="current" required></div>

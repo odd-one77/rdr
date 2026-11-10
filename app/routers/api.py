@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..auth import current_tech, is_admin
-from ..db import get_db, now_iso
+from ..db import get_db, get_setting, now_iso
 from ..services import inventory
 
 router = APIRouter(prefix="/api")
@@ -192,6 +192,8 @@ class KioskState(BaseModel):
 @router.post("/kiosk/state")
 def kiosk_state(body: KioskState, tech: dict = Depends(require_tech)):
     with get_db() as db:
+        t = db.execute("SELECT display_name FROM techs WHERE id = ?", (tech["tech_id"],)).fetchone()
+        body.state["tech_name"] = t["display_name"] if t else None
         db.execute(
             "INSERT INTO kiosk_state (site_id, state_json, updated_at) VALUES (?,?,?) "
             "ON CONFLICT(site_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at",
@@ -205,9 +207,15 @@ def mirror_state(site_id: int):
     with get_db() as db:
         row = db.execute("SELECT * FROM kiosk_state WHERE site_id = ?", (site_id,)).fetchone()
         event = db.execute("SELECT * FROM event WHERE id = 1").fetchone()
+        sayings = [ln.strip() for ln in (get_setting(db, "mirror_sayings") or "").splitlines() if ln.strip()]
         return {
             "state": json.loads(row["state_json"]) if row else {},
             "updated_at": row["updated_at"] if row else None,
             "event": dict(event) if event else {},
             "summary": inventory.summary(db, site_id),
+            "greeting": {
+                "title": get_setting(db, "mirror_title") or "Welcome to RDR",
+                "sayings": sayings,
+                "prompt": get_setting(db, "mirror_prompt") or "Please give your name and role to {tech}",
+            },
         }
