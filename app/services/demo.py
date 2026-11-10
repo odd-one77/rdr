@@ -5,7 +5,7 @@ import random
 import sqlite3
 
 from ..db import now_iso
-from .inventory import create_person, log, quick_create_device, set_assignment, sign_out
+from .inventory import create_person, log, quick_create_device, set_assignment, sign_out, swap
 
 PEOPLE = [
     ("Alex Morgan", "Broadcast", "Director", "+44 7700 900101"),
@@ -36,18 +36,20 @@ def load_demo(db: sqlite3.Connection) -> int:
     people = []
     for i, (name, dept, role, phone) in enumerate(PEOPLE, start=1):
         existing = db.execute("SELECT * FROM people WHERE name = ?", (name,)).fetchone()
-        people.append(existing or create_person(db, name, dept, role, phone, external_id=f"CREW{i:03d}", bolero_id=(str(60 + i) if i <= 10 else "")))
+        # the first eight are planned with a Bolero ID; the rest are radio-only or have nothing yet
+        people.append(existing or create_person(db, name, dept, role, phone, external_id=f"CREW{i:03d}", bolero_id=(str(60 + i) if i <= 8 else "")))
 
     tech = {"tech_id": 1, "site_id": db.execute("SELECT MIN(id) FROM sites").fetchone()[0]}
     devices = []
 
-    def mk(si, tname, label, action="imported"):
+    def mk(si, tname, label, action="imported", linked_id=""):
         if db.execute("SELECT 1 FROM devices WHERE si = ?", (si,)).fetchone():
             return
-        devices.append(quick_create_device(db, si, types[tname], label, tech, action=action))
+        devices.append(quick_create_device(db, si, types[tname], label, tech, action=action, linked_id=linked_id))
 
     for n in range(1, 25):
-        mk(f"SI-BOL-{1000 + n}", "Bolero Beltpack", f"Bolero {60 + n}")
+        # two spare packs come in from the device sheet already configured with an ID (69 and 70)
+        mk(f"SI-BOL-{1000 + n}", "Bolero Beltpack", f"Bolero {60 + n}", linked_id=("69" if n == 11 else "70" if n == 12 else ""))
     for n in range(1, 17):
         mk(f"SI-RAD-{2000 + n}", "Radio", f"Radio {n:02d}")
     for n in range(1, 9):
@@ -68,10 +70,20 @@ def load_demo(db: sqlite3.Connection) -> int:
 
     # one specific reservation to show the feature
     set_assignment(db, by_type["Bolero Beltpack"][0]["id"], people[0]["id"], tech, note="Director's own pack")
-    for p, bol, hs in zip(people[6:10], by_type["Bolero Beltpack"][6:10], by_type["Pro-D2 Headset"][6:10]):
+
+    packs, headsets = by_type["Bolero Beltpack"], by_type["Pro-D2 Headset"]
+    # people 5-8 (IDs 65-68) have collected pack + headset: the packs are now linked to their IDs
+    for p, bol, hs in zip(people[4:8], packs[4:8], headsets[4:8]):
         sign_out(db, [bol["id"], hs["id"]], p["id"], tech)
+    # person 9 had no planned ID and was handed a spare configured as 69: they adopt that ID
+    sign_out(db, [packs[10]["id"], headsets[8]["id"]], people[8]["id"], tech)
+    # radio-only people
     for p, rad, ear in zip(people[9:12], by_type["Radio"][:3], by_type["Earpiece"][:3]):
         sign_out(db, [rad["id"], ear["id"]], p["id"], tech)
+    # person 11 also collected a radio on behalf of person 12
+    sign_out(db, [by_type["Radio"][3]["id"]], people[11]["id"], tech, collector_id=people[10]["id"])
+    # person 5's pack went faulty and was swapped for the spare configured as 70: IDs traded places
+    swap(db, packs[4]["id"], packs[11]["id"], tech, reason="Faulty", note="No audio on channel B", old_status="damaged")
     dmg = by_type["Pro-D2 Headset"][-1]
     db.execute("UPDATE devices SET status = 'damaged' WHERE id = ?", (dmg["id"],))
     log(db, "damaged", dmg["id"], None, tech, reason="Broken boom arm")

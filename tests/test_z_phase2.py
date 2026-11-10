@@ -270,3 +270,23 @@ def test_sign_out_on_behalf_and_chip_data(client):
     hit = client.get("/api/people/search?q=Recipient").json()["results"][0]
     assert hit["radio_label"] == "Radio 09" and hit["held_bolero"] is None
     assert client.post("/api/signout", json={"person_id": receiver["id"], "device_ids": [], "collector_id": 999999}).status_code == 400
+
+
+def test_demo_data_shows_bolero_rules(client):
+    client.post("/admin/login", data={"password": "test1234"})
+    client.post("/admin/settings/reset", data={"confirm": "RESET", "keep_password": "1"})
+    client.post("/admin/settings/demo")
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    client.post("/admin/login", data={"password": "test1234"})
+    emma = client.get("/api/people/search?q=Emma").json()["results"][0]        # 10th person, no planned ID, radio-only
+    assert emma["bolero_id"] == "" and emma["radio_label"].startswith("Radio")
+    daniel = client.get("/api/people/search?q=Daniel").json()["results"][0]    # 9th person adopted the spare's ID 69
+    assert daniel["bolero_id"] == "69"
+    jamal = client.get("/api/people/search?q=Jamal").json()["results"][0]      # 5th person: swapped pack, keeps ID 65
+    held = client.get(f"/api/people/{jamal['id']}").json()["holdings"]
+    pack = next(h for h in held if "Bolero" in h["type_name"])
+    assert pack["linked_id"] == "65" and pack["si"] == "SI-BOL-1012"
+    damaged = client.get("/api/devices/lookup?si=SI-BOL-1005").json()["device"]
+    assert damaged["status"] == "damaged" and damaged["linked_id"] == "70"     # the damaged pack took the spare's old ID
+    recent = client.get("/api/recent?limit=60").json()["transactions"]
+    assert any("Collected by" in (t["note"] or "") for t in recent)
