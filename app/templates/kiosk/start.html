@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Start{% endblock %}
+{% block body %}
+<div class="start">
+  <img class="logo" src="/static/img/riedel.svg" alt="Riedel">
+  {% if event.logo_path %}<img src="{{ event.logo_path }}" alt="" style="max-height:90px;max-width:360px;object-fit:contain">{% endif %}
+  <div style="text-align:center">
+    <h1>{{ event.name }}</h1>
+    {% if event.show_name %}<div class="muted" style="text-transform:uppercase;letter-spacing:.14em">{{ event.show_name }}</div>{% endif %}
+  </div>
+  {% if err %}<div class="flash err" style="margin:0">{{ err }}</div>{% endif %}
+  <form class="panel card" method="post" action="/start" id="startForm">
+    <div class="panel-head"><h2>Who are you and where are you?</h2><a class="btn sm ghost" href="/admin/login">Admin</a></div>
+    <div class="panel-body stack" style="gap:22px">
+      <div>
+        <label>Technician</label>
+        <div class="choice-grid" id="techs">
+          {% for t in techs %}
+          <div class="choice" data-name="tech_id" data-value="{{ t.id }}" data-site="{{ t.site_id or '' }}">{{ t.display_name }}<small>{{ t.username }}{% if t.role == 'lead' %} · lead{% endif %}</small></div>
+          {% endfor %}
+        </div>
+        {% if not techs %}<p class="muted">No techs yet. Add usernames in Admin → Event.</p>{% endif %}
+      </div>
+      <div>
+        <label>RDR site / zone</label>
+        <div class="choice-grid" id="sites">
+          {% for s in sites %}
+          <div class="choice" data-name="site_id" data-value="{{ s.id }}">{{ s.name }}<small>{{ 'own stock' if s.stock_mode == 'specific' else 'shared stock' }}</small></div>
+          {% endfor %}
+        </div>
+      </div>
+      <input type="hidden" name="tech_id" id="tech_id"><input type="hidden" name="site_id" id="site_id">
+      <button class="btn primary lg block" type="submit" id="go" disabled>Open kiosk</button>
+    </div>
+  </form>
+  <div class="muted" style="font-size:12px">RDR v{{ version }}</div>
+</div>
+<script>
+(function(){
+  const pick = (gridId, inputId) => {
+    const grid = document.getElementById(gridId);
+    grid.addEventListener('click', e => {
+      const c = e.target.closest('.choice'); if (!c) return;
+      grid.querySelectorAll('.choice').forEach(x => x.classList.remove('on'));
+      c.classList.add('on');
+      document.getElementById(inputId).value = c.dataset.value;
+      if (inputId === 'tech_id' && c.dataset.site) {
+        const s = document.querySelector(`#sites .choice[data-value="${c.dataset.site}"]`);
+        if (s && !document.getElementById('site_id').value) s.click();
+      }
+      document.getElementById('go').disabled = !(document.getElementById('tech_id').value && document.getElementById('site_id').value);
+    });
+    if (grid.children.length === 1) grid.children[0].click();
+  };
+  pick('techs', 'tech_id'); pick('sites', 'site_id');
+})();
+</script>
+{% endblock %}

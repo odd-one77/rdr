@@ -1,0 +1,213 @@
+"""JSON API used by the kiosk front end (and later by the phone view)."""
+from __future__ import annotations
+
+import json
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+
+from ..auth import current_tech, is_admin
+from ..db import get_db, now_iso
+from ..services import inventory
+
+router = APIRouter(prefix="/api")
+
+
+def require_tech(request: Request) -> dict:
+    tech = current_tech(request)
+    if tech is None:
+        raise HTTPException(status_code=401, detail="Pick a tech and site first")
+    return tech
+
+
+def _row(r) -> Optional[dict]:
+    return dict(r) if r is not None else None
+
+
+# -- people -------------------------------------------------------------------
+
+@router.get("/people/search")
+def people_search(q: str = "", tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        return {"results": [dict(r) for r in inventory.search_people(db, q)]}
+
+
+@router.get("/people/{person_id}")
+def person_detail(person_id: int, tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        p = inventory.person_by_id(db, person_id)
+        if p is None:
+            raise HTTPException(404, "Unknown person")
+        return {
+            "person": dict(p),
+            "holdings": [dict(r) for r in inventory.person_holdings(db, person_id)],
+            "assignments": [dict(r) for r in inventory.person_assignments(db, person_id)],
+            "recent": [dict(r) for r in inventory.transactions(db, limit=15, person_id=person_id)],
+        }
+
+
+class PersonIn(BaseModel):
+    name: str = Field(min_length=1)
+    dept: str = ""
+    role: str = ""
+    phone: str = ""
+    external_id: str = ""
+
+
+@router.post("/people")
+def person_create(body: PersonIn, tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        if body.external_id.strip():
+            dup = db.execute("SELECT id FROM people WHERE external_id = ?", (body.external_id.strip(),)).fetchone()
+            if dup:
+                raise HTTPException(409, "That unique ID is already used")
+        p = inventory.create_person(db, body.name, body.dept, body.role, body.phone, body.external_id)
+        return {"person": dict(p)}
+
+
+# -- devices ------------------------------------------------------------------
+
+@router.get("/devices/lookup")
+def device_lookup(si: str, tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        d = inventory.device_by_si(db, si)
+        if d is None:
+            return {"found": False, "si": inventory.norm_si(si)}
+        return {"found": True, "device": dict(d)}
+
+
+@router.get("/types")
+def types(tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        return {"types": [dict(r) for r in db.execute("SELECT * FROM device_types WHERE active = 1 ORDER BY sort_order, name")]}
+
+
+class QuickDevice(BaseModel):
+    si: str = Field(min_length=1)
+    type_id: int
+    label: str = ""
+    site_specific: bool = False
+
+
+@router.post("/devices/quick")
+def device_quick(body: QuickDevice, tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        if inventory.device_by_si(db, body.si):
+            raise HTTPException(409, "Device already exists")
+        d = inventory.quick_create_device(
+            db, body.si, body.type_id, body.label, tech, site_id=tech["site_id"] if body.site_specific else None
+        )
+        return {"device": dict(d)}
+
+
+class StatusIn(BaseModel):
+    status: str
+    reason: str = ""
+    note: str = ""
+    keep_holder: bool = False
+
+
+@router.post("/devices/{device_id}/status")
+def device_status(device_id: int, body: StatusIn, tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        try:
+            return inventory.mark_status(db, device_id, body.status, tech, body.reason, body.note, body.keep_holder)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+
+# -- transactions -------------------------------------------------------------
+
+class SignOut(BaseModel):
+    person_id: int
+    device_ids: list[int]
+    force_ids: list[int] = []
+
+
+@router.post("/signout")
+def signout(body: SignOut, tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        try:
+            results = inventory.sign_out(db, body.device_ids, body.person_id, tech, set(body.force_ids))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"results": results, "summary": inventory.summary(db, tech["site_id"])}
+
+
+class SignIn(BaseModel):
+    device_ids: list[int]
+
+
+@router.post("/signin")
+def signin(body: SignIn, tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        results = inventory.sign_in(db, body.device_ids, tech)
+        return {"results": results, "summary": inventory.summary(db, tech["site_id"])}
+
+
+class SwapIn(BaseModel):
+    old_device_id: int
+    new_si: str
+    reason: str = "damaged"
+    note: str = ""
+    old_status: str = "damaged"
+
+
+@router.post("/swap")
+def swap(body: SwapIn, tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        new = inventory.device_by_si(db, body.new_si)
+        if new is None:
+            raise HTTPException(404, f"Replacement {inventory.norm_si(body.new_si)} is not in the database")
+        try:
+            return inventory.swap(db, body.old_device_id, new["id"], tech, body.reason, body.note, body.old_status)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+
+@router.get("/summary")
+def summary(request: Request, scope: str = "site"):
+    tech = current_tech(request)
+    with get_db() as db:
+        site_id = tech["site_id"] if (tech and scope == "site") else None
+        return {"site": inventory.summary(db, site_id), "all": inventory.summary(db, None)}
+
+
+@router.get("/recent")
+def recent(request: Request, limit: int = 25, scope: str = "site"):
+    tech = current_tech(request)
+    with get_db() as db:
+        site_id = tech["site_id"] if (tech and scope == "site") else None
+        rows = inventory.transactions(db, limit=min(limit, 200), site_id=site_id)
+        return {"transactions": [dict(r) for r in rows]}
+
+
+# -- mirror -------------------------------------------------------------------
+
+class KioskState(BaseModel):
+    state: dict
+
+
+@router.post("/kiosk/state")
+def kiosk_state(body: KioskState, tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO kiosk_state (site_id, state_json, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(site_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at",
+            (tech["site_id"], json.dumps(body.state), now_iso()),
+        )
+    return {"ok": True}
+
+
+@router.get("/mirror/{site_id}")
+def mirror_state(site_id: int):
+    with get_db() as db:
+        row = db.execute("SELECT * FROM kiosk_state WHERE site_id = ?", (site_id,)).fetchone()
+        event = db.execute("SELECT * FROM event WHERE id = 1").fetchone()
+        return {
+            "state": json.loads(row["state_json"]) if row else {},
+            "updated_at": row["updated_at"] if row else None,
+            "event": dict(event) if event else {},
+            "summary": inventory.summary(db, site_id),
+        }

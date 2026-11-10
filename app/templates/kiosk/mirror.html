@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Mirror · {{ mirror_site.name }}{% endblock %}
+{% block body %}
+<div class="mirror">
+  <div class="mirror-head">
+    <div class="row" style="gap:24px">
+      <img class="riedel" src="/static/img/riedel.svg" alt="Riedel">
+      {% if event.logo_path %}<span style="width:1px;height:48px;background:var(--border)"></span><img class="event-logo" src="{{ event.logo_path }}" alt="">{% endif %}
+    </div>
+    <div class="title"><div class="ev">{{ event.name }}</div><div class="show">{{ event.show_name or mirror_site.name }}</div></div>
+  </div>
+  <div class="mirror-body {% if not mirror_site.rtsp_url %}no-video{% endif %}">
+    <div id="main">
+      <div class="idle"><div class="big">Radio Distribution</div><div>Please give your name to the technician</div></div>
+    </div>
+    {% if mirror_site.rtsp_url %}
+    <div class="video"><span class="pgm">PGM</span><div style="text-align:center"><div style="font-size:40px;opacity:.3">&#9654;</div>Programme feed<br><small class="mono">{{ mirror_site.rtsp_url }}</small><br><small>Stream player arrives in phase 2</small></div></div>
+    {% endif %}
+  </div>
+  <div class="mirror-foot"><span>{{ mirror_site.name }}</span><span id="foot"></span><span id="mclock"></span></div>
+</div>
+<script>
+(function(){
+  const SITE = {{ mirror_site.id }};
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const main = document.getElementById('main');
+  let lastJson = '';
+  async function tick(){
+    try {
+      const r = await fetch(`/api/mirror/${SITE}`, {cache:'no-store'});
+      const data = await r.json();
+      const s = data.state || {};
+      const j = JSON.stringify(s);
+      if (j !== lastJson) { lastJson = j; render(s); }
+      const t = data.summary.totals;
+      document.getElementById('foot').textContent = `${t.n_out} out · ${t.n_in} in stock`;
+    } catch (e) {}
+  }
+  const item = (i, small) => `<li${small ? ' style="font-size:18px;padding:10px 16px"' : ''}><span><span class="type">${esc(i.type)}</span><br>${esc(i.label || i.si)}</span><span class="si">${esc(i.si)}</span></li>`;
+  const heading = t => `<div class="muted" style="margin-top:18px;text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:700">${t}</div>`;
+  function render(s){
+    if (s.result && s.result.items && s.result.items.length) {
+      const kind = s.result.kind;
+      main.innerHTML = `
+        <div class="who">${esc(s.result.person || 'Returned items')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
+        <ul class="items">${s.result.items.map(i => item(i)).join('')}</ul>
+        <div class="result ${kind}">${kind === 'out' ? 'Please look after your kit' : 'All checked in'}</div>`;
+      return;
+    }
+    if (!s.person && !(s.basket && s.basket.length)) {
+      main.innerHTML = `<div class="idle"><div class="big">Radio Distribution</div><div>Please give your name to the technician</div></div>`;
+      return;
+    }
+    const p = s.person || {};
+    main.innerHTML = `
+      <div class="who">${esc(p.name || 'Items')}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || 'Returning items')}</small></div>
+      ${(s.holdings && s.holdings.length) ? heading('Currently with you') + `<ul class="items" style="margin-top:8px">${s.holdings.map(i => item(i, true)).join('')}</ul>` : ''}
+      ${(s.basket && s.basket.length) ? heading('Being processed') + `<ul class="items" style="margin-top:8px">${s.basket.map(i => item(i)).join('')}</ul>` : ''}`;
+  }
+  setInterval(tick, 1000); tick();
+  const clock = () => { document.getElementById('mclock').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); };
+  setInterval(clock, 1000); clock();
+})();
+</script>
+{% endblock %}

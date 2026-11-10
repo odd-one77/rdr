@@ -1,0 +1,21 @@
+# runtime data (database, uploads, imports) stays on the machine
+data/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# session dotfiles that are not part of the app
+.bash_profile
+.bashrc
+.gitconfig
+.gitmodules
+.idea
+.mcp.json
+.profile
+.ripgreprc
+.vscode
+.zprofile
+.zshrc
+.claude/
+.DS_Store

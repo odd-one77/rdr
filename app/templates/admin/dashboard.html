@@ -1,0 +1,36 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block admin %}
+<div class="page-head"><h1>Dashboard</h1><div class="row"><a class="btn" href="/admin/transactions?format=csv">Export all transactions</a></div></div>
+<div class="grid cols-4" style="margin-bottom:16px">
+  <div class="panel stat"><div class="label">Devices</div><div class="value">{{ counts.devices }}</div><div class="sub"><span class="green">{{ overall.totals.n_in }} in</span> · <span class="red">{{ overall.totals.n_out }} out</span>{% if overall.totals.n_lost + overall.totals.n_damaged %} · <span class="amber">{{ overall.totals.n_lost + overall.totals.n_damaged }} lost/damaged</span>{% endif %}</div></div>
+  <div class="panel stat"><div class="label">People</div><div class="value">{{ counts.people }}</div><div class="sub">{{ counts.holders }} currently holding kit</div></div>
+  <div class="panel stat"><div class="label">Pre-assignments</div><div class="value">{{ counts.assignments }}</div><div class="sub"><a href="/admin/assignments">Manage</a></div></div>
+  <div class="panel stat"><div class="label">Sites</div><div class="value">{{ per_site | length }}</div><div class="sub">{{ sites | map(attribute='name') | join(', ') }}</div></div>
+</div>
+<div class="grid cols-2">
+  <div class="panel">
+    <div class="panel-head"><h2>Inventory by type · all sites</h2></div>
+    <div class="table-wrap"><table>
+      <tr><th>Type</th><th class="num">Total</th><th class="num">In</th><th class="num">Out</th><th class="num">Lost</th><th class="num">Damaged</th></tr>
+      {% for t in overall.types %}<tr><td><a href="/admin/devices?type_id={{ t.id }}">{{ t.name }}</a></td><td class="num">{{ t.total }}</td><td class="num green">{{ t.n_in }}</td><td class="num red">{{ t.n_out }}</td><td class="num amber">{{ t.n_lost or '' }}</td><td class="num amber">{{ t.n_damaged or '' }}</td></tr>{% endfor %}
+      {% if not overall.types %}<tr><td colspan="6" class="muted">No devices yet. <a href="/admin/import">Import an easyjob export</a> or <a href="/admin/settings">load demo data</a>.</td></tr>{% endif %}
+    </table></div>
+  </div>
+  <div class="stack">
+    {% for site, s in per_site %}
+    <div class="panel">
+      <div class="panel-head"><h2>{{ site.name }}</h2><span class="muted" style="font-size:12px">{{ 'own stock + shared' if site.stock_mode == 'specific' else 'shared stock' }} · <span class="green">{{ s.totals.n_in }} in</span> · <span class="red">{{ s.totals.n_out }} out</span></span></div>
+      <div class="panel-body"><div class="chips">{% for t in s.types %}<div class="chip"><span class="name">{{ t.name }}</span><span class="nums"><span class="in">{{ t.n_in }}</span><span class="out">{{ t.n_out }}</span></span></div>{% endfor %}</div></div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+<div class="panel" style="margin-top:16px">
+  <div class="panel-head"><h2>Recent activity</h2><a class="btn sm ghost" href="/admin/transactions">All transactions</a></div>
+  <div class="table-wrap"><table>
+    <tr><th>Time</th><th>Action</th><th>Device</th><th>Person</th><th>Tech / site</th><th>Note</th></tr>
+    {% for x in recent %}<tr><td class="mono">{{ x.ts }}</td><td>{{ ACTION_LABELS.get(x.action, x.action) }}</td><td>{% if x.device_id %}<a href="/admin/devices/{{ x.device_id }}">{{ x.label or x.si }}</a> <span class="si">{{ x.si }}</span>{% endif %}</td><td>{% if x.person_id %}<a href="/admin/people/{{ x.person_id }}">{{ x.person_name }}</a>{% endif %}</td><td class="muted">{{ x.tech_name or '' }}{% if x.site_name %} · {{ x.site_name }}{% endif %}</td><td class="muted">{{ x.reason }}{% if x.reason and x.note %} · {% endif %}{{ x.note }}</td></tr>{% endfor %}
+  </table></div>
+</div>
+{% endblock %}

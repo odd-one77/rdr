@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Report · {{ person.name }}{% endblock %}
+{% block content %}
+<div class="content" style="max-width:1000px;margin:0 auto">
+  <div class="page-head"><div><h1>{{ person.name }}</h1><div class="muted">{{ [person.dept, person.role, person.phone] | select | join(' · ') }}{% if person.external_id %} · ID {{ person.external_id }}{% endif %}</div></div>
+    <div class="row"><span class="muted">{{ ev.name }}{% if ev.show_name %} · {{ ev.show_name }}{% endif %}</span><a class="btn" href="/admin/people/{{ person.id }}/report?format=csv">CSV</a><button class="btn primary" onclick="print()">Print</button><a class="btn ghost" href="/admin/people/{{ person.id }}">Back</a></div></div>
+  <div class="panel" style="margin-bottom:16px"><div class="panel-head"><h2>Outstanding items ({{ holdings | length }})</h2></div>
+    <table><tr><th>Status</th><th>Item</th><th>SI</th><th>Type</th><th>Since</th></tr>
+    {% for d in holdings %}<tr><td><span class="badge {{ d.status }}">{{ d.status }}</span></td><td><b>{{ d.label or d.si }}</b></td><td class="mono">{{ d.si }}</td><td>{{ d.type_name }}</td><td class="mono">{{ d.last_event_at }}</td></tr>{% endfor %}
+    {% if not holdings %}<tr><td colspan="5" class="muted">Nothing outstanding. All kit returned.</td></tr>{% endif %}</table></div>
+  <div class="panel"><div class="panel-head"><h2>Full history ({{ history | length }})</h2></div>
+    <table><tr><th>Time</th><th>Action</th><th>Item</th><th>SI</th><th>Tech / site</th><th>Reason / note</th></tr>
+    {% for x in history %}<tr><td class="mono">{{ x.ts }}</td><td>{{ ACTION_LABELS.get(x.action, x.action) }}</td><td>{{ x.label or '' }}{% if x.related_si %} <span class="muted">↔ {{ x.related_label or x.related_si }}</span>{% endif %}</td><td class="mono">{{ x.si or '' }}</td><td class="muted">{{ x.tech_name or '' }}{% if x.site_name %} · {{ x.site_name }}{% endif %}</td><td class="muted">{{ x.reason }}{% if x.reason and x.note %} · {% endif %}{{ x.note }}</td></tr>{% endfor %}</table></div>
+</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Map columns{% endblock %}
+{% block admin %}
+<div class="page-head"><div><h1>Map columns · {{ kind.title }}</h1><div class="muted mono">{{ staged.filename }} · {{ staged.rows | length }} rows{% if staged.sheets | length > 1 %} · first sheet “{{ staged.sheets[0] }}” used{% endif %}</div></div></div>
+<form method="post" action="/admin/import/s/{{ staged.token }}" class="grid cols-2" style="align-items:start">
+  <div class="panel"><div class="panel-head"><h2>Fields</h2></div>
+    <div class="table-wrap"><table class="map-table">
+      <tr><th>Field</th><th>Column in your sheet</th></tr>
+      {% for field, label in kind.fields %}
+      <tr><td>{{ label }}</td><td><select name="map_{{ field }}"><option value="">— not in sheet —</option>{% for h in staged.headers %}<option value="{{ loop.index0 }}" {{ 'selected' if staged.mapping.get(field) == loop.index0 }}>{{ h }}</option>{% endfor %}</select></td></tr>
+      {% endfor %}
+    </table></div>
+    <div class="panel-body row"><button class="btn primary">Analyse import →</button><a class="btn ghost" href="/admin/import">Cancel</a></div>
+  </div>
+  <div class="panel"><div class="panel-head"><h2>Preview (first rows)</h2></div>
+    <div class="table-wrap"><table class="preview-table"><tr>{% for h in staged.headers %}<th>{{ h }}</th>{% endfor %}</tr>{% for r in preview %}<tr>{% for c in r %}<td title="{{ c }}">{{ c }}</td>{% endfor %}</tr>{% endfor %}</table></div></div>
+</form>
+{% endblock %}
