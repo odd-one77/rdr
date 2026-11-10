@@ -28,7 +28,7 @@
 
   // ---- api ---------------------------------------------------------------
   async function api(path, opts = {}) {
-    const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' }, cache: 'no-store' }, opts));
+    const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json', 'X-RDR-Site': String(TECH.site_id) }, cache: 'no-store' }, opts));
     if (r.status === 401) { location.href = '/start'; throw new Error('Session expired'); }
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.detail || data.error || `Request failed (${r.status})`);
@@ -435,6 +435,17 @@
     const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
     if (!typing && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) scanEl.focus();
   });
+
+  // ---- menu drawer -----------------------------------------------------------
+  const drawer = $('#drawer'), drawerBack = $('#drawerBack');
+  if (drawer) {
+    const open = () => { drawer.classList.add('open'); drawerBack.classList.add('open'); };
+    const close = () => { drawer.classList.remove('open'); drawerBack.classList.remove('open'); focusScan(); };
+    $('#btnMenu').onclick = open;
+    drawerBack.onclick = close;
+    $('#btnDrawerClose').onclick = close;
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && drawer.classList.contains('open')) close(); });
+  }
 
   // ---- boot ----------------------------------------------------------------
   renderBasket(); refreshSummary(); refreshFeed(); pushState();

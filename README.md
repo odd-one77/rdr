@@ -66,7 +66,14 @@ In this mode *Update & restart* uses `git pull`.
   for someone else", pick the recipient. The devices go to the recipient and
   the history notes who collected them.
 - **Edit details** on the kiosk person card fixes a name, role, phone or
-  Bolero ID without leaving the counter.
+  Bolero ID without leaving the counter. In Admin, People and Device types
+  have a **Direct edit** toggle that turns the table into editable cells
+  which save as you leave them.
+- The kiosk menu (three bars, top right) holds Mirror, Admin, phone setup
+  and Switch tech.
+- Several counters: each kiosk tab is pinned to the site it was opened with,
+  so two tabs in one browser feed their own mirrors; a mirror falls back to
+  the splash if its kiosk has been silent for 15 minutes.
 - **Reserved devices**: a particular serial number held for a particular
   person, for the rare case. Admin → Reserved devices.
 - **Unknown barcode**: the kiosk offers to create the device on the spot.

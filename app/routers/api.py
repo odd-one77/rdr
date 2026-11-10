@@ -18,6 +18,14 @@ def require_tech(request: Request) -> dict:
     tech = current_tech(request)
     if tech is None:
         raise HTTPException(status_code=401, detail="Pick a tech and site first")
+    # Each kiosk tab pins the site it was opened with, so two tabs in one browser
+    # (two counters tested on one PC, or a tech who switched site in another tab)
+    # keep pushing to their own mirror.
+    pinned = request.headers.get("x-rdr-site")
+    if pinned and pinned.isdigit():
+        with get_db() as db:
+            if db.execute("SELECT 1 FROM sites WHERE id = ? AND active = 1", (int(pinned),)).fetchone():
+                tech = dict(tech, site_id=int(pinned))
     return tech
 
 
@@ -233,9 +241,20 @@ def mirror_state(site_id: int):
         row = db.execute("SELECT * FROM kiosk_state WHERE site_id = ?", (site_id,)).fetchone()
         event = db.execute("SELECT * FROM event WHERE id = 1").fetchone()
         sayings = [ln.strip() for ln in (get_setting(db, "mirror_sayings") or "").splitlines() if ln.strip()]
+        state = json.loads(row["state_json"]) if row else {}
+        age = None
+        if row:
+            from datetime import datetime
+            try:
+                age = int((datetime.now() - datetime.fromisoformat(row["updated_at"])).total_seconds())
+            except ValueError:
+                age = None
+        if age is not None and age > 15 * 60 and (state.get("person") or state.get("basket")):
+            state = {"tech_name": state.get("tech_name")}   # the kiosk went quiet; fall back to the splash
         return {
-            "state": json.loads(row["state_json"]) if row else {},
+            "state": state,
             "updated_at": row["updated_at"] if row else None,
+            "age": age,
             "event": dict(event) if event else {},
             "summary": inventory.summary(db, site_id),
             "greeting": {

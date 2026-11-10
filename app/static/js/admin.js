@@ -18,6 +18,54 @@
     const focusName = sessionStorage.getItem('rdr-filter-focus');
     if (focusName) { const f = form.querySelector(`[name="${focusName}"]`); if (f) { f.focus(); const v = f.value; f.value = ''; f.value = v; } sessionStorage.removeItem('rdr-filter-focus'); }
   });
+  // Direct edit: a toggle at the top turns table cells into inputs that save when you leave them.
+  const toggle = document.querySelector('[data-direct-edit]');
+  if (toggle) {
+    const key = 'rdr-direct-edit-' + toggle.dataset.directEdit;
+    const table = document.querySelector('table.editable, table.autosave');
+    const flash = (el, ok) => { el.classList.remove('saved', 'failed'); void el.offsetWidth; el.classList.add(ok ? 'saved' : 'failed'); };
+    async function save(endpoint, id, field, value, el) {
+      try {
+        const r = await fetch(endpoint.replace('{id}', id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ field, value }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || 'Save failed');
+        flash(el, true); return d.value;
+      } catch (e) { flash(el, false); alert(e.message); return null; }
+    }
+    function apply(on) {
+      document.body.classList.toggle('direct-edit', on);
+      if (!table) return;
+      if (table.classList.contains('editable')) {
+        table.querySelectorAll('td[data-field]').forEach(td => {
+          if (on && !td.querySelector('input')) {
+            const text = td.textContent.trim(); td.dataset.orig = text;
+            td.innerHTML = `<input value="${text.replace(/"/g, '&quot;')}">`;
+            const inp = td.querySelector('input');
+            const commit = async () => { if (inp.value.trim() === td.dataset.orig) return; const v = await save(table.dataset.endpoint, td.closest('tr').dataset.id, td.dataset.field, inp.value, td); if (v !== null) { td.dataset.orig = v; inp.value = v; } else inp.value = td.dataset.orig; };
+            inp.addEventListener('blur', commit);
+            inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } if (e.key === 'Escape') { inp.value = td.dataset.orig; inp.blur(); } });
+          } else if (!on && td.querySelector('input')) {
+            const v = td.querySelector('input').value;
+            td.textContent = v;
+            if (td.dataset.field === 'name') td.innerHTML = `<a href="/admin/people/${td.closest('tr').dataset.id}"><b>${v.replace(/</g, '&lt;')}</b></a>`;
+          }
+        });
+      } else if (table.classList.contains('autosave')) {
+        table.querySelectorAll('tr[data-id] input[name], tr[data-id] select[name]').forEach(inp => {
+          if (inp.dataset.bound) return; inp.dataset.bound = '1';
+          const handler = async () => {
+            if (!document.body.classList.contains('direct-edit')) return;
+            const value = inp.type === 'checkbox' ? (inp.checked ? '1' : '0') : inp.value;
+            await save(table.dataset.endpoint, inp.closest('tr').dataset.id, inp.name, value, inp.closest('td'));
+          };
+          inp.addEventListener('change', handler);
+        });
+      }
+    }
+    toggle.checked = localStorage.getItem(key) === '1';
+    apply(toggle.checked);
+    toggle.addEventListener('change', () => { localStorage.setItem(key, toggle.checked ? '1' : '0'); apply(toggle.checked); });
+  }
   // Person pickers: a search input + hidden id + results dropdown.
   document.querySelectorAll('[data-person-picker]').forEach(input => {
     const box = input.closest('.search-box');

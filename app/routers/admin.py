@@ -430,6 +430,61 @@ def assignments_clear(request: Request, confirm: str = Form("")):
     return _redirect("/admin/assignments", msg="All pre-assignments removed")
 
 
+# -- direct edit (inline cells) --------------------------------------------------
+
+from pydantic import BaseModel as _BM
+
+
+class FieldEdit(_BM):
+    field: str
+    value: str = ""
+
+
+PEOPLE_FIELDS = {"name", "dept", "role", "phone", "external_id", "bolero_id"}
+TYPE_FIELDS = {"name", "short_code", "sort_order", "active"}
+
+
+@router.post("/people/{person_id}/field", dependencies=[Depends(require_admin)])
+def person_field(person_id: int, body: FieldEdit):
+    if body.field not in PEOPLE_FIELDS:
+        raise HTTPException(400, "Field not editable")
+    v = body.value.strip()
+    with get_db() as db:
+        if inventory.person_by_id(db, person_id) is None:
+            raise HTTPException(404, "Unknown person")
+        if body.field == "name" and not v:
+            raise HTTPException(400, "Name cannot be empty")
+        if body.field == "external_id" and v and db.execute("SELECT 1 FROM people WHERE external_id = ? AND id <> ?", (v, person_id)).fetchone():
+            raise HTTPException(409, "That unique ID is already used")
+        inventory.update_person(db, person_id, **{body.field: v})
+    return {"ok": True, "value": v}
+
+
+@router.post("/types/{type_id}/field", dependencies=[Depends(require_admin)])
+def type_field(type_id: int, body: FieldEdit):
+    if body.field not in TYPE_FIELDS:
+        raise HTTPException(400, "Field not editable")
+    v = body.value.strip()
+    with get_db() as db:
+        if db.execute("SELECT 1 FROM device_types WHERE id = ?", (type_id,)).fetchone() is None:
+            raise HTTPException(404, "Unknown type")
+        if body.field == "name":
+            if not v:
+                raise HTTPException(400, "Name cannot be empty")
+            if db.execute("SELECT 1 FROM device_types WHERE name = ? COLLATE NOCASE AND id <> ?", (v, type_id)).fetchone():
+                raise HTTPException(409, "That type already exists")
+            db.execute("UPDATE device_types SET name = ? WHERE id = ?", (v, type_id))
+        elif body.field == "short_code":
+            db.execute("UPDATE device_types SET short_code = ? WHERE id = ?", (v.upper(), type_id)); v = v.upper()
+        elif body.field == "sort_order":
+            if not v.lstrip("-").isdigit():
+                raise HTTPException(400, "Order must be a number")
+            db.execute("UPDATE device_types SET sort_order = ? WHERE id = ?", (int(v), type_id))
+        elif body.field == "active":
+            db.execute("UPDATE device_types SET active = ? WHERE id = ?", (1 if v in ("1", "true", "on") else 0, type_id))
+    return {"ok": True, "value": v}
+
+
 @router.get("/people-search", dependencies=[Depends(require_admin)])
 def admin_people_search(q: str = ""):
     with get_db() as db:

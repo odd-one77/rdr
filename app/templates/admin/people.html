@@ -2,15 +2,15 @@
 {% block title %}People{% endblock %}
 {% block admin %}
 <div class="page-head"><h1>People <span class="muted mono" style="font-size:16px">{{ total }}</span></h1>
-  <div class="row"><a class="btn" href="/admin/import">Import sheet</a><a class="btn primary" href="/admin/people/new">+ New person</a></div></div>
+  <div class="row"><label class="check toggle" title="Edit cells in the table; changes save as you leave each cell"><input type="checkbox" id="directEdit" data-direct-edit="people"> Direct edit</label><a class="btn" href="/admin/import">Import sheet</a><a class="btn primary" href="/admin/people/new">+ New person</a></div></div>
 <form class="filters" method="get">
   <div class="field wide"><label>Search</label><input type="search" name="q" value="{{ q }}" placeholder="Name, dept, role, phone, ID"></div>
   <label class="check"><input type="checkbox" name="holding" value="1" {{ 'checked' if holding }}> Only people with devices signed out</label>
 </form>
-<div class="panel"><div class="table-wrap"><table>
+<div class="panel"><div class="table-wrap"><table class="editable" data-endpoint="/admin/people/{id}/field">
   <tr><th>Name</th><th>Dept</th><th>Role</th><th>Phone</th><th>ID</th><th>Bolero</th><th class="num">Signed out</th><th class="num">Reserved</th><th></th></tr>
   {% for p in people %}
-  <tr><td><a href="/admin/people/{{ p.id }}"><b>{{ p.name }}</b></a></td><td>{{ p.dept }}</td><td class="muted">{{ p.role }}</td><td class="mono">{{ p.phone }}</td><td class="si">{{ p.external_id or '' }}</td><td>{{ p.bolero_id }}</td>
+  <tr data-id="{{ p.id }}"><td data-field="name"><a href="/admin/people/{{ p.id }}"><b>{{ p.name }}</b></a></td><td data-field="dept">{{ p.dept }}</td><td class="muted" data-field="role">{{ p.role }}</td><td class="mono" data-field="phone">{{ p.phone }}</td><td class="si" data-field="external_id">{{ p.external_id or '' }}</td><td data-field="bolero_id">{{ p.bolero_id }}</td>
     <td class="num">{% if p.held %}<span class="badge out">{{ p.held }}</span>{% endif %}</td><td class="num">{{ p.assigned or '' }}</td>
     <td class="right"><a class="btn sm ghost" href="/admin/people/{{ p.id }}/report">Report</a></td></tr>
   {% endfor %}

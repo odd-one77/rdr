@@ -290,3 +290,21 @@ def test_demo_data_shows_bolero_rules(client):
     assert damaged["status"] == "damaged" and damaged["linked_id"] == "70"     # the damaged pack took the spare's old ID
     recent = client.get("/api/recent?limit=60").json()["transactions"]
     assert any("Collected by" in (t["note"] or "") for t in recent)
+
+
+def test_direct_edit_endpoints_and_site_pin(client):
+    client.post("/admin/login", data={"password": "test1234"})
+    who = client.get("/api/people/search?q=Emma").json()["results"][0]
+    r = client.post(f"/admin/people/{who['id']}/field", json={"field": "role", "value": "Runner 2"})
+    assert r.status_code == 200 and client.get(f"/api/people/{who['id']}").json()["person"]["role"] == "Runner 2"
+    assert client.post(f"/admin/people/{who['id']}/field", json={"field": "name", "value": " "}).status_code == 400
+    assert client.post(f"/admin/people/{who['id']}/field", json={"field": "created_at", "value": "x"}).status_code == 400
+    tid = client.get("/api/types").json()["types"][0]["id"]
+    assert client.post(f"/admin/types/{tid}/field", json={"field": "sort_order", "value": "abc"}).status_code == 400
+    assert client.post(f"/admin/types/{tid}/field", json={"field": "short_code", "value": "bb"}).json()["value"] == "BB"
+    # a kiosk tab pinned to site 2 pushes its state to site 2's mirror even though the cookie says site 1
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    client.post("/api/kiosk/state", json={"state": {"person": {"name": "Pinned"}, "basket": []}}, headers={"X-RDR-Site": "2"})
+    assert client.get("/api/mirror/2").json()["state"]["person"]["name"] == "Pinned"
+    assert (client.get("/api/mirror/1").json()["state"].get("person") or {}).get("name") != "Pinned"
+    assert "age" in client.get("/api/mirror/2").json()

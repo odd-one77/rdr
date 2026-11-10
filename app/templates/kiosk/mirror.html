@@ -69,10 +69,11 @@
   function swap(html, mode) {
     const changed = mode !== lastMode;
     lastMode = mode; lastKeys = seenKeys; seenKeys = new Set();
+    main.classList.toggle('is-idle', mode === 'idle');
     if (!changed) { main.innerHTML = html; return; }          // same screen: update in place, no fade
     if (swapping) clearTimeout(swapping);
     main.classList.add('leaving');
-    swapping = setTimeout(() => { main.innerHTML = html; main.classList.remove('leaving'); swapping = null; }, 220);
+    swapping = setTimeout(() => { main.innerHTML = html; main.classList.remove('leaving'); main.classList.toggle('is-idle', mode === 'idle'); swapping = null; }, 220);
   }
   function begin(mode) { fresh = mode !== lastMode; stagger = 0; }
   function render(s){
