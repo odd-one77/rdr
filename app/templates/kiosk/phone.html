@@ -7,7 +7,7 @@
 {% block content %}
 <div class="phone">
   {% if not secure %}
-  <div class="flash err" style="margin:0">Camera scanning needs HTTPS. Open <span class="mono">{{ https_url or 'the https:// address' }}</span>{% if not https_on %} after an admin turns on HTTPS in Settings{% endif %}. Typing SI numbers still works here.</div>
+  <div class="notice">Camera scanning needs HTTPS. Open <span class="mono">{{ https_url or 'the https:// address' }}</span>{% if not https_on %} after an admin turns on HTTPS in Settings{% endif %}. Typing SI numbers still works here.</div>
   {% endif %}
   <div class="panel"><div class="panel-body" style="padding:12px">
     <div class="search-box"><input type="search" id="personSearch" placeholder="Name, phone or ID" autocomplete="off"><div class="results hidden" id="personResults"></div></div>

@@ -79,7 +79,7 @@ def dashboard(request: Request):
         counts = {
             "people": db.execute("SELECT COUNT(*) FROM people").fetchone()[0],
             "devices": db.execute("SELECT COUNT(*) FROM devices").fetchone()[0],
-            "plans": db.execute("SELECT COUNT(DISTINCT person_id) FROM plans").fetchone()[0],
+            "bolero": db.execute("SELECT COUNT(*) FROM people WHERE bolero_id <> ''").fetchone()[0],
             "holders": db.execute("SELECT COUNT(DISTINCT holder_id) FROM devices WHERE holder_id IS NOT NULL").fetchone()[0],
         }
     return render(request, "admin/dashboard.html", overall=overall, per_site=per_site, recent=recent, counts=counts, active="dashboard")
@@ -225,7 +225,7 @@ def people_page(request: Request, q: str = "", holding: str = ""):
         rows = db.execute(
             f"""SELECT * FROM (
                   SELECT p.*, (SELECT COUNT(*) FROM devices d WHERE d.holder_id = p.id) AS held,
-                         (SELECT COALESCE(SUM(qty), 0) FROM plans pl WHERE pl.person_id = p.id) AS planned
+                         (SELECT COUNT(*) FROM assignments a WHERE a.person_id = p.id) AS assigned
                   FROM people p) p {where} ORDER BY p.name LIMIT 500""",
             params,
         ).fetchall()
@@ -255,17 +255,8 @@ def person_page(request: Request, person_id: int):
             raise HTTPException(404)
         holdings = inventory.person_holdings(db, person_id)
         assignments = inventory.person_assignments(db, person_id)
-        plan = inventory.person_plan(db, person_id)
-        types = db.execute("SELECT * FROM device_types WHERE active = 1 ORDER BY sort_order, name").fetchall()
         history = inventory.transactions(db, limit=200, person_id=person_id)
-    return render(request, "admin/person_form.html", person=p, holdings=holdings, assignments=assignments, plan=plan, types=types, history=history, active="people")
-
-
-@router.post("/people/{person_id}/plan", dependencies=[Depends(require_admin)])
-def person_plan_save(request: Request, person_id: int, type_id: int = Form(...), qty: int = Form(1)):
-    with get_db() as db:
-        inventory.set_plan(db, person_id, type_id, qty, tech=current_tech(request))
-    return _redirect(f"/admin/people/{person_id}", msg="Plan updated")
+    return render(request, "admin/person_form.html", person=p, holdings=holdings, assignments=assignments, history=history, active="people")
 
 
 @router.post("/people/{person_id}", dependencies=[Depends(require_admin)])
@@ -439,57 +430,6 @@ def assignments_clear(request: Request, confirm: str = Form("")):
     return _redirect("/admin/assignments", msg="All pre-assignments removed")
 
 
-# -- kit plans (type per person) -----------------------------------------------
-
-@router.get("/plans", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
-def plans_page(request: Request, q: str = ""):
-    with get_db() as db:
-        like = f"%{q}%"
-        rows = db.execute(
-            """SELECT pl.*, p.name AS person_name, p.dept, p.role, p.bolero_id, t.name AS type_name,
-                      (SELECT COUNT(*) FROM devices d WHERE d.holder_id = pl.person_id AND d.type_id = pl.type_id AND d.status = 'out') AS held
-               FROM plans pl JOIN people p ON p.id = pl.person_id JOIN device_types t ON t.id = pl.type_id
-               WHERE p.name LIKE ? OR p.dept LIKE ? OR t.name LIKE ? OR p.bolero_id LIKE ?
-               ORDER BY p.name, t.sort_order""",
-            (like, like, like, like),
-        ).fetchall()
-        types = db.execute("SELECT * FROM device_types WHERE active = 1 ORDER BY sort_order, name").fetchall()
-        n_people = db.execute("SELECT COUNT(DISTINCT person_id) FROM plans").fetchone()[0]
-        n_specific = db.execute("SELECT COUNT(*) FROM assignments").fetchone()[0]
-    grouped: dict[int, dict] = {}
-    for r in rows:
-        g = grouped.setdefault(r["person_id"], {"person_id": r["person_id"], "name": r["person_name"], "dept": r["dept"], "role": r["role"], "bolero_id": r["bolero_id"], "rows": []})
-        g["rows"].append(r)
-    return render(request, "admin/plans.html", groups=list(grouped.values()), types=types, q=q, n_people=n_people, n_specific=n_specific, active="plans")
-
-
-@router.post("/plans", dependencies=[Depends(require_admin)])
-def plan_add(request: Request, person_id: int = Form(...), type_id: int = Form(...), qty: int = Form(1), note: str = Form(""), bolero_id: str = Form("")):
-    with get_db() as db:
-        if inventory.person_by_id(db, person_id) is None:
-            return _redirect("/admin/plans", err="Unknown person")
-        inventory.set_plan(db, person_id, type_id, qty, note, current_tech(request))
-        if bolero_id.strip():
-            db.execute("UPDATE people SET bolero_id = ?, updated_at = ? WHERE id = ?", (bolero_id.strip(), now_iso(), person_id))
-    return _redirect("/admin/plans", msg="Plan saved")
-
-
-@router.post("/plans/{person_id}/{type_id}/delete", dependencies=[Depends(require_admin)])
-def plan_delete(request: Request, person_id: int, type_id: int):
-    with get_db() as db:
-        inventory.set_plan(db, person_id, type_id, 0, tech=current_tech(request))
-    return _redirect("/admin/plans", msg="Removed")
-
-
-@router.post("/plans/clear", dependencies=[Depends(require_admin)])
-def plans_clear(confirm: str = Form("")):
-    if confirm != "CLEAR":
-        return _redirect("/admin/plans", err="Type CLEAR to confirm")
-    with get_db() as db:
-        db.execute("DELETE FROM plans")
-    return _redirect("/admin/plans", msg="All kit plans removed")
-
-
 @router.get("/people-search", dependencies=[Depends(require_admin)])
 def admin_people_search(q: str = ""):
     with get_db() as db:
@@ -607,7 +547,7 @@ async def import_commit(request: Request, token: str):
     with get_db() as db:
         result = importer.commit(db, staged, decisions, current_tech(request))
     parts = [f"{v} {k.replace('_', ' ')}" for k, v in result.items()]
-    target = {"people": "/admin/people", "devices": "/admin/devices", "assignments": "/admin/assignments", "plans": "/admin/plans"}[staged["kind"]]
+    target = {"people": "/admin/people", "devices": "/admin/devices", "assignments": "/admin/assignments"}[staged["kind"]]
     return _redirect(target, msg="Import done: " + ", ".join(parts))
 
 
@@ -626,8 +566,9 @@ def settings_page(request: Request, fetch: int = 0):
     cfg = load_config()
     https = {"on": bool(cfg.get("https")), "port": cfg.get("https_port", 8443), "cert": certs.status(),
              "listening": _port_open(int(cfg.get("https_port", 8443))) if cfg.get("https") else None, "log": _tail(DATA_DIR / "https.log")}
+    devices_out = streams.list_capture_devices() if request.query_params.get("devices") else None
     return render(request, "admin/settings.html", info=info, update_log=updater.last_output(), lan=lan_addresses(), mirror=mirror,
-                  https=https, streams=streams.status(), active="settings")
+                  https=https, streams=streams.status(), capture_devices=devices_out, active="settings")
 
 
 @router.post("/settings/password", dependencies=[Depends(require_admin)])
@@ -666,6 +607,12 @@ def settings_mirror(mirror_title: str = Form(""), mirror_prompt: str = Form(""),
         set_setting(db, "mirror_prompt", mirror_prompt.strip() or None)
         set_setting(db, "mirror_sayings", "\n".join(ln.strip() for ln in mirror_sayings.splitlines() if ln.strip()) or None)
     return _redirect("/admin/settings", msg="Mirror screen saved")
+
+
+@router.get("/settings/capture-devices", dependencies=[Depends(require_admin)])
+def settings_capture_devices(request: Request):
+    """List DirectShow / DeckLink inputs ffmpeg can see, for the PGM feed setting."""
+    return _redirect("/admin/settings?devices=1")
 
 
 @router.post("/settings/github", dependencies=[Depends(require_admin)])

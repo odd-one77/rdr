@@ -22,7 +22,7 @@
   <tr><th>Status</th><th>Label</th><th>SI</th><th>Type</th><th>Site</th><th>Holder</th><th>Pre-assigned</th><th>Last event</th></tr>
   {% for d in devices %}
   <tr><td><span class="badge {{ d.status }}">{{ d.status }}</span></td><td><a href="/admin/devices/{{ d.id }}"><b>{{ d.label or '—' }}</b></a></td><td class="mono">{{ d.si }}</td><td>{{ d.type_name }}</td><td class="muted">{{ d.site_name or 'shared' }}</td>
-    <td>{% if d.holder_id %}<a href="/admin/people/{{ d.holder_id }}">{{ d.holder_name }}</a>{% endif %}</td><td class="muted">{{ d.assigned_person_name or '' }}</td><td class="mono muted">{{ d.last_event_at or '' }}</td></tr>
+    <td>{% if d.holder_id %}<a href="/admin/people/{{ d.holder_id }}">{{ d.holder_name }}</a>{% if d.linked_id %} <span class="bolero">Bolero {{ d.linked_id }}</span>{% endif %}{% endif %}</td><td class="muted">{{ d.assigned_person_name or '' }}</td><td class="mono muted">{{ d.last_event_at or '' }}</td></tr>
   {% endfor %}
   {% if not devices %}<tr><td colspan="8" class="muted">No devices match.</td></tr>{% endif %}
 </table></div></div>

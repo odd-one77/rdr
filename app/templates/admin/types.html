@@ -4,7 +4,7 @@
 <div class="page-head"><h1>Device types</h1></div>
 <div class="panel">
   <div class="table-wrap"><table class="table-form">
-    <tr><th>Name</th><th>Code</th><th>Order</th><th class="num">Devices</th><th>Active</th><th></th></tr>
+    <tr><th>Name</th><th>Code</th><th title="Lower numbers come first in the kiosk summary, lists and pickers">Display order</th><th class="num">Devices</th><th>Active</th><th></th></tr>
     {% for t in types %}
     <tr><form method="post" action="/admin/types/{{ t.id }}" class="contents">
       <td><input name="name" value="{{ t.name }}"></td>
@@ -22,6 +22,6 @@
       <td></td><td></td><td class="right"><button class="btn sm primary">Add</button></td>
     </form></tr>
   </table></div>
-  <div class="panel-body help">Unknown types from an easyjob import are added here automatically.</div>
+  <div class="panel-body help">Display order sets where a type appears in the kiosk summary bar, lists and drop-downs (lower first). Code is a short tag for compact views. Unknown types from an easyjob import are added here automatically with order 500.</div>
 </div>
 {% endblock %}

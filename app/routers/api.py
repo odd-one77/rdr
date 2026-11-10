@@ -43,7 +43,6 @@ def person_detail(person_id: int, tech: dict = Depends(require_tech)):
             "person": dict(p),
             "holdings": [dict(r) for r in inventory.person_holdings(db, person_id)],
             "assignments": [dict(r) for r in inventory.person_assignments(db, person_id)],
-            "plan": inventory.person_plan(db, person_id),
             "recent": [dict(r) for r in inventory.transactions(db, limit=15, person_id=person_id)],
         }
 
@@ -232,6 +231,6 @@ def stream_ping(site_id: int):
     if not site or not site["rtsp_url"]:
         return {"running": False, "error": "No feed address set for this site"}
     kind = streams.classify_feed(site["rtsp_url"])
-    if kind != "rtsp":
+    if kind not in streams.RELAY_KINDS:
         return {"running": False, "kind": kind, "error": "This feed does not need the relay"}
-    return streams.ensure_running(site_id, site["rtsp_url"], transcode)
+    return streams.ensure_running(site_id, site["rtsp_url"], transcode or kind != "rtsp")

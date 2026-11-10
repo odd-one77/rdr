@@ -48,11 +48,12 @@ In this mode *Update & restart* uses `git pull`.
 - **Swap**: on the person's held item press *Swap*, scan the replacement, pick
   a reason. The returned item is marked damaged / lost / OK.
 - **Lost / damaged**: the `!` button on a held item.
-- **Kit plans**: Admin → Kit plans says what each person should get by type
-  (a Bolero, a Pro-D2 headset) and the kiosk ticks them off as devices are
-  scanned. A person's **Bolero ID** is stored on the person, not the pack, so
-  it survives pack swaps and is shown beside their name on kiosk and mirror.
-  Specific serial numbers can still be reserved for the rare case.
+- **Bolero IDs** belong to the person (people sheet or person page). When any
+  Bolero pack is scanned out to them, the pack carries that ID until it comes
+  back, so swaps keep the ID with the person. The ID shows beside their name
+  on the kiosk, the mirror and the reports.
+- **Reserved devices**: a particular serial number held for a particular
+  person, for the rare case. Admin → Reserved devices.
 - **Unknown barcode**: the kiosk offers to create the device on the spot.
 
 A USB barcode scanner works as a keyboard: the scan box always has focus and
@@ -71,11 +72,15 @@ phone view still works for typing SI numbers.
 
 `/mirror?site=<id>` is the customer-facing screen. Idle, it shows the welcome
 line (or random sayings from Settings) and asks for name and role, naming the
-tech on that site's kiosk. During a transaction it greets the person and lists
-their items. Give a site a feed address under Event & sites and the mirror
+tech on that site's kiosk. During a transaction it greets the person and lists what they
+are getting by type ("2 × Pro-D2 Headset", "Bolero Beltpack · Bolero 61"),
+never serial numbers; those stay on the technician's side. Give a site a feed address under Event & sites and the mirror
 shows it next to the transaction: an RTSP address is relayed to HLS by the
-bundled ffmpeg, a YouTube link is embedded (handy for testing the layout), and
-direct `.m3u8` or `.mp4` links play as they are. Tick "Re-encode" in Settings
+bundled ffmpeg, a capture card such as a Blackmagic DeckLink is taken as
+`dshow:<device name>` (Settings → "List capture devices" shows the names;
+`dshow:Blackmagic WDM Capture?video_size=1920x1080&framerate=25` sets a
+format), a YouTube link is embedded (handy for testing the layout), and direct
+`.m3u8` or `.mp4` links play as they are. Tick "Re-encode" in Settings
 if an RTSP source is not H.264.
 
 ## Data safety
@@ -157,9 +162,9 @@ devices, per-event archives, multi-event history.
 |---|---|
 | ![Phone](docs/screenshots/16-phone.png) | ![Trust](docs/screenshots/17-trust.png) |
 
-| Admin dashboard | Reports (end of event) | Kit plans |
+| Admin dashboard | Reports (end of event) | Device types |
 |---|---|---|
-| ![Dashboard](docs/screenshots/06-admin-dashboard.png) | ![Reports](docs/screenshots/13-admin-reports.png) | ![Plans](docs/screenshots/18-admin-plans.png) |
+| ![Dashboard](docs/screenshots/06-admin-dashboard.png) | ![Reports](docs/screenshots/13-admin-reports.png) | ![Types](docs/screenshots/18-admin-types.png) |
 
 | Event & sites | Devices | Person |
 |---|---|---|

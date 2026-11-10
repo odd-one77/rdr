@@ -11,14 +11,14 @@
 <body class="{% block bodyclass %}{% endblock %}">
 {% block body %}
 <header class="topbar">
-  <div class="brand">
+  <a class="brand" href="/" title="Back to sign in / out">
     <img class="riedel" src="/static/img/riedel.png" alt="Riedel">
     {% if event.logo_path %}<span class="divider"></span><img class="event-logo" src="{{ event.logo_path }}" alt="">{% endif %}
     <div>
       <div class="event-name">{{ event.name }}</div>
       {% if event.show_name %}<div class="event-show">{{ event.show_name }}</div>{% endif %}
     </div>
-  </div>
+  </a>
   <div class="spacer"></div>
   {% block topnav %}
   <nav>
@@ -28,9 +28,8 @@
   </nav>
   {% endblock %}
 </header>
-{% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
-{% if err %}<div class="flash err">{{ err }}</div>{% endif %}
 {% block content %}{% endblock %}
+{% if msg or err %}<div class="flashes">{% if msg %}<div class="flash ok" role="status">{{ msg }}</div>{% endif %}{% if err %}<div class="flash err" role="alert">{{ err }}</div>{% endif %}</div>{% endif %}
 {% endblock %}
 {% block scripts %}{% endblock %}
 </body>

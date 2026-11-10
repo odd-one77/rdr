@@ -8,10 +8,10 @@
   <label class="check"><input type="checkbox" name="holding" value="1" {{ 'checked' if holding }}> Only people with devices signed out</label>
 </form>
 <div class="panel"><div class="table-wrap"><table>
-  <tr><th>Name</th><th>Dept</th><th>Role</th><th>Phone</th><th>ID</th><th>Bolero</th><th class="num">Signed out</th><th class="num">Plan</th><th></th></tr>
+  <tr><th>Name</th><th>Dept</th><th>Role</th><th>Phone</th><th>ID</th><th>Bolero</th><th class="num">Signed out</th><th class="num">Reserved</th><th></th></tr>
   {% for p in people %}
   <tr><td><a href="/admin/people/{{ p.id }}"><b>{{ p.name }}</b></a></td><td>{{ p.dept }}</td><td class="muted">{{ p.role }}</td><td class="mono">{{ p.phone }}</td><td class="si">{{ p.external_id or '' }}</td><td>{{ p.bolero_id }}</td>
-    <td class="num">{% if p.held %}<span class="badge out">{{ p.held }}</span>{% endif %}</td><td class="num">{{ p.planned or '' }}</td>
+    <td class="num">{% if p.held %}<span class="badge out">{{ p.held }}</span>{% endif %}</td><td class="num">{{ p.assigned or '' }}</td>
     <td class="right"><a class="btn sm ghost" href="/admin/people/{{ p.id }}/report">Report</a></td></tr>
   {% endfor %}
   {% if not people %}<tr><td colspan="9" class="muted">No people found.</td></tr>{% endif %}

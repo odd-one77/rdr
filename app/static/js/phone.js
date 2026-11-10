@@ -4,7 +4,7 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const TYPES = window.RDR.types;
-  const state = { person: null, holdings: [], assignments: [], plan: [], basket: [] };
+  const state = { person: null, holdings: [], assignments: [], basket: [] };
 
   async function api(path, opts = {}) {
     const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' }, cache: 'no-store' }, opts));
@@ -17,7 +17,7 @@
   function toast(kind, title, detail = '', ms = 3500) {
     const el = document.createElement('div'); el.className = `toast ${kind}`;
     el.innerHTML = `<div class="t">${esc(title)}</div>${detail ? `<div class="d">${esc(detail)}</div>` : ''}`;
-    $('#toasts').appendChild(el); setTimeout(() => el.remove(), ms);
+    $('#toasts').appendChild(el); setTimeout(() => { el.classList.add('hide'); setTimeout(() => el.remove(), 340); }, ms);
   }
   function beep(ok = true) {
     try { const ctx = new (window.AudioContext || window.webkitAudioContext)(); const o = ctx.createOscillator(); const g = ctx.createGain();
@@ -48,15 +48,14 @@
   async function selectPerson(id) {
     resultsEl.classList.add('hidden');
     const d = await api(`/api/people/${id}`);
-    state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.plan = d.plan || []; searchEl.value = '';
+    state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; searchEl.value = '';
     renderPerson(); renderBasket();
   }
-  function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; state.plan = []; renderPerson(); renderBasket(); }
+  function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; renderPerson(); renderBasket(); }
   function renderPerson() {
     const p = state.person, el = $('#personPanel');
     if (!p) { el.innerHTML = ''; return; }
     el.innerHTML = `<div class="row"><div class="grow"><b style="font-size:17px">${esc(p.name)}</b><div class="muted" style="font-size:12px">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div></div>${p.bolero_id ? `<span class="bolero">Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson">&#10005;</button></div>
-      ${state.plan.length ? `<div class="muted" style="font-size:12px;margin-top:8px">Plan: ${state.plan.map(r => `<span class="${r.held >= r.qty ? 'green' : ''}">${esc(r.type_name)} ${r.held}/${r.qty}</span>`).join(' · ')}</div>` : ''}
       ${state.holdings.length ? `<div class="muted" style="font-size:12px;margin-top:6px">Signed out ${state.holdings.length}: ${state.holdings.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-return-all>Return all</button></div>` : ''}
       ${state.assignments.length ? `<div class="muted" style="font-size:12px;margin-top:6px">Reserved: ${state.assignments.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-add-all>Add all</button></div>` : ''}`;
     $('#btnClearPerson').onclick = clearPerson;

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Mirror · {{ mirror_site.name }}{% endblock %}
 {% block body %}
-{% if feed.kind in ("rtsp", "hls") %}<script src="/static/vendor/hls.min.js"></script>{% endif %}
+{% if feed.relay or feed.kind == "hls" %}<script src="/static/vendor/hls.min.js"></script>{% endif %}
 <div class="mirror">
   <div class="mirror-head">
     <div class="row" style="gap:24px">
@@ -16,7 +16,7 @@
     </div>
     {% if feed.kind == 'youtube' and feed.embed %}
     <div class="video"><span class="pgm">PGM</span><iframe src="{{ feed.embed }}" allow="autoplay; encrypted-media" allowfullscreen frameborder="0"></iframe></div>
-    {% elif feed.kind in ('rtsp', 'hls', 'file') %}
+    {% elif feed.relay or feed.kind in ('hls', 'file') %}
     <div class="video" id="video"><span class="pgm">PGM</span><video id="pgm" muted autoplay playsinline loop></video><div class="status" id="pgmStatus">Connecting to programme feed…</div></div>
     {% endif %}
   </div>
@@ -46,29 +46,52 @@
     } catch (e) {}
   }
   let stagger = 0;
-  const item = (i, small) => `<li class="anim${small ? ' small' : ''}" style="animation-delay:${(stagger++) * 60}ms"><span><span class="type">${esc(i.type)}</span><br>${esc(i.label || i.si)}</span><span class="si">${esc(i.si)}</span></li>`;
+  // The customer side shows what, not which: types with counts, and the person's Bolero ID on their pack.
+  function group(items, person, incoming) {
+    const out = [];
+    for (const i of items || []) {
+      const isBolero = /bolero/i.test(i.type) && !/antenna/i.test(i.type);
+      // packs being handed over take this person's ID; packs already out show the ID they were linked with
+      const id = isBolero ? (incoming ? ((person && person.bolero_id) || '') : (i.linked_id || (person && person.bolero_id) || '')) : '';
+      const key = i.type + '|' + id;
+      let g = out.find(x => x.key === key);
+      if (!g) { g = { key, type: i.type, id, n: 0 }; out.push(g); }
+      g.n++;
+    }
+    return out;
+  }
+  const item = (g, small) => `<li class="anim${small ? ' small' : ''}" style="animation-delay:${(stagger++) * 60}ms"><span>${g.n > 1 ? `<span class="count">${g.n} ×</span> ` : ''}${esc(g.type)}${g.id ? ` <span class="bolero">Bolero ${esc(String(g.id).replace(/^bolero\s*/i, ''))}</span>` : ''}</span></li>`;
   const heading = t => `<div class="heading">${t}</div>`;
+  // Swap screens with a short fade/slide instead of a hard cut.
+  let swapping = null;
+  function swap(html) {
+    if (swapping) clearTimeout(swapping);
+    main.classList.add('leaving');
+    swapping = setTimeout(() => { main.innerHTML = html; main.classList.remove('leaving'); swapping = null; }, 220);
+  }
   function render(s){
     stagger = 0;
     if (s.result && s.result.items && s.result.items.length) {
       const kind = s.result.kind;
-      main.innerHTML = `
+      const groups = group(s.result.items, s.result.personInfo);
+      swap(`
         <div class="who anim">${esc(s.result.person || 'Returned devices')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
-        <ul class="items">${s.result.items.map(i => item(i)).join('')}</ul>
-        <div class="result ${kind} anim" style="animation-delay:${s.result.items.length * 60 + 80}ms">${kind === 'out' ? 'Please look after your devices' : 'All checked in'}</div>`;
+        <ul class="items">${groups.map(g => item(g)).join('')}</ul>
+        <div class="result ${kind} anim" style="animation-delay:${groups.length * 60 + 80}ms">${kind === 'out' ? 'Please look after your devices' : 'All checked in'}</div>`);
       return;
     }
     if (!s.person && !(s.basket && s.basket.length)) {
       if (!idleShown) currentSaying = pick();   // a new saying only when coming back from an interaction
-      main.innerHTML = idleHtml(); idleShown = true;
+      swap(idleHtml()); idleShown = true;
       return;
     }
     idleShown = false;
     const p = s.person || {};
-    main.innerHTML = `
+    const held = group(s.holdings, p), now = group(s.basket, p, true);
+    swap(`
       <div class="who anim">${p.name ? 'Hi! ' + esc(p.name) : 'Returning devices'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'Devices are being checked in'))}${p.bolero_id ? ` <span class="bolero">Bolero ${esc(String(p.bolero_id).replace(/^bolero\s*/i, ''))}</span>` : ''}</small></div>
-      ${(s.holdings && s.holdings.length) ? heading('Already with you') + `<ul class="items" style="margin-top:8px">${s.holdings.map(i => item(i, true)).join('')}</ul>` : ''}
-      ${(s.basket && s.basket.length) ? heading('Being processed') + `<ul class="items" style="margin-top:8px">${s.basket.map(i => item(i)).join('')}</ul>` : ''}`;
+      ${held.length ? heading('Already with you') + `<ul class="items">${held.map(g => item(g, true)).join('')}</ul>` : ''}
+      ${now.length ? heading('Being processed') + `<ul class="items">${now.map(g => item(g)).join('')}</ul>` : ''}`);
   }
   setInterval(tick, 1000); tick();
   // Programme feed: ask the server to relay RTSP -> HLS and play it.

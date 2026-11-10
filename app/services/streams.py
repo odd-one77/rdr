@@ -23,13 +23,20 @@ _lock = threading.Lock()
 _procs: dict[int, dict] = {}   # site_id -> {proc, url, started, last_ping, transcode, log}
 
 
+RELAY_KINDS = ("rtsp", "dshow", "decklink")   # kinds that go through ffmpeg -> HLS
+
+
 def classify_feed(url: str) -> str:
-    """rtsp | youtube | hls | file | unknown, from the configured feed address."""
+    """rtsp | dshow | decklink | youtube | hls | file | unknown, from the configured feed address."""
     u = (url or "").strip().lower()
     if not u:
         return "unknown"
     if u.startswith("rtsp://") or u.startswith("rtsps://"):
         return "rtsp"
+    if u.startswith("dshow:"):
+        return "dshow"
+    if u.startswith("decklink:"):
+        return "decklink"
     if "youtube.com/" in u or "youtu.be/" in u:
         return "youtube"
     if ".m3u8" in u:
@@ -72,9 +79,55 @@ def _site_dir(site_id: int) -> Path:
     return d
 
 
+def _input_args(url: str) -> tuple[list[str], bool]:
+    """ffmpeg input arguments for a feed address. Returns (args, must_transcode).
+
+    rtsp://host/path                      network camera / encoder
+    dshow:Blackmagic WDM Capture          DirectShow device (DeckLink, USB capture) on Windows;
+                                          options after '?', e.g. dshow:Name?video_size=1920x1080&framerate=25
+    decklink:DeckLink Mini Recorder       native DeckLink input (needs an ffmpeg build with decklink support)
+    """
+    kind = classify_feed(url)
+    if kind == "dshow":
+        name, _, query = url[len("dshow:"):].partition("?")
+        args = ["-f", "dshow", "-rtbufsize", "256M"]
+        for part in query.split("&"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                args += [f"-{k}", v]
+        return args + ["-i", f"video={name.strip()}"], True
+    if kind == "decklink":
+        name, _, query = url[len("decklink:"):].partition("?")
+        args = ["-f", "decklink"]
+        for part in query.split("&"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                args += [f"-{k}", v]
+        return args + ["-i", name.strip()], True
+    return ["-rtsp_transport", "tcp", "-fflags", "nobuffer", "-flags", "low_delay", "-i", url], False
+
+
+def list_capture_devices() -> str:
+    """Names ffmpeg can see for dshow: / decklink: feeds (Windows), as plain text for the settings page."""
+    ffmpeg = ffmpeg_path()
+    if not ffmpeg:
+        return "ffmpeg not found."
+    out = []
+    for args in (["-list_devices", "true", "-f", "dshow", "-i", "dummy"], ["-sources", "decklink"]):
+        try:
+            p = subprocess.run([ffmpeg, "-hide_banner"] + args, capture_output=True, text=True, timeout=20,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            text = (p.stderr + p.stdout).strip()
+        except (OSError, subprocess.TimeoutExpired) as e:
+            text = str(e)
+        out.append(f"$ ffmpeg {' '.join(args)}\n{text}")
+    return "\n\n".join(out)
+
+
 def _command(ffmpeg: str, url: str, out: Path, transcode: bool) -> list[str]:
-    cmd = [ffmpeg, "-hide_banner", "-loglevel", "warning", "-nostdin",
-           "-rtsp_transport", "tcp", "-fflags", "nobuffer", "-flags", "low_delay", "-i", url, "-an"]
+    inp, must = _input_args(url)
+    transcode = transcode or must
+    cmd = [ffmpeg, "-hide_banner", "-loglevel", "warning", "-nostdin"] + inp + ["-an"]
     if transcode:
         cmd += ["-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-g", "30", "-b:v", "2500k", "-maxrate", "3000k", "-bufsize", "1500k", "-pix_fmt", "yuv420p"]
     else:

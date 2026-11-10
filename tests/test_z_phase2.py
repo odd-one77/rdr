@@ -146,32 +146,42 @@ def test_snapshots_and_restore(client):
     assert len([s for s in snapshots.list_snapshots() if s["when"][:10] == manual["when"][:10]]) >= 1
 
 
-def test_plans_and_bolero_id(client):
+def test_bolero_id_soft_link(client):
     client.post("/start", data={"tech_id": 1, "site_id": 1})
     client.post("/admin/login", data={"password": "test1234"})
-    p = client.post("/api/people", json={"name": "Plan Person", "bolero_id": "961"}).json()["person"]
+    p = client.post("/api/people", json={"name": "Link Person", "bolero_id": "961"}).json()["person"]
     assert p["bolero_id"] == "961"
     assert client.get("/api/people/search?q=961").json()["results"][0]["id"] == p["id"]
     types = {t["name"]: t["id"] for t in client.get("/api/types").json()["types"]}
-    r = client.post("/admin/plans", data={"person_id": p["id"], "type_id": types["Pro-D2 Headset"], "qty": 1, "bolero_id": "62"})
-    assert r.status_code == 303
-    r = client.post("/admin/plans", data={"person_id": p["id"], "type_id": types["Bolero Beltpack"], "qty": 1})
-    d = client.get(f"/api/people/{p['id']}").json()
-    assert d["person"]["bolero_id"] == "62"
-    assert sorted(x["type_name"] for x in d["plan"]) == ["Bolero Beltpack", "Pro-D2 Headset"]
-    assert all(x["held"] == 0 for x in d["plan"])
-    page = client.get("/admin/plans").text
-    assert "Plan Person" in page and "Pro-D2 Headset" in page
-    # kit column on a people import creates plan rows
-    csv = "Name,Phone,Bolero,Kit\nKit Importer,+44 7700 900999,63,\"Bolero, Pro-D2 x2\"\n"
+    pack = client.post("/api/devices/quick", json={"si": "SI-LINK-1", "type_id": types["Bolero Beltpack"], "label": "Bolero 99"}).json()["device"]
+    hs = client.post("/api/devices/quick", json={"si": "SI-LINK-2", "type_id": types["Pro-D2 Headset"]}).json()["device"]
+    r = client.post("/api/signout", json={"person_id": p["id"], "device_ids": [pack["id"], hs["id"]]}).json()["results"]
+    assert {x["outcome"] for x in r} == {"issued"}
+    held = client.get(f"/api/people/{p['id']}").json()["holdings"]
+    by_si = {h["si"]: h for h in held}
+    assert by_si["SI-LINK-1"]["linked_id"] == "961"      # the pack now carries the person's Bolero ID
+    assert by_si["SI-LINK-2"]["linked_id"] == ""         # headsets do not
+    client.post("/api/signin", json={"device_ids": [pack["id"]]})
+    assert client.get("/api/devices/lookup?si=SI-LINK-1").json()["device"]["linked_id"] == ""
+    # people import carries the Bolero ID column
+    csv = "Name,Phone,Bolero\nImported Link,+44 7700 900998,63\n"
     loc = client.post("/admin/import/people", files={"file": ("crew.csv", csv.encode(), "text/csv")}).headers["location"]
     token = loc.rsplit("/", 1)[1]
-    client.post(loc, data={"map_name": "0", "map_phone": "1", "map_bolero_id": "2", "map_kit": "3"})
+    client.post(loc, data={"map_name": "0", "map_phone": "1", "map_bolero_id": "2"})
     client.post(f"/admin/import/s/{token}/commit", data={"action": "commit"})
-    who = client.get("/api/people/search?q=Kit+Importer").json()["results"][0]
-    d = client.get(f"/api/people/{who['id']}").json()
-    assert d["person"]["bolero_id"] == "63"
-    assert {(x["type_name"], x["qty"]) for x in d["plan"]} == {("Bolero Beltpack", 1), ("Pro-D2 Headset", 2)}
+    who = client.get("/api/people/search?q=Imported+Link").json()["results"][0]
+    assert who["bolero_id"] == "63"
+
+
+def test_capture_feed_commands():
+    from pathlib import Path
+    from app.services import streams
+    assert streams.classify_feed("dshow:Blackmagic WDM Capture") == "dshow"
+    assert streams.classify_feed("decklink:DeckLink Mini Recorder") == "decklink"
+    cmd = streams._command("ffmpeg", "dshow:Blackmagic WDM Capture?video_size=1920x1080&framerate=25", Path("/tmp/x"), transcode=False)
+    assert cmd[cmd.index("-f") + 1] == "dshow" and "video=Blackmagic WDM Capture" in cmd and "libx264" in cmd and "-video_size" in cmd
+    cmd = streams._command("ffmpeg", "decklink:DeckLink Mini Recorder", Path("/tmp/x"), transcode=False)
+    assert "decklink" in cmd and "DeckLink Mini Recorder" in cmd
 
 
 def test_phone_routing_by_user_agent(client):

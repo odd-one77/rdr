@@ -11,7 +11,7 @@
     created: 'Created', imported: 'Imported', assigned: 'Pre-assigned', unassigned: 'Unassigned',
   };
 
-  const state = { person: null, holdings: [], assignments: [], plan: [], basket: [], scope: 'site', result: null };
+  const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null };
 
   // ---- api ---------------------------------------------------------------
   async function api(path, opts = {}) {
@@ -29,7 +29,7 @@
     el.className = `toast ${kind}`;
     el.innerHTML = `<div class="t">${esc(title)}</div>${detail ? `<div class="d">${esc(detail)}</div>` : ''}`;
     $('#toasts').appendChild(el);
-    setTimeout(() => el.remove(), ms);
+    setTimeout(() => { el.classList.add('hide'); setTimeout(() => el.remove(), 340); }, ms);
   }
   function modal(title, bodyHtml, buttons) {
     closeModal();
@@ -82,7 +82,7 @@
   function pushState() {
     clearTimeout(pushTimer);
     pushTimer = setTimeout(() => {
-      const brief = d => ({ si: d.si, label: d.label, type: d.type_name || d.type });
+      const brief = d => ({ si: d.si, label: d.label, type: d.type_name || d.type, linked_id: d.linked_id || '' });
       post('/api/kiosk/state', { state: {
         person: state.person ? { name: state.person.name, dept: state.person.dept, role: state.person.role, bolero_id: state.person.bolero_id } : null,
         holdings: state.holdings.map(brief),
@@ -132,12 +132,12 @@
     hideResults();
     try {
       const d = await api(`/api/people/${id}`);
-      state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.plan = d.plan || []; state.result = null;
+      state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.result = null;
       searchEl.value = '';
       renderPerson(); renderBasket(); pushState(); focusScan();
     } catch (e) { toast('err', 'Could not load person', e.message); }
   }
-  function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; state.plan = []; renderPerson(); renderBasket(); pushState(); }
+  function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; renderPerson(); renderBasket(); pushState(); }
 
   function renderPerson() {
     const panel = $('#personPanel');
@@ -147,20 +147,18 @@
       $('#btnAddAssigned').classList.add('hidden');
       return;
     }
-    const hold = state.holdings, pre = state.assignments, plan = state.plan;
+    const hold = state.holdings, pre = state.assignments;
     const line1 = [p.dept, p.role].filter(Boolean).map(esc).join(' · ');
     const line2 = [p.phone ? `<span class="mono">${esc(p.phone)}</span>` : '', p.external_id ? `<span class="si">ID ${esc(p.external_id)}</span>` : ''].filter(Boolean).join(' · ');
     const devRow = (d, actions) => `<li>
           <span class="badge ${d.status}">${esc(d.status)}</span>
-          <span class="txt"><div class="label">${esc(d.label || d.si)}</div><div class="type">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${d.holder_name && (!p || d.holder_id !== p.id) ? ` · <span class="amber">with ${esc(d.holder_name)}</span>` : ''}</div></span>
+          <span class="txt"><div class="label">${esc(d.label || d.si)}${d.linked_id ? ` <span class="bolero">Bolero ${esc(d.linked_id)}</span>` : ''}</div><div class="type">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${d.holder_name && (!p || d.holder_id !== p.id) ? ` · <span class="amber">with ${esc(d.holder_name)}</span>` : ''}</div></span>
           <span class="actions">${actions}</span></li>`;
     panel.innerHTML = `
       <div class="person-card">
         <div class="row"><div class="name grow">${esc(p.name)}</div>${p.bolero_id ? `<span class="bolero" title="This person's Bolero ID">Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
         ${line1 ? `<div class="meta">${line1}</div>` : ''}${line2 ? `<div class="meta">${line2}</div>` : ''}
       </div>
-      ${plan.length ? `<div class="section-title"><h3>Plan</h3></div>
-      <ul class="plan">${plan.map(r => `<li class="${r.held >= r.qty ? 'done' : ''}"><span class="tick">${r.held >= r.qty ? '&#10003;' : ''}</span><span class="txt">${r.qty > 1 ? r.qty + ' × ' : ''}${esc(r.type_name)}${/bolero/i.test(r.type_name) && p.bolero_id ? ` <span class="muted">· ID ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}${r.note ? ` <span class="dim">· ${esc(r.note)}</span>` : ''}</span><span class="mono count">${r.held}/${r.qty}</span></li>`).join('')}</ul>` : ''}
       <div class="section-title"><h3>Signed out <span class="mono">${hold.length}</span></h3>${hold.length ? '<button class="btn sm ghost" data-return-all>Return all</button>' : ''}</div>
       <ul class="dev-list">${hold.map(d => devRow(d, `<button class="btn sm" data-swap="${d.id}" title="Swap for another item">Swap</button><button class="btn sm ghost" data-flag="${d.id}" title="Mark lost or damaged">!</button><button class="btn sm ghost" data-add="${d.id}" title="Add to list">+</button>`)).join('') || '<li class="empty">Nothing signed out.</li>'}</ul>
       ${pre.length ? `<div class="section-title"><h3>Reserved devices <span class="mono">${pre.length}</span></h3><button class="btn sm ghost" data-add-all>Add all</button></div>
@@ -273,12 +271,12 @@
   }
   function setResult(kind, results, personName) {
     const ok = results.filter(r => OK_OUTCOMES.includes(r.outcome));
-    state.result = ok.length ? { kind, person: personName || null, items: ok.map(r => ({ si: r.si, label: r.label, type: r.type })), ts: Date.now() } : null;
+    state.result = ok.length ? { kind, person: personName || null, personInfo: state.person ? { bolero_id: state.person.bolero_id } : null, items: ok.map(r => ({ si: r.si, label: r.label, type: r.type, linked_id: r.linked_id || '' })), ts: Date.now() } : null;
     if (state.result) setTimeout(() => { if (state.result && Date.now() - state.result.ts >= 11500) { state.result = null; pushState(); } }, 12000);
   }
   async function refreshPerson() {
     if (!state.person) return;
-    try { const d = await api(`/api/people/${state.person.id}`); state.holdings = d.holdings; state.assignments = d.assignments; state.plan = d.plan || []; } catch (e) { /* ignore */ }
+    try { const d = await api(`/api/people/${state.person.id}`); state.holdings = d.holdings; state.assignments = d.assignments; } catch (e) { /* ignore */ }
   }
 
   $('#btnSignIn').onclick = async () => {
@@ -310,9 +308,6 @@
         return;
       }
       state.basket = [];
-      await refreshPerson();
-      const missing = state.plan.filter(r => r.held < r.qty).map(r => `${r.qty - r.held} × ${r.type_name}`);
-      if (missing.length) toast('warn', 'Still to issue', missing.join(', '), 6000);
       clearPerson(); focusScan();
     } catch (e) { toast('err', 'Sign out failed', e.message); }
   }
@@ -352,7 +347,7 @@
     try {
       const d = await post('/api/swap', { old_device_id: old.id, new_si: newSi, reason: $('#sw_reason', root).value, note: $('#sw_note', root).value, old_status: $('#sw_status', root).value });
       closeModal(); toast('ok', 'Swapped', `${d.old.label || d.old.si} → ${d.new.label || d.new.si}`);
-      state.result = { kind: 'out', person: state.person.name, items: [{ si: d.new.si, label: d.new.label, type: d.new.type }], ts: Date.now() };
+      state.result = { kind: 'out', person: state.person.name, personInfo: { bolero_id: state.person.bolero_id }, items: [{ si: d.new.si, label: d.new.label, type: d.new.type, linked_id: d.new.linked_id || '' }], ts: Date.now() };
       await selectPerson(state.person.id); refreshSummary(); refreshFeed();
     } catch (e) { toast('err', 'Swap failed', e.message); }
   }

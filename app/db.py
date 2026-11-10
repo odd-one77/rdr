@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS devices (
     site_id       INTEGER REFERENCES sites(id) ON DELETE SET NULL,  -- NULL = shared stock
     status        TEXT NOT NULL DEFAULT 'in',        -- in | out | lost | damaged
     holder_id     INTEGER REFERENCES people(id) ON DELETE SET NULL,
+    linked_id     TEXT NOT NULL DEFAULT '',          -- e.g. the holder's Bolero ID this pack is configured as while out
     notes         TEXT NOT NULL DEFAULT '',
     created_at    TEXT NOT NULL,
     updated_at    TEXT NOT NULL,
@@ -91,16 +92,6 @@ CREATE TABLE IF NOT EXISTS assignments (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS assignments_person ON assignments(person_id);
-
-CREATE TABLE IF NOT EXISTS plans (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
-    type_id   INTEGER NOT NULL REFERENCES device_types(id) ON DELETE CASCADE,
-    qty       INTEGER NOT NULL DEFAULT 1,
-    note      TEXT NOT NULL DEFAULT '',
-    UNIQUE(person_id, type_id)
-);
-CREATE INDEX IF NOT EXISTS plans_person ON plans(person_id);
 
 CREATE TABLE IF NOT EXISTS transactions (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,7 +145,6 @@ ACTION_LABELS = {
     "imported": "Device imported",
     "assigned": "Pre-assigned device",
     "unassigned": "Pre-assignment removed",
-    "plan": "Kit plan changed",
     "note": "Note",
 }
 
@@ -198,7 +188,9 @@ def get_db() -> Iterator[sqlite3.Connection]:
 MIGRATIONS = [
     # (table, column, definition) added after the first release
     ("people", "bolero_id", "TEXT NOT NULL DEFAULT ''"),
+    ("devices", "linked_id", "TEXT NOT NULL DEFAULT ''"),
 ]
+DROPPED_TABLES = ["plans"]   # short-lived 0.3.0 feature, replaced by the person's Bolero ID alone
 
 
 def migrate(db: sqlite3.Connection) -> None:
@@ -206,6 +198,8 @@ def migrate(db: sqlite3.Connection) -> None:
         cols = {r["name"] for r in db.execute(f"PRAGMA table_info({table})")}
         if column not in cols:
             db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    for table in DROPPED_TABLES:
+        db.execute(f"DROP TABLE IF EXISTS {table}")
 
 
 def init_db() -> None:

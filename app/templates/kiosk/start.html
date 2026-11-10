@@ -8,7 +8,6 @@
     <h1>{{ event.name }}</h1>
     {% if event.show_name %}<div class="muted">{{ event.show_name }}</div>{% endif %}
   </div>
-  {% if err %}<div class="flash err" style="margin:0">{{ err }}</div>{% endif %}
   <form class="panel card" method="post" action="/start" id="startForm">
     <div class="panel-head"><h2>Who is on the counter?</h2><a class="btn sm ghost" href="/admin/login">Admin</a></div>
     <div class="panel-body stack" style="gap:22px">

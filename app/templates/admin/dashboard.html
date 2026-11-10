@@ -5,7 +5,7 @@
 <div class="grid cols-4" style="margin-bottom:16px">
   <div class="panel stat"><div class="label">Devices</div><div class="value">{{ counts.devices }}</div><div class="sub"><span class="green">{{ overall.totals.n_in }} in</span> · <span class="red">{{ overall.totals.n_out }} out</span>{% if overall.totals.n_lost + overall.totals.n_damaged %} · <span class="amber">{{ overall.totals.n_lost + overall.totals.n_damaged }} lost/damaged</span>{% endif %}</div></div>
   <div class="panel stat"><div class="label">People</div><div class="value">{{ counts.people }}</div><div class="sub">{{ counts.holders }} with devices signed out</div></div>
-  <div class="panel stat"><div class="label">Kit plans</div><div class="value">{{ counts.plans }}</div><div class="sub"><a href="/admin/plans">people with a plan</a></div></div>
+  <div class="panel stat"><div class="label">Bolero IDs</div><div class="value">{{ counts.bolero }}</div><div class="sub">people with an ID set</div></div>
   <div class="panel stat"><div class="label">Sites</div><div class="value">{{ per_site | length }}</div><div class="sub">{{ sites | map(attribute='name') | join(', ') }}</div></div>
 </div>
 <div class="grid cols-2">

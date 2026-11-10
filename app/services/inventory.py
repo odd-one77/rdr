@@ -73,49 +73,6 @@ def person_assignments(db: sqlite3.Connection, person_id: int) -> list[sqlite3.R
     ).fetchall()
 
 
-def person_plan(db: sqlite3.Connection, person_id: int) -> list[dict]:
-    """Kit plan by device type with how many of each the person currently holds."""
-    rows = db.execute(
-        """
-        SELECT pl.type_id, t.name AS type_name, t.short_code, pl.qty, pl.note,
-               (SELECT COUNT(*) FROM devices d WHERE d.holder_id = pl.person_id AND d.type_id = pl.type_id AND d.status = 'out') AS held
-        FROM plans pl JOIN device_types t ON t.id = pl.type_id
-        WHERE pl.person_id = ? ORDER BY t.sort_order, t.name
-        """,
-        (person_id,),
-    ).fetchall()
-    return [dict(r) for r in rows]
-
-
-def set_plan(db: sqlite3.Connection, person_id: int, type_id: int, qty: int = 1, note: str = "", tech: Optional[dict] = None) -> None:
-    if qty <= 0:
-        db.execute("DELETE FROM plans WHERE person_id = ? AND type_id = ?", (person_id, type_id))
-    else:
-        db.execute(
-            """INSERT INTO plans (person_id, type_id, qty, note) VALUES (?,?,?,?)
-               ON CONFLICT(person_id, type_id) DO UPDATE SET qty = excluded.qty, note = excluded.note""",
-            (person_id, type_id, qty, note),
-        )
-    t = db.execute("SELECT name FROM device_types WHERE id = ?", (type_id,)).fetchone()
-    log(db, "plan", None, person_id, tech, note=f"{qty} x {t['name'] if t else type_id}")
-
-
-def clear_plan(db: sqlite3.Connection, person_id: int) -> None:
-    db.execute("DELETE FROM plans WHERE person_id = ?", (person_id,))
-
-
-def match_type(db: sqlite3.Connection, text: str) -> Optional[sqlite3.Row]:
-    """Find a device type by exact or partial name ('Pro-D2' -> 'Pro-D2 Headset')."""
-    text = (text or "").strip()
-    if not text:
-        return None
-    row = db.execute("SELECT * FROM device_types WHERE name = ? COLLATE NOCASE", (text,)).fetchone()
-    if row:
-        return row
-    rows = db.execute("SELECT * FROM device_types WHERE name LIKE ? COLLATE NOCASE OR ? LIKE '%' || name || '%' ORDER BY LENGTH(name) DESC", (f"%{text}%", text)).fetchall()
-    return rows[0] if rows else None
-
-
 def search_people(db: sqlite3.Connection, q: str, limit: int = 12) -> list[sqlite3.Row]:
     q = (q or "").strip()
     if not q:
@@ -214,9 +171,19 @@ def log(
 
 
 def _set_device(db: sqlite3.Connection, device_id: int, status: str, holder_id: Optional[int]) -> None:
+    """Update status/holder. While a Bolero-type pack is out to someone with a Bolero ID, the pack
+    carries that ID (soft link); it is cleared whenever the pack comes back."""
+    linked = ""
+    if status == "out" and holder_id is not None:
+        row = db.execute(
+            "SELECT p.bolero_id, t.name AS type_name FROM devices d JOIN device_types t ON t.id = d.type_id, people p WHERE d.id = ? AND p.id = ?",
+            (device_id, holder_id),
+        ).fetchone()
+        if row and row["bolero_id"] and "bolero" in row["type_name"].lower() and "antenna" not in row["type_name"].lower():
+            linked = row["bolero_id"]
     db.execute(
-        "UPDATE devices SET status = ?, holder_id = ?, updated_at = ? WHERE id = ?",
-        (status, holder_id, now_iso(), device_id),
+        "UPDATE devices SET status = ?, holder_id = ?, linked_id = ?, updated_at = ? WHERE id = ?",
+        (status, holder_id, linked, now_iso(), device_id),
     )
 
 
@@ -230,6 +197,7 @@ def _brief(d: sqlite3.Row) -> dict:
         "holder_id": d["holder_id"],
         "holder_name": d["holder_name"],
         "site_name": d["site_name"],
+        "linked_id": d["linked_id"],
     }
 
 

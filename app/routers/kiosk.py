@@ -67,7 +67,8 @@ def mirror(request: Request, site: int | None = None):
     from ..services import streams
     site_d = dict(s) if s else {"id": site, "name": "RDR", "rtsp_url": None}
     kind = streams.classify_feed(site_d.get("rtsp_url") or "")
-    feed = {"kind": kind, "url": site_d.get("rtsp_url"), "embed": streams.youtube_embed(site_d["rtsp_url"]) if kind == "youtube" else None}
+    feed = {"kind": kind, "relay": kind in streams.RELAY_KINDS, "url": site_d.get("rtsp_url"),
+            "embed": streams.youtube_embed(site_d["rtsp_url"]) if kind == "youtube" else None}
     return render(request, "kiosk/mirror.html", mirror_site=site_d, feed=feed)
 
 

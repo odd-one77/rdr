@@ -5,7 +5,7 @@ import random
 import sqlite3
 
 from ..db import now_iso
-from .inventory import create_person, log, quick_create_device, set_assignment, set_plan, sign_out
+from .inventory import create_person, log, quick_create_device, set_assignment, sign_out
 
 PEOPLE = [
     ("Alex Morgan", "Broadcast", "Director", "+44 7700 900101"),
@@ -66,13 +66,6 @@ def load_demo(db: sqlite3.Connection) -> int:
     for d in devices:
         by_type.setdefault(d["type_name"], []).append(d)
 
-    # kit plans: the first ten people get a Bolero (their own ID) and a Pro-D2 headset, the rest a radio + earpiece
-    for p in people[:10]:
-        set_plan(db, p["id"], types["Bolero Beltpack"], 1, tech=tech)
-        set_plan(db, p["id"], types["Pro-D2 Headset"], 1, tech=tech)
-    for p in people[10:]:
-        set_plan(db, p["id"], types["Radio"], 1, tech=tech)
-        set_plan(db, p["id"], types["Earpiece"], 1, tech=tech)
     # one specific reservation to show the feature
     set_assignment(db, by_type["Bolero Beltpack"][0]["id"], people[0]["id"], tech, note="Director's own pack")
     for p, bol, hs in zip(people[6:10], by_type["Bolero Beltpack"][6:10], by_type["Pro-D2 Headset"][6:10]):

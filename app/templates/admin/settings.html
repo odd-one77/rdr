@@ -2,7 +2,7 @@
 {% block title %}Settings{% endblock %}
 {% block admin %}
 <div class="page-head"><h1>Settings & update</h1><span class="muted mono">RDR v{{ info.version }}{% if info.commit %} · {{ info.branch }}@{{ info.commit }}{% endif %}</span></div>
-{% if request.query_params.get('restarting') %}<div class="flash ok" style="margin:0 0 16px" id="restartNote">Server is restarting. This page will reload when it is back…</div>
+{% if request.query_params.get('restarting') %}<div class="panel" style="margin:0 0 16px;padding:10px 14px;border-color:rgba(53,196,102,.4)" id="restartNote">Server is restarting. This page will reload when it is back…</div>
 <script>(function(){let n=0;const t=setInterval(async()=>{n++;try{const r=await fetch('/api/summary',{cache:'no-store'});if(r.ok&&n>2){clearInterval(t);location.href='/admin/settings?msg=Back+online';}}catch(e){}},1500);})();</script>{% endif %}
 <div class="grid cols-2" style="align-items:start">
   <div class="stack">
@@ -48,7 +48,8 @@
         <div class="field"><label>Prompt line</label><input name="mirror_prompt" value="{{ mirror.prompt }}" placeholder="Please give your name and role to {tech}"><div class="help" style="margin-top:4px"><span class="mono">{tech}</span> is the tech on that site's kiosk.</div></div>
         <label class="check" style="margin-bottom:12px"><input type="checkbox" name="stream_transcode" value="1" {{ 'checked' if mirror.transcode }}> Re-encode the PGM feed (only if the RTSP source is not H.264)</label>
         <button class="btn">Save mirror screen</button></form>
-        <p class="help" style="margin-top:12px">PGM feed: set each site's RTSP address under Event & sites. ffmpeg: {% if streams.ffmpeg %}<span class="green mono">{{ streams.ffmpeg }}</span>{% else %}<span class="amber">not found. Put ffmpeg.exe in the tools folder next to the app.</span>{% endif %}{% for sid, st in streams.streams.items() %}<br>Site {{ sid }}: {{ 'running' if st.running else 'stopped' }}{% if st.error %} · <span class="red">{{ st.error }}</span>{% endif %}{% endfor %}</p>
+        <p class="help" style="margin-top:12px">PGM feed: set each site's feed under Event & sites (RTSP, <span class="mono">dshow:</span> capture card, YouTube or direct link). <a href="/admin/settings?devices=1">List capture devices</a>. ffmpeg: {% if streams.ffmpeg %}<span class="green mono">{{ streams.ffmpeg }}</span>{% else %}<span class="amber">not found. Put ffmpeg.exe in the tools folder next to the app.</span>{% endif %}{% for sid, st in streams.streams.items() %}<br>Site {{ sid }}: {{ 'running' if st.running else 'stopped' }}{% if st.error %} · <span class="red">{{ st.error }}</span>{% endif %}{% endfor %}</p>
+        {% if capture_devices is not none %}<div class="code" style="margin-top:10px">{{ capture_devices }}</div>{% endif %}
       </div></div>
     <div class="panel"><div class="panel-head"><h2>HTTPS for phones</h2>{% if https.on %}<span class="badge in">on · port {{ https.port }}</span>{% else %}<span class="badge neutral">off</span>{% endif %}</div>
       <div class="panel-body">
