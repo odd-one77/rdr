@@ -64,12 +64,15 @@ def mirror(request: Request, site: int | None = None):
             row = db.execute("SELECT id FROM sites WHERE active = 1 ORDER BY sort_order, name LIMIT 1").fetchone()
             site = row["id"] if row else 1
         s = db.execute("SELECT * FROM sites WHERE id = ?", (site,)).fetchone()
+    from ..db import get_setting
     from ..services import streams
+    with get_db() as db:
+        pgm_size = get_setting(db, "pgm_size") or "half"
     site_d = dict(s) if s else {"id": site, "name": "RDR", "rtsp_url": None}
     kind = streams.classify_feed(site_d.get("rtsp_url") or "")
     feed = {"kind": kind, "relay": kind in streams.RELAY_KINDS, "url": site_d.get("rtsp_url"),
             "embed": streams.youtube_embed(site_d["rtsp_url"]) if kind == "youtube" else None}
-    return render(request, "kiosk/mirror.html", mirror_site=site_d, feed=feed)
+    return render(request, "kiosk/mirror.html", mirror_site=site_d, feed=feed, pgm_size=pgm_size if pgm_size in ("small", "half", "large") else "half")
 
 
 def _https_url() -> str | None:

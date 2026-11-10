@@ -10,14 +10,14 @@
     </div>
     <div class="title"><div class="ev">{{ event.name }}</div><div class="show">{{ event.show_name or mirror_site.name }}</div></div>
   </div>
-  <div class="mirror-body {% if feed.kind == 'unknown' %}no-video{% endif %}">
+  <div class="mirror-body {% if feed.kind == 'unknown' %}no-video{% endif %} pgm-{{ pgm_size }}">
     <div id="main" class="main">
       <div class="idle"><div class="big">Welcome to RDR</div><div class="sub">Please give your name and role to the technician</div></div>
     </div>
     {% if feed.kind == 'youtube' and feed.embed %}
-    <div class="video"><span class="pgm">PGM</span><iframe src="{{ feed.embed }}" allow="autoplay; encrypted-media" allowfullscreen frameborder="0"></iframe></div>
+    <div class="video-wrap"><div class="video" style="--pgm-aspect: 16 / 9"><span class="pgm">PGM</span><iframe src="{{ feed.embed }}" allow="autoplay; encrypted-media" allowfullscreen frameborder="0"></iframe></div></div>
     {% elif feed.relay or feed.kind in ('hls', 'file') %}
-    <div class="video" id="video"><span class="pgm">PGM</span><video id="pgm" muted autoplay playsinline loop></video><div class="status" id="pgmStatus">Connecting to programme feed…</div></div>
+    <div class="video-wrap"><div class="video" id="video"><span class="pgm">PGM</span><video id="pgm" muted autoplay playsinline loop></video><div class="status" id="pgmStatus">Connecting to programme feed…</div></div></div>
     {% endif %}
   </div>
   <div class="mirror-foot"><span>{{ mirror_site.name }}</span><span id="mclock"></span></div>
@@ -97,6 +97,14 @@
   // Programme feed: ask the server to relay RTSP -> HLS and play it.
   const videoEl = document.getElementById('pgm');
   const FEED = {{ feed | tojson }};
+  // Size the PGM box to the picture format of the source (16:9, 4:3, portrait...), no letterboxing.
+  if (videoEl) videoEl.addEventListener('loadedmetadata', () => {
+    if (videoEl.videoWidth && videoEl.videoHeight) {
+      const box = document.getElementById('video');
+      box.style.setProperty('--pgm-aspect', `${videoEl.videoWidth} / ${videoEl.videoHeight}`);
+      box.style.setProperty('--pgm-ratio', (videoEl.videoWidth / videoEl.videoHeight).toFixed(4));
+    }
+  });
   if (videoEl && FEED.kind === 'file') { videoEl.src = FEED.url; document.getElementById('pgmStatus').classList.add('hidden'); videoEl.play().catch(() => {}); }
   else if (videoEl) {
     const statusEl = document.getElementById('pgmStatus');

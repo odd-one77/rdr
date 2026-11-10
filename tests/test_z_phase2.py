@@ -213,3 +213,13 @@ def test_feed_classification():
     assert streams.youtube_embed("https://youtu.be/dQw4w9WgXcQ?t=3").startswith("https://www.youtube.com/embed/dQw4w9WgXcQ?")
     assert streams.classify_feed("https://cdn/x/master.m3u8") == "hls"
     assert streams.classify_feed("http://x/clip.mp4") == "file"
+
+
+def test_pgm_size_setting(client):
+    client.post("/admin/login", data={"password": "test1234"})
+    r = client.post("/admin/settings/mirror", data={"mirror_title": "", "mirror_prompt": "", "mirror_sayings": "", "pgm_size": "large"})
+    assert r.status_code == 303
+    client.post("/admin/sites/1", data={"action": "save", "name": "RDR North", "stock_mode": "shared", "rtsp_url": "https://youtu.be/dQw4w9WgXcQ", "active": "1"})
+    page = client.get("/mirror?site=1").text
+    assert "pgm-large" in page and "youtube.com/embed/dQw4w9WgXcQ" in page
+    client.post("/admin/sites/1", data={"action": "save", "name": "RDR North", "stock_mode": "shared", "rtsp_url": "", "active": "1"})

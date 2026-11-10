@@ -563,6 +563,7 @@ def settings_page(request: Request, fetch: int = 0):
             "sayings": get_setting(db, "mirror_sayings") or "",
         }
         mirror["transcode"] = get_setting(db, "stream_transcode") == "1"
+        mirror["pgm_size"] = get_setting(db, "pgm_size") or "half"
     cfg = load_config()
     https = {"on": bool(cfg.get("https")), "port": cfg.get("https_port", 8443), "cert": certs.status(),
              "listening": _port_open(int(cfg.get("https_port", 8443))) if cfg.get("https") else None, "log": _tail(DATA_DIR / "https.log")}
@@ -600,9 +601,10 @@ def settings_update():
 
 
 @router.post("/settings/mirror", dependencies=[Depends(require_admin)])
-def settings_mirror(mirror_title: str = Form(""), mirror_prompt: str = Form(""), mirror_sayings: str = Form(""), stream_transcode: str = Form("")):
+def settings_mirror(mirror_title: str = Form(""), mirror_prompt: str = Form(""), mirror_sayings: str = Form(""), stream_transcode: str = Form(""), pgm_size: str = Form("half")):
     with get_db() as db:
         set_setting(db, "stream_transcode", "1" if stream_transcode else None)
+        set_setting(db, "pgm_size", pgm_size if pgm_size in ("small", "half", "large") else None)
         set_setting(db, "mirror_title", mirror_title.strip() or None)
         set_setting(db, "mirror_prompt", mirror_prompt.strip() or None)
         set_setting(db, "mirror_sayings", "\n".join(ln.strip() for ln in mirror_sayings.splitlines() if ln.strip()) or None)
