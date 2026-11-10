@@ -98,7 +98,7 @@ label { display: block; font-size: 12px; text-transform: uppercase; letter-spaci
   position: sticky; top: 0; z-index: 20;
 }
 .topbar .brand { display: flex; align-items: center; gap: 16px; }
-.topbar .brand img.riedel { height: 30px; }
+.topbar .brand img.riedel { height: 40px; }
 .topbar .brand .divider { width: 1px; height: 32px; background: var(--border); }
 .topbar .brand img.event-logo { max-height: 40px; max-width: 180px; object-fit: contain; }
 .topbar .event-name { font-weight: 800; text-transform: uppercase; letter-spacing: .04em; font-size: 16px; line-height: 1.1; }
@@ -236,7 +236,7 @@ td.num, th.num { text-align: right; font-family: var(--mono); }
 
 /* -- START screen ---------------------------------------------------------- */
 .start { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; gap: 30px; background: radial-gradient(1200px 600px at 50% -10%, rgba(226,0,26,.18), transparent 60%), var(--bg); }
-.start .logo { height: 48px; }
+.start .logo { height: 72px; }
 .start .card { width: min(760px, 100%); }
 .choice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
 .choice { border: 2px solid var(--border); background: var(--panel-2); border-radius: 10px; padding: 16px; cursor: pointer; text-align: center; font-weight: 800; font-size: 16px; }
@@ -247,7 +247,7 @@ td.num, th.num { text-align: right; font-family: var(--mono); }
 /* -- MIRROR ------------------------------------------------------------------ */
 .mirror { height: 100vh; display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
 .mirror-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 32px; border-bottom: 2px solid var(--red); }
-.mirror-head img.riedel { height: 40px; }
+.mirror-head img.riedel { height: 56px; }
 .mirror-head img.event-logo { max-height: 70px; max-width: 320px; object-fit: contain; }
 .mirror-head .title { text-align: right; }
 .mirror-head .title .ev { font-size: 26px; font-weight: 800; text-transform: uppercase; }

@@ -88,8 +88,8 @@ Layout: `app/main.py` (FastAPI app), `app/db.py` (schema), `app/services/`
 (inventory rules, importer, updater), `app/routers/` (kiosk, api, admin),
 `app/templates/` + `app/static/` (server-rendered UI, no build step).
 
-Branding: `app/static/img/riedel.svg` is a placeholder wordmark. Drop the real
-Riedel logo in its place (same filename) to replace it everywhere.
+Branding: `app/static/img/riedel.png` is the Riedel logo in white for the dark UI;
+`riedel-dark.png` is the black-on-transparent version for print.
 
 ## Roadmap
 
