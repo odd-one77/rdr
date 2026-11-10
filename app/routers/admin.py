@@ -274,6 +274,7 @@ def person_save(person_id: int, action: str = Form("save"), name: str = Form("")
             "UPDATE people SET name = ?, dept = ?, role = ?, phone = ?, external_id = ?, bolero_id = ?, notes = ?, updated_at = ? WHERE id = ?",
             (name.strip(), dept.strip(), role.strip(), phone.strip(), external_id.strip() or None, bolero_id.strip(), notes.strip(), now_iso(), person_id),
         )
+        inventory.link_reserved_packs(db, person_id)
     return _redirect(f"/admin/people/{person_id}", msg="Saved")
 
 

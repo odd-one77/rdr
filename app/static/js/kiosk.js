@@ -214,7 +214,9 @@
           <span class="actions">${actions}</span></li>`;
     const byType = [...hold].sort((a, b) => (a.type_name > b.type_name ? 1 : a.type_name < b.type_name ? -1 : 0));
     const hasPack = hold.some(isPack);
-    const plannedRow = p.bolero_id && !hasPack ? `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">Bolero Beltpack <span class="bolero">ID ${esc(idOf(p.bolero_id))}</span></div><div class="type">no pack linked yet, scan one to this person</div></span></li>` : '';
+    const myId = idOf(p.bolero_id);
+    const reservedPack = pre.find(d => isPack(d) && (!d.linked_id || idOf(d.linked_id) === myId));
+    const plannedRow = p.bolero_id && !hasPack ? `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">Bolero Beltpack <span class="bolero">ID ${esc(myId)}</span></div><div class="type">${reservedPack ? `linked to reserved ${esc(reservedPack.label || reservedPack.si)} · <span class="si">${esc(reservedPack.si)}</span>, scan it to issue` : 'no pack linked yet, scan one to this person'}</div></span></li>` : '';
     panel.innerHTML = `
       <div class="person-card">
         <div class="row"><div class="name grow">${esc(p.name)}</div>${chips(p, hold)}<button class="btn sm ghost" id="btnEditPerson" title="Edit details">Edit</button><button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>

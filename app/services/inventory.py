@@ -179,6 +179,34 @@ def is_bolero_pack(type_name: str) -> bool:
     return "bolero" in t and "antenna" not in t
 
 
+def id_from_label(label: str) -> str:
+    """'Bolero 61' -> '61': a pack labelled with a number is configured as that ID until told otherwise."""
+    import re
+    m = re.search(r"(\d+)", label or "")
+    return m.group(1) if m else ""
+
+
+def default_linked_id(db: sqlite3.Connection, type_id: int, label: str, linked_id: str) -> str:
+    if linked_id:
+        return linked_id.strip()
+    t = db.execute("SELECT name FROM device_types WHERE id = ?", (type_id,)).fetchone()
+    return id_from_label(label) if t and is_bolero_pack(t["name"]) else ""
+
+
+def link_reserved_packs(db: sqlite3.Connection, person_id: int) -> None:
+    """A Bolero pack reserved for a person with an ID is soft-linked to that ID straight away."""
+    person = person_by_id(db, person_id)
+    if not person or not person["bolero_id"]:
+        return
+    rows = db.execute(
+        "SELECT d.id, d.linked_id, t.name AS type_name FROM assignments a JOIN devices d ON d.id = a.device_id JOIN device_types t ON t.id = d.type_id WHERE a.person_id = ?",
+        (person_id,),
+    ).fetchall()
+    for r in rows:
+        if is_bolero_pack(r["type_name"]) and not r["linked_id"]:
+            db.execute("UPDATE devices SET linked_id = ? WHERE id = ?", (person["bolero_id"], r["id"]))
+
+
 def _set_device(db: sqlite3.Connection, device_id: int, status: str, holder_id: Optional[int]) -> None:
     db.execute(
         "UPDATE devices SET status = ?, holder_id = ?, updated_at = ? WHERE id = ?",
@@ -396,7 +424,7 @@ def quick_create_device(
     cur = db.execute(
         """INSERT INTO devices (si, type_id, label, site_id, status, notes, linked_id, created_at, updated_at)
            VALUES (?,?,?,?, 'in', ?, ?, ?, ?)""",
-        (norm_si(si), type_id, (label or "").strip(), site_id, notes, (linked_id or "").strip(), ts, ts),
+        (norm_si(si), type_id, (label or "").strip(), site_id, notes, default_linked_id(db, type_id, label, linked_id or ""), ts, ts),
     )
     log(db, action, cur.lastrowid, None, tech)
     return device_by_id(db, cur.lastrowid)
@@ -433,6 +461,8 @@ def update_person(db: sqlite3.Connection, person_id: int, **fields) -> sqlite3.R
     if sets:
         sets.append("updated_at = ?"); vals.append(now_iso())
         db.execute(f"UPDATE people SET {', '.join(sets)} WHERE id = ?", vals + [person_id])
+    if fields.get("bolero_id"):
+        link_reserved_packs(db, person_id)
     return person_by_id(db, person_id)
 
 
@@ -443,6 +473,7 @@ def set_assignment(db: sqlite3.Connection, device_id: int, person_id: int, tech:
         (device_id, person_id, note, now_iso()),
     )
     log(db, "assigned", device_id, person_id, tech, note=note)
+    link_reserved_packs(db, person_id)
 
 
 def clear_assignment(db: sqlite3.Connection, device_id: int, tech: Optional[dict]) -> None:

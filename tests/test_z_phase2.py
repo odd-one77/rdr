@@ -326,3 +326,27 @@ def test_live_config_version_changes_on_edits(client):
     client.post("/admin/settings/mirror", data={"mirror_title": "", "mirror_prompt": "", "mirror_sayings": "", "pgm_size": "small"})
     assert client.get("/api/mirror/1").json()["config"]["feed"]["size"] == "small"
     client.post("/admin/sites/1", data={"action": "save", "name": "RDR North", "stock_mode": "shared", "rtsp_url": "", "active": "1"})
+
+
+def test_reserved_pack_and_label_link(client):
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    client.post("/admin/login", data={"password": "test1234"})
+    types = {t["name"]: t["id"] for t in client.get("/api/types").json()["types"]}
+    # a pack labelled with a number is configured as that ID from the start
+    client.post("/admin/devices/new", data={"si": "SI-LAB-1", "type_id": types["Bolero Beltpack"], "label": "Bolero 88"})
+    assert client.get("/api/devices/lookup?si=SI-LAB-1").json()["device"]["linked_id"] == "88"
+    # a headset label never gets an ID
+    client.post("/admin/devices/new", data={"si": "SI-LAB-2", "type_id": types["Pro-D2 Headset"], "label": "Pro-D2 12"})
+    assert client.get("/api/devices/lookup?si=SI-LAB-2").json()["device"]["linked_id"] == ""
+    # reserving an unlabelled pack for someone with an ID links it immediately
+    client.post("/admin/devices/new", data={"si": "SI-LAB-3", "type_id": types["Bolero Beltpack"], "label": "Spare pack"})
+    who = client.post("/api/people", json={"name": "Reserve Person", "bolero_id": "77"}).json()["person"]
+    client.post("/admin/assignments", data={"si": "SI-LAB-3", "person_id": who["id"]})
+    assert client.get("/api/devices/lookup?si=SI-LAB-3").json()["device"]["linked_id"] == "77"
+    # setting the ID later also links an already-reserved pack
+    client.post("/admin/devices/new", data={"si": "SI-LAB-4", "type_id": types["Bolero Beltpack"], "label": "Another spare"})
+    late = client.post("/api/people", json={"name": "Late Id"}).json()["person"]
+    client.post("/admin/assignments", data={"si": "SI-LAB-4", "person_id": late["id"]})
+    assert client.get("/api/devices/lookup?si=SI-LAB-4").json()["device"]["linked_id"] == ""
+    client.post(f"/api/people/{late['id']}", json={"bolero_id": "78"})
+    assert client.get("/api/devices/lookup?si=SI-LAB-4").json()["device"]["linked_id"] == "78"

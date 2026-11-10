@@ -435,9 +435,10 @@ def _commit_devices(db, items, decisions, tech) -> dict:
             new_types += 1
         site_id = sites.get(d["site"].lower()) if d["site"] else None
         if it["action"] == "create":
+            from .inventory import default_linked_id
             cur = db.execute(
                 "INSERT INTO devices (si, type_id, label, site_id, status, notes, linked_id, created_at, updated_at) VALUES (?,?,?,?,'in',?,?,?,?)",
-                (d["si"], types[tkey], d["label"], site_id, d["notes"], d.get("bolero_id", ""), ts, ts),
+                (d["si"], types[tkey], d["label"], site_id, d["notes"], default_linked_id(db, types[tkey], d["label"], d.get("bolero_id", "")), ts, ts),
             )
             log(db, "imported", cur.lastrowid, None, tech)
             created += 1
