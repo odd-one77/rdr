@@ -24,7 +24,7 @@
     created: 'Created', imported: 'Imported', assigned: 'Pre-assigned', unassigned: 'Unassigned',
   };
 
-  const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null, collector: null, pickingFor: false };
+  const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null, collector: null, pickingFor: false, lastPerson: null };
 
   // ---- api ---------------------------------------------------------------
   async function api(path, opts = {}) {
@@ -152,13 +152,25 @@
       } else if (!state.pickingFor) {
         state.collector = null;
       }
+      if (state.person && state.person.id !== id) state.lastPerson = { id: state.person.id, name: state.person.name };
       state.pickingFor = false;
       state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.result = null;
       searchEl.value = '';
-      renderPerson(); renderBasket(); pushState(); focusScan();
+      renderPerson(); renderBasket(); pushState(); updatePrev(); focusScan();
     } catch (e) { toast('err', 'Could not load person', e.message); }
   }
-  function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; state.collector = null; state.pickingFor = false; renderPerson(); renderBasket(); pushState(); }
+  function clearPerson() {
+    if (state.person) state.lastPerson = { id: state.person.id, name: state.person.name };
+    state.person = null; state.holdings = []; state.assignments = []; state.collector = null; state.pickingFor = false;
+    renderPerson(); renderBasket(); pushState(); updatePrev();
+  }
+  function updatePrev() {
+    const b = $('#btnPrev'), lp = state.lastPerson;
+    const show = lp && (!state.person || state.person.id !== lp.id);
+    b.classList.toggle('hidden', !show);
+    if (show) b.textContent = `← ${lp.name.split(' ')[0]}`;
+  }
+  $('#btnPrev').onclick = () => { if (state.lastPerson) selectPerson(state.lastPerson.id); };
 
   function renderPerson() {
     const panel = $('#personPanel');
@@ -341,8 +353,8 @@
       announce(d.results);
       setResult('in', d.results, state.person ? state.person.name : null);
       state.basket = [];
-      await refreshPerson();
-      renderPerson(); renderBasket(); pushState(); refreshSummary(); refreshFeed(); focusScan();
+      if (state.person) clearPerson(); else { renderBasket(); pushState(); }
+      refreshSummary(); refreshFeed(); focusScan();
     } catch (e) { toast('err', 'Sign in failed', e.message); }
   };
 
@@ -429,6 +441,7 @@
   document.addEventListener('keydown', e => {
     if (e.key === 'F2') { e.preventDefault(); searchEl.focus(); searchEl.select(); return; }
     if (e.key === 'F4') { e.preventDefault(); focusScan(); return; }
+    if (e.key === 'F3') { e.preventDefault(); if (state.lastPerson) selectPerson(state.lastPerson.id); return; }
     if (e.key === 'Escape') { if (isModalOpen()) closeModal(); return; }
     if (isModalOpen()) return;
     const t = e.target;

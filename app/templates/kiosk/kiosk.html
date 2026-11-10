@@ -19,7 +19,7 @@
 <div class="kiosk-main">
   <div class="col">
     <div class="panel fill">
-      <div class="panel-head"><h2>Who</h2><button class="btn sm ghost" id="btnNewPerson">+ New person</button></div>
+      <div class="panel-head"><h2>Who</h2><div class="row" style="gap:4px"><button class="btn sm ghost hidden" id="btnPrev" title="Bring back the last person (F3)"></button><button class="btn sm ghost" id="btnNewPerson">+ New person</button></div></div>
       <div class="panel-body" style="padding:12px 12px 0;overflow:visible">
         <div class="search-box">
           <input type="search" id="personSearch" placeholder="Name, phone or ID  (F2)" autocomplete="off">
@@ -38,7 +38,7 @@
         <div class="search-box scan-box">
           <input type="text" id="scanInput" placeholder="Scan SI number" autocomplete="off" autofocus>
         </div>
-        <div class="scan-hint">Enter adds the item. F4 returns here. Unknown numbers can be created on the spot.</div>
+        <div class="scan-hint">Enter adds the item. F4 returns here, F2 searches, F3 recalls the previous person. Unknown numbers can be created on the spot.</div>
       </div>
     </div>
     <div class="panel fill">
