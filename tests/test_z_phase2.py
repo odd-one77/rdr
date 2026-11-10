@@ -397,6 +397,7 @@ def _allocation_workbook():
         (7, "00B050", "Pyro Crew 2", "PYRO 2", "Flame Crew", "", "Bolero", ""),
         (8, "00B0F0", "Guest listen", "GUEST 1", "TBA", "", "Bolero", ""),
         (9, "00B0F0", "Guest listen", "GUEST 2", "TBA", "", "Bolero", ""),
+        (10, "FFFF00", "", "CAST 9", "", "", "Bolero", ""),          # no name, no position: the role name carries it
     ]
     for i, (bid, colour, pos, role, name, tl, pack, hs) in enumerate(rows, start=3):
         ws.append([bid, None, pos, role, name, tl, pack, hs])
@@ -425,9 +426,13 @@ def test_allocation_sheet_import(client):
     assert by_name["Choir Manager (TBA)"]["data"]["bolero_id"] == "5"
     assert by_name["Flame Crew"]["data"]["bolero_id"] == "6" and by_name["Flame Crew (Pyro Crew 2)"]["data"]["bolero_id"] == "7"   # one crew, two packs
     assert by_name["Guest listen (TBA)"]["data"]["bolero_id"] == "8" and by_name["Guest listen (TBA #9)"]["data"]["bolero_id"] == "9"
+    assert by_name["CAST 9 (TBA)"]["data"]["bolero_id"] == "10" and by_name["CAST 9 (TBA)"]["data"]["role"] == "CAST 9"
     client.post(f"/admin/import/s/{token}/commit", data={"action": "commit"})
     sam = client.get("/api/people/search?q=Sam+Porter").json()["results"][0]
     assert sam["faceplate"] == "E9516A" and sam["bolero_id"] == "1" and sam["dept"] == "Audio Crew 1" and sam["role"] == "AUDIO 1"
+    client.post("/start", data={"tech_id": 1, "site_id": 1}); client.post("/admin/login", data={"password": "test1234"})
+    assert client.get("/api/people/search?q=SPOT+1").json()["results"][0]["name"] == "Followspot 1 (TBA)"   # searchable by role name
+    assert client.get("/api/people/search?q=CAST+9").json()["results"][0]["bolero_id"] == "10"
     # colour text also works, and the header-row override re-guesses the mapping
     csv = "Name,Bolero,Colour\nText Colour,90,green\n"
     loc = client.post("/admin/import/people", files={"file": ("c.csv", csv.encode(), "text/csv")}).headers["location"]

@@ -108,12 +108,13 @@ def search_people(db: sqlite3.Connection, q: str, limit: int = 12) -> list[sqlit
         WHERE p.name LIKE ? COLLATE NOCASE
            OR p.external_id LIKE ? COLLATE NOCASE
            OR p.dept LIKE ? COLLATE NOCASE
+           OR p.role LIKE ? COLLATE NOCASE
            OR p.bolero_id LIKE ? COLLATE NOCASE
            OR (? IS NOT NULL AND REPLACE(REPLACE(p.phone,' ',''),'-','') LIKE ?)
-        ORDER BY CASE WHEN p.name LIKE ? COLLATE NOCASE THEN 0 WHEN p.bolero_id = ? COLLATE NOCASE THEN 0 ELSE 1 END, p.name
+        ORDER BY CASE WHEN p.name LIKE ? COLLATE NOCASE THEN 0 WHEN p.bolero_id = ? COLLATE NOCASE THEN 0 WHEN p.role LIKE ? COLLATE NOCASE THEN 1 ELSE 2 END, p.name
         LIMIT ?
         """,
-        (like, like, like, like, phone_like, phone_like, f"{q}%", q, limit),
+        (like, like, like, like, like, phone_like, phone_like, f"{q}%", q, f"{q}%", limit),
     ).fetchall()
     return rows
 

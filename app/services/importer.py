@@ -359,9 +359,11 @@ def _person_row(row, mapping, fills=None) -> dict:
     if not name:
         name = " ".join(x for x in (_val(row, mapping, "first_name"), _val(row, mapping, "last_name")) if x)
     dept = _val(row, mapping, "dept")
-    if name.strip().lower() in PLACEHOLDERS or (not name and dept):
-        # no real name yet: keep the position as a placeholder person the tech can rename at the counter
-        name = f"{dept} ({name.strip() or 'TBA'})" if dept else ""
+    role = _val(row, mapping, "role")
+    if name.strip().lower() in PLACEHOLDERS or (not name and (dept or role)):
+        # no real name yet: keep the position (or the role name) as a placeholder the tech renames on site
+        label = dept or role
+        name = f"{label} ({name.strip() or 'TBA'})" if label else ""
     bolero_id = _val(row, mapping, "bolero_id")
     if bolero_id and not any(ch.isdigit() for ch in bolero_id):
         bolero_id = ""                                       # 'xx', '-' and the like are not IDs
@@ -371,7 +373,7 @@ def _person_row(row, mapping, fills=None) -> dict:
         "external_id": _val(row, mapping, "external_id"),
         "name": name,
         "dept": dept,
-        "role": _val(row, mapping, "role"),
+        "role": role,
         "phone": _val(row, mapping, "phone"),
         "bolero_id": bolero_id,
         "faceplate": _faceplate(row, fills, mapping),

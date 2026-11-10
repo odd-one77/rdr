@@ -149,7 +149,9 @@ The comms **allocation sheet** imports as people: Bolero # → Bolero ID,
 Position → department, Role Name → role, Person → name, Pack and Headset →
 an allocation line, and the coloured blank column → **faceplate colour**,
 read from the cell fill. Placeholder names (TBA, blank) are kept as
-"Position (TBA)" so the ID is not lost; a name repeated with another ID
+"Position (TBA)", or "Role name (TBA)" when there is no position, so the ID is
+not lost, and the kiosk search finds them by role or position until the real
+name is typed in with Edit; a name repeated with another ID
 becomes a second entry named by position. The faceplate colour shows as a
 band on the Bolero chip beside the person's name on the kiosk and mirror.
 
