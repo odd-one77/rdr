@@ -100,6 +100,12 @@ def person_update(person_id: int, body: PersonUpdate, tech: dict = Depends(requi
 
 # -- devices ------------------------------------------------------------------
 
+@router.get("/devices/search")
+def device_search(q: str = "", tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        return {"results": [dict(r) for r in inventory.search_devices(db, q)]}
+
+
 @router.get("/devices/lookup")
 def device_lookup(si: str, tech: dict = Depends(require_tech)):
     with get_db() as db:

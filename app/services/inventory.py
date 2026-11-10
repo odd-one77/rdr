@@ -39,6 +39,20 @@ def device_by_si(db: sqlite3.Connection, si: str) -> Optional[sqlite3.Row]:
     return db.execute(DEVICE_SELECT + " WHERE d.si = ? COLLATE NOCASE", (norm_si(si),)).fetchone()
 
 
+def search_devices(db: sqlite3.Connection, q: str, limit: int = 12) -> list[sqlite3.Row]:
+    """Partial SI / label search for the kiosk: 'SI ends with q' ranks first, then contains."""
+    q = norm_si(q)
+    if not q:
+        return []
+    like = f"%{q}%"
+    return db.execute(
+        DEVICE_SELECT + """ WHERE d.si LIKE ? OR d.label LIKE ? COLLATE NOCASE
+        ORDER BY CASE WHEN d.si = ? THEN 0 WHEN d.si LIKE ? THEN 1 WHEN d.si LIKE ? THEN 2 ELSE 3 END, t.sort_order, d.label, d.si
+        LIMIT ?""",
+        (like, like, q, f"%{q}", f"{q}%", limit),
+    ).fetchall()
+
+
 def device_by_id(db: sqlite3.Connection, device_id: int) -> Optional[sqlite3.Row]:
     return db.execute(DEVICE_SELECT + " WHERE d.id = ?", (device_id,)).fetchone()
 

@@ -273,15 +273,52 @@
   // ---- scanning / basket -------------------------------------------------
   const scanEl = $('#scanInput');
   function focusScan() { if (!isModalOpen()) scanEl.focus(); }
+  // Typing part of an SI (the last four digits, say) lists matching devices; a scanner's Enter still goes straight through.
+  const scanResults = $('#scanResults');
+  let scanTimer = null, scanHits = [], scanIdx = -1, scanSeq = 0;
+  function hideScanResults() { scanResults.classList.add('hidden'); scanHits = []; scanIdx = -1; }
+  function paintScanActive() { scanResults.querySelectorAll('.item').forEach((el, i) => el.classList.toggle('active', i === scanIdx)); }
+  scanEl.addEventListener('input', () => {
+    clearTimeout(scanTimer);
+    const q = scanEl.value.trim();
+    if (q.length < 2) { hideScanResults(); return; }
+    scanTimer = setTimeout(() => searchDevices(q), 160);
+  });
+  scanEl.addEventListener('blur', () => setTimeout(hideScanResults, 150));
+  async function searchDevices(q) {
+    const seq = ++scanSeq;
+    try {
+      const d = await api(`/api/devices/search?q=${encodeURIComponent(q)}`);
+      if (seq !== scanSeq || scanEl.value.trim() !== q) return;   // a newer keystroke or a scan happened meanwhile
+      scanHits = d.results; scanIdx = scanHits.length ? 0 : -1;
+      scanResults.innerHTML = scanHits.map(x => `<div class="item" data-id="${x.id}"><div><div class="name">${esc(x.label || x.si)} <span class="muted" style="font-weight:400">· ${esc(x.type_name)}</span>${x.linked_id ? ` <span class="bolero">ID ${esc(x.linked_id)}</span>` : ''}</div><div class="meta"><span class="mono">${esc(x.si)}</span>${x.holder_name ? ` · with ${esc(x.holder_name)}` : ''}${x.site_name ? ` · ${esc(x.site_name)}` : ''}</div></div><span class="badge ${x.status}">${esc(x.status)}</span></div>`).join('')
+        + `<div class="empty"><span>${scanHits.length ? 'Not it?' : 'No device matches “' + esc(q) + '”'}</span><button class="btn sm" data-create>+ Create “${esc(q)}”</button></div>`;
+      scanResults.classList.remove('hidden'); paintScanActive();
+      scanResults.querySelectorAll('.item').forEach(el => el.onmousedown = () => pickScanHit(scanHits.find(x => x.id === +el.dataset.id)));
+      scanResults.querySelector('[data-create]').onmousedown = () => { hideScanResults(); openQuickCreate(q.toUpperCase()); scanEl.value = ''; };
+    } catch (e) { /* ignore */ }
+  }
+  function pickScanHit(x) { if (!x) return; hideScanResults(); scanEl.value = ''; addToBasket(x); focusScan(); }
   scanEl.addEventListener('keydown', async e => {
+    if (!scanResults.classList.contains('hidden')) {
+      if (e.key === 'ArrowDown') { scanIdx = Math.min(scanIdx + 1, scanHits.length - 1); paintScanActive(); e.preventDefault(); return; }
+      if (e.key === 'ArrowUp') { scanIdx = Math.max(scanIdx - 1, 0); paintScanActive(); e.preventDefault(); return; }
+      if (e.key === 'Escape') { hideScanResults(); return; }
+    }
     if (e.key !== 'Enter') return;
     e.preventDefault();
+    clearTimeout(scanTimer); scanSeq++;
     const si = scanEl.value.trim();
     scanEl.value = '';
     if (!si) return;
     try {
       const d = await api(`/api/devices/lookup?si=${encodeURIComponent(si)}`);
-      if (d.found) addToBasket(d.device); else openQuickCreate(d.si);
+      if (d.found) { hideScanResults(); addToBasket(d.device); return; }       // exact SI (a scan) goes straight in
+      if (scanHits.length && scanIdx >= 0) { pickScanHit(scanHits[scanIdx]); return; }   // typed: take the highlighted match
+      const r = await api(`/api/devices/search?q=${encodeURIComponent(si)}`);
+      if (r.results.length === 1) { hideScanResults(); addToBasket(r.results[0]); return; }
+      if (r.results.length > 1) { scanEl.value = si; searchDevices(si); return; }
+      hideScanResults(); openQuickCreate(d.si);
     } catch (err) { toast('err', 'Lookup failed', err.message); }
   });
   function addById(id) {

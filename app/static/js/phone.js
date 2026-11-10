@@ -77,7 +77,15 @@
     lastScan = { si, t: now };
     try {
       const d = await api(`/api/devices/lookup?si=${encodeURIComponent(si)}`);
-      if (d.found) { addToBasket(d.device); } else { beep(false); openQuickCreate(d.si); }
+      if (d.found) { addToBasket(d.device); return; }
+      const r = await api(`/api/devices/search?q=${encodeURIComponent(si)}`);   // typed partial SI
+      if (r.results.length === 1) { addToBasket(r.results[0]); return; }
+      if (r.results.length > 1) {
+        modal('Which device?', `<ul class="conflict-list">${r.results.map(x => `<li><span><b>${esc(x.label || x.si)}</b> <span class="muted">· ${esc(x.type_name)}</span><div class="muted mono" style="font-size:12px">${esc(x.si)}</div></span><button class="btn sm" data-pick="${x.id}">Add</button></li>`).join('')}</ul>`, [{ label: 'Cancel' }]);
+        document.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { closeModal(); addToBasket(r.results.find(x => x.id === +b.dataset.pick)); });
+        return;
+      }
+      beep(false); openQuickCreate(d.si);
     } catch (e) { beep(false); toast('err', 'Lookup failed', e.message); }
   }
   function addToBasket(device, quiet = false) {

@@ -37,9 +37,10 @@
     <div class="panel">
       <div class="panel-body" style="padding:12px 14px">
         <div class="search-box scan-box">
-          <input type="text" id="scanInput" placeholder="Scan SI number" autocomplete="off" autofocus>
+          <input type="text" id="scanInput" placeholder="Scan SI number, or type part of it" autocomplete="off" autofocus>
+          <div class="results hidden" id="scanResults"></div>
         </div>
-        <div class="scan-hint">Enter adds the item. F4 returns here, F2 searches, F3 recalls the previous person. Unknown numbers can be created on the spot.</div>
+        <div class="scan-hint">Scan, or type a few digits (the last four, say) and pick from the list. F4 returns here, F2 searches people, F3 recalls the previous person.</div>
       </div>
     </div>
     <div class="panel fill">

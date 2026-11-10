@@ -350,3 +350,12 @@ def test_reserved_pack_and_label_link(client):
     assert client.get("/api/devices/lookup?si=SI-LAB-4").json()["device"]["linked_id"] == ""
     client.post(f"/api/people/{late['id']}", json={"bolero_id": "78"})
     assert client.get("/api/devices/lookup?si=SI-LAB-4").json()["device"]["linked_id"] == "78"
+
+
+def test_partial_si_search(client):
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    r = client.get("/api/devices/search?q=1001").json()["results"]
+    assert r and r[0]["si"].endswith("1001") and "type_name" in r[0]
+    r = client.get("/api/devices/search?q=bol-10").json()["results"]
+    assert all("BOL-10" in x["si"] for x in r) and len(r) <= 12
+    assert client.get("/api/devices/search?q=").json()["results"] == []

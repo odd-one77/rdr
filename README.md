@@ -87,7 +87,10 @@ In this mode *Update & restart* uses `git pull`.
 - **Unknown barcode**: the kiosk offers to create the device on the spot.
 
 A USB barcode scanner works as a keyboard: the scan box always has focus and
-Enter adds the item. F2 jumps to the name search, F4 back to the scan box.
+Enter adds the item. Typing part of an SI (the last four digits, say) lists
+matching devices with full SI, type, label and status; arrow keys and Enter
+pick one. F2 jumps to the name search, F3 recalls the previous person, F4
+returns to the scan box.
 
 ## Phones
 
