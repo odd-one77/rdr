@@ -24,7 +24,7 @@
     created: 'Created', imported: 'Imported', assigned: 'Pre-assigned', unassigned: 'Unassigned',
   };
 
-  const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null, collector: null, pickingFor: false, lastPerson: null };
+  const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null, collector: null, served: [], pickingFor: false, lastPerson: null };
 
   // ---- api ---------------------------------------------------------------
   async function api(path, opts = {}) {
@@ -133,13 +133,12 @@
     try {
       const d = await api(`/api/people/search?q=${encodeURIComponent(q)}`);
       lastResults = d.results; activeIdx = d.results.length ? 0 : -1;
-      resultsEl.innerHTML = (state.pickingFor ? `<div class="empty" style="border-top:0;border-bottom:1px solid var(--border)"><span>Picking up for someone else. Choose who receives the devices.</span><button class="btn sm ghost" data-cancel-for>Cancel</button></div>` : '') +
+      resultsEl.innerHTML = (state.collector ? `<div class="empty" style="border-top:0;border-bottom:1px solid var(--border)"><span>${esc(state.collector.name)} is collecting. Pick who these devices are for.</span></div>` : '') +
         d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)} ${chips(p, null)}</div><div class="meta">${esc([p.dept, p.role, p.phone].filter(Boolean).join(' · '))}</div></div><div class="counts">${p.held_count ? `${p.held_count} out` : ''}</div></div>`).join('') +
         `<div class="empty"><span>${d.results.length ? 'Not listed?' : 'No match for “' + esc(q) + '”'}</span><button class="btn sm" data-new>+ Create “${esc(q)}”</button></div>`;
       resultsEl.classList.remove('hidden'); paintActive();
       resultsEl.querySelectorAll('.item').forEach(el => el.onmousedown = () => selectPerson(+el.dataset.id));
       resultsEl.querySelector('[data-new]').onmousedown = () => openNewPerson(q);
-      const cf = resultsEl.querySelector('[data-cancel-for]'); if (cf) cf.onmousedown = () => { state.pickingFor = false; hideResults(); searchEl.value = ''; renderPerson(); };
     } catch (e) { toast('err', 'Search failed', e.message); }
   }
 
@@ -161,8 +160,30 @@
   }
   function clearPerson() {
     if (state.person) state.lastPerson = { id: state.person.id, name: state.person.name };
-    state.person = null; state.holdings = []; state.assignments = []; state.collector = null; state.pickingFor = false;
+    state.person = null; state.holdings = []; state.assignments = []; state.pickingFor = !!state.collector;
     renderPerson(); renderBasket(); pushState(); updatePrev();
+    if (state.collector) { searchEl.focus(); }
+  }
+  function startCollecting(p) {
+    state.collector = { id: p.id, name: p.name }; state.served = [];
+    state.person = null; state.holdings = []; state.assignments = []; state.pickingFor = true;
+    renderPerson(); renderBasket(); pushState();
+    searchEl.value = ''; searchEl.placeholder = 'Who is the first person they are collecting for?'; searchEl.focus();
+  }
+  function exitCollecting() {
+    const c = state.collector;
+    state.collector = null; state.served = []; state.pickingFor = false;
+    searchEl.placeholder = 'Name, phone or ID  (F2)';
+    renderPerson(); renderBasket(); pushState();
+    if (c) toast('ok', 'Stopped collecting', `${c.name} is no longer recorded as collector`, 2500);
+    focusScan();
+  }
+  function renderCollectStrip() {
+    const el = $('#collectStrip'), c = state.collector;
+    el.classList.toggle('hidden', !c);
+    if (!c) return;
+    el.innerHTML = `<div class="row"><div class="grow"><div class="t">Collecting for others</div><div class="d"><b>${esc(c.name)}</b> picks up on behalf of ${state.served.length ? state.served.map(x => `<span class="chip-done">${esc(x.name.split(' ')[0])} ${x.count}</span>`).join(' ') : '…'}</div></div><button class="btn sm" id="btnExitCollect">Exit</button></div>`;
+    $('#btnExitCollect').onclick = exitCollecting;
   }
   function updatePrev() {
     const b = $('#btnPrev'), lp = state.lastPerson;
@@ -175,8 +196,11 @@
   function renderPerson() {
     const panel = $('#personPanel');
     const p = state.person;
+    renderCollectStrip();
     if (!p) {
-      panel.innerHTML = `<div class="empty-state">Type a name to start. Items can be signed in without a person.</div>`;
+      panel.innerHTML = state.collector
+        ? `<div class="empty-state">Search the next person <b>${esc(state.collector.name)}</b> is collecting for.<br><span class="dim">Scan their devices, sign out, then search the next one. Press Exit when done.</span></div>`
+        : `<div class="empty-state">Type a name to start. Items can be signed in without a person.</div>`;
       $('#btnAddAssigned').classList.add('hidden');
       return;
     }
@@ -195,17 +219,17 @@
       <div class="person-card">
         <div class="row"><div class="name grow">${esc(p.name)}</div>${chips(p, hold)}<button class="btn sm ghost" id="btnEditPerson" title="Edit details">Edit</button><button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
         ${line1 ? `<div class="meta">${line1}</div>` : ''}${line2 ? `<div class="meta">${line2}</div>` : ''}
-        ${state.collector ? `<div class="meta collector">Collected by <b>${esc(state.collector.name)}</b> <button class="btn sm ghost" id="btnDropCollector" title="Remove">&#10005;</button></div>` : `<div class="meta"><button class="btn sm ghost" id="btnForSomeone">Picking up for someone else…</button></div>`}
+        ${state.collector ? `<div class="meta collector">Devices go to <b>${esc(p.name)}</b>, collected by <b>${esc(state.collector.name)}</b></div>` : ''}
       </div>
       <div class="section-title"><h3>Assigned <span class="mono">${hold.length}</span></h3>${hold.length ? '<button class="btn sm ghost" data-return-all>Return all</button>' : ''}</div>
       <ul class="dev-list">${plannedRow}${byType.map(d => devRow(d, `<button class="btn sm" data-swap="${d.id}" title="Swap for another item">Swap</button><button class="btn sm ghost" data-flag="${d.id}" title="Mark lost or damaged">!</button><button class="btn sm ghost" data-add="${d.id}" title="Add to list">+</button>`)).join('') || (plannedRow ? '' : '<li class="empty">Nothing assigned.</li>')}</ul>
       ${pre.length ? `<div class="section-title"><h3>Reserved devices <span class="mono">${pre.length}</span></h3><button class="btn sm ghost" data-add-all>Add all</button></div>
-      <ul class="dev-list">${pre.map(d => devRow(d, `<button class="btn sm" data-add="${d.id}">+ Add</button>`)).join('')}</ul>` : ''}`;
+      <ul class="dev-list">${pre.map(d => devRow(d, `<button class="btn sm" data-add="${d.id}">+ Add</button>`)).join('')}</ul>` : ''}
+      ${state.collector ? '' : `<div class="collect-cta"><button class="btn block" id="btnForSomeone">${esc(p.name.split(' ')[0])} is picking up for other people…</button><div class="dim">Their own devices stay with them; the next people you pick receive the devices.</div></div>`}`;
     $('#btnClearPerson').onclick = clearPerson;
     $('#btnEditPerson').onclick = () => openEditPerson(p);
-    const fs = $('#btnForSomeone'); if (fs) fs.onclick = () => { state.pickingFor = true; searchEl.placeholder = 'Who are the devices for?'; searchEl.focus(); toast('ok', 'Search the person who receives the devices', `${p.name} will be recorded as collecting them`, 3500); };
-    const dc = $('#btnDropCollector'); if (dc) dc.onclick = () => { state.collector = null; renderPerson(); pushState(); };
-    if (!state.pickingFor) searchEl.placeholder = 'Name, phone or ID  (F2)';
+    const fs = $('#btnForSomeone'); if (fs) fs.onclick = () => startCollecting(p);
+    if (state.collector) searchEl.placeholder = 'Next person they are collecting for';
     panel.querySelectorAll('[data-add]').forEach(b => b.onclick = () => addById(+b.dataset.add));
     const addAll = panel.querySelector('[data-add-all]'); if (addAll) addAll.onclick = () => pre.forEach(d => addToBasket(d, true));
     const retAll = panel.querySelector('[data-return-all]'); if (retAll) retAll.onclick = () => hold.forEach(d => addToBasket(d, true));
@@ -302,7 +326,7 @@
     const n = state.basket.length;
     $('#btnSignIn').disabled = !n;
     $('#btnSignOut').disabled = !n || !p;
-    $('#btnSignOut').innerHTML = p ? `&#8593; Sign OUT to ${esc(p.name.split(' ')[0])}${state.collector ? ` <small>via ${esc(state.collector.name.split(' ')[0])}</small>` : ''}` : '&#8593; Sign OUT';
+    $('#btnSignOut').innerHTML = p ? `&#8593; Sign OUT to ${esc(p.name.split(' ')[0])}${state.collector ? ` <small>collected by ${esc(state.collector.name.split(' ')[0])}</small>` : ''}` : '&#8593; Sign OUT';
     $('#actionHint').textContent = !n ? (p ? `Scan the items for ${p.name}.` : 'Pick a person and scan items to sign out. Scan items alone to sign in.')
       : (p ? `${n} item${n > 1 ? 's' : ''} ready.` : `${n} item${n > 1 ? 's' : ''} ready to sign in. Pick a person to sign out instead.`);
   }
@@ -375,7 +399,14 @@
         return;
       }
       state.basket = [];
-      clearPerson(); focusScan();
+      if (state.collector) {
+        const n = d.results.filter(r => ['issued', 'reassigned', 'reissued'].includes(r.outcome)).length;
+        const hit = state.served.find(x => x.id === person.id);
+        if (hit) hit.count += n; else state.served.push({ id: person.id, name: person.name, count: n });
+        clearPerson();
+        toast('ok', `Done for ${person.name.split(' ')[0]}`, `Search the next person ${state.collector.name.split(' ')[0]} is collecting for, or press Exit.`, 4000);
+        searchEl.focus();
+      } else { clearPerson(); focusScan(); }
     } catch (e) { toast('err', 'Sign out failed', e.message); }
   }
   function openConflicts(conflicts, person) {
@@ -442,7 +473,7 @@
     if (e.key === 'F2') { e.preventDefault(); searchEl.focus(); searchEl.select(); return; }
     if (e.key === 'F4') { e.preventDefault(); focusScan(); return; }
     if (e.key === 'F3') { e.preventDefault(); if (state.lastPerson) selectPerson(state.lastPerson.id); return; }
-    if (e.key === 'Escape') { if (isModalOpen()) closeModal(); return; }
+    if (e.key === 'Escape') { if (isModalOpen()) closeModal(); else if (state.collector && !drawer.classList.contains('open')) exitCollecting(); return; }
     if (isModalOpen()) return;
     const t = e.target;
     const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');

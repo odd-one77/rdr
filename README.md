@@ -62,9 +62,11 @@ In this mode *Update & restart* uses `git pull`.
   and the damaged pack takes the spare's old ID. Beside each name the kiosk
   and mirror show a Bolero chip, a Radio chip, both, or nothing, depending on
   what the person has.
-- **Picking up for someone else**: select the collector, press "Picking up
-  for someone else", pick the recipient. The devices go to the recipient and
-  the history notes who collected them.
+- **Collecting for others**: select the collector and press the button under
+  their assigned devices. A red strip shows who is collecting; search each
+  person they collect for, scan, sign out, and repeat. The strip counts what
+  went to whom; Exit (or Escape) ends it. The history notes the collector on
+  every device.
 - **Edit details** on the kiosk person card fixes a name, role, phone or
   Bolero ID without leaving the counter. In Admin, People and Device types
   have a **Direct edit** toggle that turns the table into editable cells

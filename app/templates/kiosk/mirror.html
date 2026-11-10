@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Mirror · {{ mirror_site.name }}{% endblock %}
 {% block body %}
-<script src="/static/vendor/hls.min.js"></script>
+<script src="/static/vendor/hls.min.js?v={{ version }}"></script>
 <div class="mirror">
   <div class="mirror-head">
     <div class="row" style="gap:24px">

@@ -113,8 +113,13 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def refresh_admin_cookie(request: Request, call_next):
-        """Admin sessions are idle-limited; every admin page visit extends them."""
+        """Admin sessions are idle-limited; every admin page visit extends them.
+        Static files are revalidated on every load so an update never leaves a kiosk on old CSS/JS."""
         response = await call_next(request)
+        if request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        elif not request.url.path.startswith(("/uploads/", "/streams/")):
+            response.headers.setdefault("Cache-Control", "no-store")
         if request.url.path.startswith("/admin") and request.url.path != "/admin/logout" and is_admin(request):
             from .auth import ADMIN_COOKIE, admin_token
             response.set_cookie(ADMIN_COOKIE, admin_token(), max_age=60 * 60 * 12, samesite="lax", httponly=True)

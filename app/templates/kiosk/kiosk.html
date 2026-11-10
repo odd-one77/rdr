@@ -26,6 +26,7 @@
           <div class="results hidden" id="personResults"></div>
         </div>
       </div>
+      <div id="collectStrip" class="collect-strip hidden"></div>
       <div id="personPanel" class="grow" style="min-height:0;overflow:auto">
         <div class="empty-state">Type a name to start. Items can be signed in without a person.</div>
       </div>
@@ -82,5 +83,5 @@
 <script>
   window.RDR = { tech: {{ tech | tojson }}, types: {{ types | tojson }} };
 </script>
-<script src="/static/js/kiosk.js"></script>
+<script src="/static/js/kiosk.js?v={{ version }}"></script>
 {% endblock %}
