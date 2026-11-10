@@ -24,7 +24,7 @@
     </table></div></div>
   {% endif %}
   {% if errors %}
-  <div class="panel" style="margin-bottom:16px"><div class="panel-head"><h2>Rows that will be skipped ({{ errors | length }})</h2></div>
+  <div class="panel" style="margin-bottom:16px"><div class="panel-head"><h2>Rows that will be skipped ({{ errors | length }})</h2><span class="muted" style="font-size:12px">ignored item types, missing SI numbers, rows without a name</span></div>
     <div class="table-wrap" style="max-height:240px"><table>{% for e in errors %}<tr><td class="dim">row {{ e.row + 2 }}</td><td>{{ e.data.values() | select | join(' · ') }}</td><td class="amber">{{ e.message }}</td></tr>{% endfor %}</table></div></div>
   {% endif %}
   <div class="panel" style="margin-bottom:16px"><div class="panel-head"><h2>Sample of what will be imported</h2></div>

@@ -440,3 +440,65 @@ def test_allocation_sheet_import(client):
     client.post(loc, data={"map_name": "0", "map_bolero_id": "1", "map_faceplate": "2"})
     client.post(f"/admin/import/s/{token}/commit", data={"action": "commit"})
     assert client.get("/api/people/search?q=Text+Colour").json()["results"][0]["faceplate"] == "00B050"
+
+
+def test_delivery_note_parsing_and_rules():
+    from app.services import importer
+    text = """Pos. Art.No. Description Qty.
+17 1000118 Riedel PRO-D1 (XLR4F) Intercom Headset, medium weight, single ear, dynamic xxx 3
+Barcode:
+@si99000002, @si99000004, @si99000010
+18 1008477 Riedel BL-ANT-1010-19G-EU Bolero Wireless Antenna, DECT, 1880-1900MHz, G2, Standalone 2
+Barcode:
+@si99000011, @si99000008
+20 1008090 Riedel BL-BPK-1006-19 Bolero Beltpack, DECT 10
+Barcode:
+@si99000014, @si99000013, @si99000006, @si99000015, @si99000016, @si99000017, @si99000012, @si99000005,
+@si99000007, @si99000009
+21 1008128 Riedel BL-BAT-1015-ST Bolero Li-Ion Battery, 17,3Wh, incl. Beltclip 16
+26 1006654 Riedel HC Headset Cord, for Hytera PD6XX 1
+Barcode:
+@si99000003
+16 1000065 Riedel MIC-30 Panel Microphone 6
+Barcode:
+123456, @si99000001, 654321
+26-0000.00 | Page 2 of 3
+"""
+    rows = importer.parse_delivery_text(text)
+    by_type = {}
+    for r in rows:
+        by_type.setdefault(r[1], []).append(r[0])
+    assert len(by_type["Bolero Beltpack"]) == 10 and by_type["Bolero Beltpack"][0] == "SI99000014"
+    assert by_type["Pro-D1 Headset"] == ["SI99000002", "SI99000004", "SI99000010"]
+    assert by_type["Radio Headset Adapter"] == ["SI99000003"]           # the cord is for radio headsets, not a radio
+    assert "" in by_type and len(by_type[""]) == 2 + 1 + 3               # antenna x2, battery (no barcode), mic x3 ignored
+    assert importer.classify_description("Riedel PRO-D2 (XLR4F) Intercom Headset") == "Pro-D2 Headset"
+    assert importer.classify_description("Hytera PD685 Radio") == "Radio"
+    assert importer.classify_description("Riedel RSP-2318 Smartpanel") == ""
+    assert importer.classify_description("Riedel BL-CHG-1005-R Bolero 5-way Charger, for Riedel BL-BPK-1006-19 Bolero") == ""
+    assert importer.classify_description("Riedel Bolero BL-BPK-Cover Black") == ""
+    assert importer.classify_description("Punqtum Q110 Beltpack") == ""
+
+
+def test_delivery_note_pdf_import(client):
+    """Build a small PDF with pypdfium2-free text via pdfplumber's sibling? No writer available; so exercise the
+    staged path with the parsed rows through the normal devices flow instead."""
+    from app.services import importer
+    client.post("/admin/login", data={"password": "test1234"})
+    rows = importer.parse_delivery_text("20 1008090 Riedel BL-BPK-1006-19 Bolero Beltpack, DECT 2\nBarcode:\n@si90000001, @si90000002\n15 1006644 Riedel SPX-AES Expansion Card 3\nBarcode:\n@si90000003, @si90000004, @si90000005\n")
+    raw = [["SI", "Type", "Label", "Art.No.", "Description", "Qty", "Pos"]] + rows
+    csv = "\n".join(",".join(f'"{c}"' for c in r) for r in raw) + "\n"
+    loc = client.post("/admin/import/devices", files={"file": ("delivery.csv", csv.encode(), "text/csv")}).headers["location"]
+    token = loc.rsplit("/", 1)[1]
+    staged = importer.load_staged(token)
+    m = staged["mapping"]
+    assert m["si"] == 0 and m["type"] == 1 and m["notes"] == 4
+    client.post(loc, data={f"map_{k}": ("" if v is None else str(v)) for k, v in m.items()})
+    plan = importer.load_staged(token)["plan"]
+    assert plan["counts"]["create"] == 2 and plan["counts"]["error"] == 3
+    assert all("Ignored" in it["message"] for it in plan["items"] if it["action"] == "error")
+    client.post(f"/admin/import/s/{token}/commit", data={"action": "commit"})
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    d = client.get("/api/devices/lookup?si=@si90000001").json()           # a scanner that sends the '@' still matches
+    assert d["found"] and d["device"]["type_name"] == "Bolero Beltpack"
+    assert not client.get("/api/devices/lookup?si=SI90000003").json()["found"]

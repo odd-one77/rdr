@@ -13,6 +13,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import secrets
 import sqlite3
 from pathlib import Path
@@ -51,7 +52,8 @@ KINDS = {
             ("label", "Label / display name"),
             ("bolero_id", "Configured Bolero ID (packs only)"),
             ("site", "Site (optional)"),
-            ("notes", "Notes"),
+            ("notes", "Notes / description"),
+            ("qty", "Quantity (delivery notes)"),
         ],
         "required": ["si", "type"],
     },
@@ -86,11 +88,12 @@ GUESSES = {
     ],
     "devices": [
         (("si", "serial", "barcode", "asset", "inventory no", "inventar"), "si"),
-        (("type", "category", "group", "article", "item", "description", "product"), "type"),
+        (("type", "category", "group", "article", "item", "product"), "type"),
         (("bolero id", "bolero", "beltpack id", "pack id"), "bolero_id"),
         (("label", "display", "name", "number", "no.", "id"), "label"),
         (("site", "zone", "location", "rdr"), "site"),
-        (("note", "comment", "remark"), "notes"),
+        (("description", "note", "comment", "remark"), "notes"),
+        (("qty", "quantity"), "qty"),
     ],
     "assignments": [
         (("si", "serial", "barcode", "asset"), "si"),
@@ -100,6 +103,87 @@ GUESSES = {
         (("note", "comment", "remark"), "note"),
     ],
 }
+
+
+# easyjob descriptions -> RDR device types. First match wins; anything unmatched is ignored
+# (panels, antennas, power, batteries, chargers, cables, cases...). Keep the specific before the general.
+DESCRIPTION_RULES: list[tuple[tuple[str, ...], str]] = [
+    (("bl-bpk", "bolero beltpack"), "Bolero Beltpack"),
+    (("pro-d1",), "Pro-D1 Headset"),
+    (("pro-d2",), "Pro-D2 Headset"),
+    (("air-d1",), "Air-D1 Headset"),
+    (("max-e1",), "Max-E1 Headset"),
+    (("covert",), "Covert Headset"),
+    (("hc headset cord", "headset cord"), "Radio Headset Adapter"),
+    (("intercom headset", "headset"), "Headset"),
+    (("rsm", "speaker mic", "remote speaker"), "RSM"),
+    (("earpiece", "ear piece"), "Earpiece"),
+    (("hytera", "motorola", "kenwood", "radio handset", "handheld radio", " radio"), "Radio"),
+]
+
+
+# accessories and infrastructure that mention a tracked product in their description but are not one
+IGNORE_WORDS = ("cover", "charger", "bl-chg", "battery", "bl-bat", "antenna", "bl-ant", "power supply", "bl-eps", "power cable",
+                "adapter cable", "expansion card", "smartpanel", "panel microphone", "converter", "switch,", "zarges", "clamp",
+                "magic arm", "speaker station", "beltclip", "mount", "case,", "flight case")
+
+
+def classify_description(desc: str) -> str:
+    d = " " + (desc or "").lower() + " "
+    if any(w in d for w in IGNORE_WORDS):
+        return ""
+    for keys, tname in DESCRIPTION_RULES:
+        if any(k in d for k in keys):
+            return tname
+    return ""
+
+
+_POS_LINE = re.compile(r"^(\d{1,4})\s+(\d{5,9})\s+(.+?)\s+(\d{1,4})\s*$")
+_BARCODE_TOKEN = re.compile(r"@?si\s*(\d{5,})|\b(\d{5,9})\b", re.I)
+
+
+def parse_delivery_text(text: str) -> list[list[str]]:
+    """easyjob delivery note text -> one row per barcode: [SI, Type, Label, Art.No., Description, Qty, Pos].
+    Items with no barcode are returned once with an empty SI so they show as skipped."""
+    rows: list[list[str]] = []
+    pos = art = desc = qty = None
+    codes: list[str] = []
+    reading_codes = False
+
+    def flush():
+        if pos is None:
+            return
+        tname = classify_description(desc)
+        if codes:
+            for c in codes:
+                rows.append([c, tname, "", art, desc, qty, pos])
+        else:
+            rows.append(["", tname, "", art, desc, qty, pos])
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("Pos.") or re.match(r"^\S+\s*\|\s*Page \d+ of \d+$", line):
+            continue
+        m = _POS_LINE.match(line)
+        if m:
+            flush()
+            pos, art, desc, qty = m.group(1), m.group(2), m.group(3).strip(), m.group(4)
+            codes, reading_codes = [], False
+            continue
+        if line.lower().startswith("barcode"):
+            reading_codes = True
+            line = line.split(":", 1)[1] if ":" in line else ""
+            if not line.strip():
+                continue                        # the codes follow on the next line(s)
+        if reading_codes and pos is not None:
+            found = [(a or b) for a, b in _BARCODE_TOKEN.findall(line)]
+            if found:
+                for a, b in _BARCODE_TOKEN.findall(line):
+                    codes.append(("SI" + a) if a else b)
+                continue
+            reading_codes = False   # a line without codes ends the barcode block
+    flush()
+    return rows
 
 
 def _clean(v) -> str:
@@ -159,6 +243,20 @@ def parse_file(filename: str, content: bytes) -> tuple[list[list[str]], list[lis
         for row in ws.iter_rows():
             raw.append([_clean(c.value) for c in row])
             fills.append([_fill_hex(c, theme) for c in row])
+    elif name.endswith(".pdf"):
+        try:
+            import pdfplumber
+        except ImportError as e:  # pragma: no cover
+            raise ValueError("PDF import needs the pdfplumber package. Run Update & restart to install requirements.") from e
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            text = "\n".join((pg.extract_text() or "") for pg in pdf.pages)
+        rows = parse_delivery_text(text)
+        if not rows:
+            raise ValueError("No positions with barcodes found in this PDF. Is it an easyjob delivery note?")
+        raw = [["SI", "Type", "Label", "Art.No.", "Description", "Qty", "Pos"]] + rows
+        sheets = ["Delivery note"]
+        fills = [["" for _ in r] for r in raw]
+        return raw, fills, sheets
     elif name.endswith((".csv", ".txt", ".tsv")):
         text = content.decode("utf-8-sig", errors="replace")
         dialect = csv.excel_tab if name.endswith(".tsv") else csv.excel
@@ -459,8 +557,11 @@ def _analyze_devices(db, rows, mapping) -> list[dict]:
             "notes": _val(row, mapping, "notes"),
         }
         item = {"row": i, "data": data, "action": "create", "existing_id": None, "candidates": [], "message": ""}
-        if not data["si"]:
-            item.update(action="error", message="No SI number")
+        desc = _val(row, mapping, "notes")
+        if not data["type"] and desc and classify_description(desc) == "":
+            item.update(action="error", message=f"Ignored: not a beltpack, headset or radio ({desc[:60]})")
+        elif not data["si"]:
+            item.update(action="error", message="No SI number" + (f" ({data['type']} x {_val(row, mapping, 'qty') or '?'})" if data["type"] else ""))
         elif not data["type"]:
             item.update(action="error", message="No device type")
         elif data["si"] in seen:

@@ -26,7 +26,8 @@ LEFT JOIN people ap ON ap.id = a.person_id
 
 
 def norm_si(si: str) -> str:
-    return (si or "").strip().upper()
+    """Barcodes come as 'SI-BOL-1001', 'si99000014' or '@si99000014' (easyjob labels); store and match without the '@'."""
+    return (si or "").strip().lstrip("@").upper()
 
 
 def norm_phone(phone: str) -> str:

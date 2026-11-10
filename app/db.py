@@ -130,6 +130,7 @@ DEFAULT_DEVICE_TYPES = [
     ("Max-E1 Headset", "HS", 54),
     ("Headset", "HS", 55),
     ("Earpiece", "EAR", 60),
+    ("Radio Headset Adapter", "ADP", 65),
     ("Charger", "CHG", 70),
     ("Battery", "BAT", 80),
     ("Other", "OTH", 999),
