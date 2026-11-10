@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import current_tech, is_admin
 from ..db import get_db, get_setting, now_iso
-from ..services import inventory, streams
+from ..services import inventory, liveconfig, streams
 
 router = APIRouter(prefix="/api")
 
@@ -216,6 +216,13 @@ def recent(request: Request, limit: int = 25, scope: str = "site"):
         return {"transactions": [dict(r) for r in rows]}
 
 
+@router.get("/config")
+def config(tech: dict = Depends(require_tech)):
+    """Everything the kiosk shows from settings, plus a version that changes on any edit."""
+    with get_db() as db:
+        return liveconfig.for_kiosk(db, tech["tech_id"], tech["site_id"])
+
+
 # -- mirror -------------------------------------------------------------------
 
 class KioskState(BaseModel):
@@ -227,6 +234,7 @@ def kiosk_state(body: KioskState, tech: dict = Depends(require_tech)):
     with get_db() as db:
         t = db.execute("SELECT display_name FROM techs WHERE id = ?", (tech["tech_id"],)).fetchone()
         body.state["tech_name"] = t["display_name"] if t else None
+        body.state["tech_id"] = tech["tech_id"]
         db.execute(
             "INSERT INTO kiosk_state (site_id, state_json, updated_at) VALUES (?,?,?) "
             "ON CONFLICT(site_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at",
@@ -250,8 +258,13 @@ def mirror_state(site_id: int):
             except ValueError:
                 age = None
         if age is not None and age > 15 * 60 and (state.get("person") or state.get("basket")):
-            state = {"tech_name": state.get("tech_name")}   # the kiosk went quiet; fall back to the splash
+            state = {"tech_name": state.get("tech_name"), "tech_id": state.get("tech_id")}   # the kiosk went quiet; fall back to the splash
+        if state.get("tech_id"):
+            t = db.execute("SELECT display_name FROM techs WHERE id = ?", (state["tech_id"],)).fetchone()
+            if t:
+                state["tech_name"] = t["display_name"]   # renamed techs show up on the mirror straight away
         return {
+            "config": liveconfig.for_mirror(db, site_id),
             "state": state,
             "updated_at": row["updated_at"] if row else None,
             "age": age,

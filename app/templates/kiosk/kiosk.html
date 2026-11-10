@@ -3,15 +3,15 @@
 {% block bodyclass %}kiosk{% endblock %}
 {% block topnav %}
   <div class="meta">
-    <div class="who">{{ tech.display_name }}</div>
-    <div class="where">{{ tech.site_name }}</div>
+    <div class="who live" id="techName">{{ tech.display_name }}</div>
+    <div class="where live" id="siteName">{{ tech.site_name }}</div>
   </div>
   <div class="clock" id="clock">--:--</div>
   <button class="btn ghost menu-btn" id="btnMenu" title="Menu" aria-label="Menu"><span></span><span></span><span></span></button>
 {% endblock %}
 {% block content %}
 <div class="summary-bar">
-  <span class="scope" id="scopeLabel">{{ tech.site_name }} stock</span>
+  <span class="scope live" id="scopeLabel">{{ tech.site_name }} stock</span>
   <div class="seg"><button class="on" data-scope="site">Site</button><button data-scope="all">All sites</button></div>
   <div class="chips" id="summary"></div>
 </div>
@@ -68,7 +68,7 @@
 
 <div class="drawer-back" id="drawerBack"></div>
 <aside class="drawer" id="drawer" aria-label="Menu">
-  <div class="panel-head"><h2>{{ tech.display_name }} · {{ tech.site_name }}</h2><button class="btn sm ghost" id="btnDrawerClose" aria-label="Close">&#10005;</button></div>
+  <div class="panel-head"><h2 id="drawerTitle">{{ tech.display_name }} · {{ tech.site_name }}</h2><button class="btn sm ghost" id="btnDrawerClose" aria-label="Close">&#10005;</button></div>
   <nav class="drawer-nav">
     <a href="/mirror?site={{ tech.site_id }}" target="_blank"><b>Mirror</b><span>Customer-facing screen for {{ tech.site_name }}</span></a>
     <a href="/admin"><b>Admin</b><span>Event, people, devices, reports, settings</span></a>

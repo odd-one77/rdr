@@ -460,8 +460,31 @@
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && drawer.classList.contains('open')) close(); });
   }
 
+
+  // ---- live configuration: admin edits show up here without a reload ------------
+  let configVersion = null;
+  const setLive = (id, text) => { const el = document.getElementById(id); if (!el) return; if (el.textContent !== text) { el.textContent = text; el.classList.remove('live-swap'); void el.offsetWidth; el.classList.add('live-swap'); } };
+  async function pollConfig() {
+    try {
+      const c = await api('/api/config');
+      if (c.version === configVersion) return;
+      configVersion = c.version;
+      if (!c.tech.active || !c.site.active) { location.href = '/start'; return; }
+      setLive('evName', c.event.name || '');
+      const show = document.getElementById('evShow'); if (show) { show.style.display = c.event.show_name ? '' : 'none'; setLive('evShow', c.event.show_name || ''); }
+      const logo = document.getElementById('eventLogo'), sep = document.getElementById('logoSep');
+      if (logo) { if (c.event.logo_path) { if (logo.getAttribute('src') !== c.event.logo_path) logo.src = c.event.logo_path; logo.style.display = ''; if (sep) sep.style.display = ''; } else { logo.style.display = 'none'; if (sep) sep.style.display = 'none'; } }
+      TECH.display_name = c.tech.display_name || TECH.display_name; TECH.site_name = c.site.name || TECH.site_name;
+      setLive('techName', TECH.display_name); setLive('siteName', TECH.site_name); setLive('drawerTitle', `${TECH.display_name} · ${TECH.site_name}`);
+      const scope = document.getElementById('scopeLabel'); if (scope && state.scope === 'site') setLive('scopeLabel', `${TECH.site_name} stock`);
+      if (typeof TYPES !== 'undefined') { TYPES.length = 0; c.types.forEach(t => TYPES.push(t)); }
+      if (typeof refreshSummary === 'function') refreshSummary();
+    } catch (e) { /* server away; try again */ }
+  }
+  setInterval(pollConfig, 4000); pollConfig();
+
   // ---- boot ----------------------------------------------------------------
   renderBasket(); refreshSummary(); refreshFeed(); pushState();
-  setInterval(refreshFeed, 15000); setInterval(refreshSummary, 30000);
+  setInterval(refreshFeed, 10000); setInterval(refreshSummary, 15000);
   focusScan();
 })();

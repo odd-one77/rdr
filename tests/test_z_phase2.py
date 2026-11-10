@@ -308,3 +308,21 @@ def test_direct_edit_endpoints_and_site_pin(client):
     assert client.get("/api/mirror/2").json()["state"]["person"]["name"] == "Pinned"
     assert (client.get("/api/mirror/1").json()["state"].get("person") or {}).get("name") != "Pinned"
     assert "age" in client.get("/api/mirror/2").json()
+
+
+def test_live_config_version_changes_on_edits(client):
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    client.post("/admin/login", data={"password": "test1234"})
+    c1 = client.get("/api/config").json()
+    assert c1["tech"]["display_name"] and c1["site"]["name"] and c1["types"]
+    client.post("/admin/techs/1", data={"action": "save", "username": "tech", "display_name": "Renamed Tech", "role": "lead", "site_id": "", "active": "1"})
+    c2 = client.get("/api/config").json()
+    assert c2["version"] != c1["version"] and c2["tech"]["display_name"] == "Renamed Tech"
+    m1 = client.get("/api/mirror/1").json()["config"]
+    assert m1["feed"]["kind"] == "unknown"
+    client.post("/admin/sites/1", data={"action": "save", "name": "RDR North", "stock_mode": "shared", "rtsp_url": "https://youtu.be/dQw4w9WgXcQ", "active": "1"})
+    m2 = client.get("/api/mirror/1").json()["config"]
+    assert m2["version"] != m1["version"] and m2["feed"]["kind"] == "youtube" and m2["feed"]["embed"]
+    client.post("/admin/settings/mirror", data={"mirror_title": "", "mirror_prompt": "", "mirror_sayings": "", "pgm_size": "small"})
+    assert client.get("/api/mirror/1").json()["config"]["feed"]["size"] == "small"
+    client.post("/admin/sites/1", data={"action": "save", "name": "RDR North", "stock_mode": "shared", "rtsp_url": "", "active": "1"})

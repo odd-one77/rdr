@@ -24,6 +24,8 @@ html, body { height: 100%; }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .16s; }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes liveSwap { 0% { opacity: 0; transform: translateY(-4px); } 100% { opacity: 1; transform: none; } }
+.live-swap { animation: liveSwap .35s ease-out; }
 .content, .kiosk-main, .start .card, .login-wrap .panel { animation: fadeUp .22s ease-out both; }
 @media (prefers-reduced-motion: reduce) { *, ::before, ::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
@@ -290,7 +292,8 @@ td.actions { white-space: nowrap; text-align: right; }
 .mirror-head .title { text-align: right; }
 .mirror-head .title .ev { font-size: 24px; font-weight: 700; }
 .mirror-head .title .show { color: var(--muted); font-size: 14px; }
-.mirror-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: var(--s6); padding: var(--s6); min-height: 0; align-items: stretch; }
+.mirror-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: var(--s6); padding: var(--s6); min-height: 0; align-items: stretch; transition: grid-template-columns .35s ease; }
+.mirror .video-wrap.hidden { display: none; }
 .mirror-body.no-video.pgm-small, .mirror-body.no-video.pgm-half, .mirror-body.no-video.pgm-large { grid-template-columns: 1fr; }
 .mirror-body.no-video { grid-template-columns: 1fr; }
 .mirror .main { display: flex; flex-direction: column; min-height: 0; transition: opacity .22s ease, transform .22s ease; }

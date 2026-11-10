@@ -71,6 +71,12 @@ In this mode *Update & restart* uses `git pull`.
   which save as you leave them.
 - The kiosk menu (three bars, top right) holds Mirror, Admin, phone setup
   and Switch tech.
+- **Live settings**: kiosks, phones and mirrors pick up admin changes within a
+  few seconds without a refresh: event name and logo, tech and site names,
+  device types, mirror wording, PGM feed and feed size. A feed added to a
+  site appears on its mirror in place; removing it returns the mirror to full
+  width. A tech or site that is deactivated sends its kiosk back to the start
+  screen.
 - Several counters: each kiosk tab is pinned to the site it was opened with,
   so two tabs in one browser feed their own mirrors; a mirror falls back to
   the splash if its kiosk has been silent for 15 minutes.

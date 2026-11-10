@@ -13,10 +13,10 @@
 <header class="topbar">
   <a class="brand" href="/" title="Back to sign in / out">
     <img class="riedel" src="/static/img/riedel.png" alt="Riedel">
-    {% if event.logo_path %}<span class="divider"></span><img class="event-logo" src="{{ event.logo_path }}" alt="">{% endif %}
+    <span class="divider" id="logoSep" {% if not event.logo_path %}style="display:none"{% endif %}></span><img class="event-logo" id="eventLogo" src="{{ event.logo_path or '' }}" alt="" {% if not event.logo_path %}style="display:none"{% endif %}>
     <div>
-      <div class="event-name">{{ event.name }}</div>
-      {% if event.show_name %}<div class="event-show">{{ event.show_name }}</div>{% endif %}
+      <div class="event-name live" id="evName">{{ event.name }}</div>
+      <div class="event-show live" id="evShow" {% if not event.show_name %}style="display:none"{% endif %}>{{ event.show_name }}</div>
     </div>
   </a>
   <div class="spacer"></div>
