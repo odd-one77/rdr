@@ -19,3 +19,4 @@ __pycache__/
 .zshrc
 .claude/
 .DS_Store
+dist/

@@ -6,15 +6,28 @@
 <script>(function(){let n=0;const t=setInterval(async()=>{n++;try{const r=await fetch('/api/summary',{cache:'no-store'});if(r.ok&&n>2){clearInterval(t);location.href='/admin/settings?msg=Back+online';}}catch(e){}},1500);})();</script>{% endif %}
 <div class="grid cols-2" style="align-items:start">
   <div class="stack">
-    <div class="panel"><div class="panel-head"><h2>Update from Git</h2><a class="btn sm ghost" href="/admin/settings?fetch=1">Check for updates</a></div>
+    <div class="panel"><div class="panel-head"><h2>{{ 'Update from Git' if info.mode == 'git' else 'Update from GitHub release' }}</h2><a class="btn sm ghost" href="/admin/settings?fetch=1">Check for updates</a></div>
       <div class="panel-body">
-        {% if info.git %}
+        {% if info.mode == 'git' %}
         <dl class="kv"><dt>Branch</dt><dd>{{ info.branch }}</dd><dt>Commit</dt><dd>{{ info.commit }}</dd><dt>Last commit</dt><dd>{{ info.last_commit }}</dd><dt>Remote</dt><dd style="word-break:break-all">{{ info.remote }}</dd>
           <dt>Status</dt><dd>{% if info.fetch_ok is defined and not info.fetch_ok %}<span class="red">fetch failed: {{ info.fetch_error }}</span>{% elif info.behind is none %}<span class="muted">unknown (no upstream, or not fetched yet)</span>{% elif info.behind == 0 %}<span class="green">up to date</span>{% else %}<span class="amber">{{ info.behind }} commit(s) behind</span>{% endif %}{% if info.dirty %} · <span class="amber">local changes present</span>{% endif %}</dd></dl>
-        <form method="post" action="/admin/settings/update" class="row" style="margin-top:14px"><button class="btn primary" data-confirm="Pull the latest code, reinstall requirements and restart the server?">Update & restart</button>
+        {% else %}
+        <dl class="kv"><dt>Installed</dt><dd>v{{ info.version }}</dd><dt>Source</dt><dd>github.com/{{ info.repo }}{% if info.has_token %} <span class="green">· token saved</span>{% else %} <span class="amber">· no token</span>{% endif %}</dd>
+          <dt>Latest</dt><dd>{% if info.fetch_error %}<span class="red">{{ info.fetch_error }}</span>{% elif info.latest %}{{ info.latest.tag }} <span class="muted">({{ info.latest.published }})</span> {% if info.update_available %}<span class="amber">· update available</span>{% else %}<span class="green">· up to date</span>{% endif %}{% else %}<span class="muted">not checked yet</span>{% endif %}</dd></dl>
+        {% endif %}
+        <form method="post" action="/admin/settings/update" class="row" style="margin-top:14px"><button class="btn primary" data-confirm="Download the latest version, reinstall requirements and restart the server?">Update & restart</button>
           <button class="btn" formaction="/admin/settings/restart" data-confirm="Restart the server now?">Restart only</button></form>
-        <p class="help" style="margin-top:10px">Pulls <span class="mono">git pull --ff-only</span> into this folder, runs <span class="mono">pip install -r requirements.txt</span>, then restarts. Data in <span class="mono">data/</span> is untouched. Kiosks reconnect automatically.</p>
-        {% else %}<p class="amber">{{ info.error }}</p>{% endif %}
+        {% if info.mode == 'git' %}
+        <p class="help" style="margin-top:10px">Runs <span class="mono">git pull --ff-only</span> in this folder, then <span class="mono">pip install -r requirements.txt</span>, then restarts. Data in <span class="mono">data/</span> is untouched. Kiosks reconnect automatically.</p>
+        {% else %}
+        <p class="help" style="margin-top:10px">Downloads the latest release from GitHub and unpacks it over the app folder, then reinstalls requirements and restarts. Data in <span class="mono">data/</span> is untouched.</p>
+        <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Update source (private repo needs a token)</summary>
+          <form method="post" action="/admin/settings/github" style="margin-top:10px">
+            <div class="grid cols-2"><div class="field"><label>GitHub repo</label><input name="github_repo" value="{{ info.repo }}"></div>
+              <div class="field"><label>GitHub token (fine-grained, Contents: read)</label><input type="password" name="github_token" placeholder="{{ 'saved — leave blank to keep' if info.has_token else 'github_pat_…' }}"></div></div>
+            <div class="row"><button class="btn">Save</button>{% if info.has_token %}<label class="check"><input type="checkbox" name="clear_token" value="1"> Remove saved token</label>{% endif %}</div>
+          </form></details>
+        {% endif %}
         {% if update_log %}<div class="code" style="margin-top:12px">{{ update_log | join('\n') }}</div>{% endif %}
       </div></div>
     <div class="panel"><div class="panel-head"><h2>Server</h2></div>

@@ -583,8 +583,20 @@ def settings_server(port: int = Form(8080), open_browser: str = Form("")):
 def settings_update():
     report = updater.update(restart=True)
     if report["ok"]:
-        return _redirect("/admin/settings?restarting=1", msg="Update pulled. Restarting the server now...")
-    return _redirect("/admin/settings", err="Update failed. See the log below.")
+        return _redirect("/admin/settings?restarting=1", msg="Update installed. Restarting the server now...")
+    return _redirect("/admin/settings", err="No update applied. See the log below.")
+
+
+@router.post("/settings/github", dependencies=[Depends(require_admin)])
+def settings_github(github_repo: str = Form(""), github_token: str = Form(""), clear_token: str = Form("")):
+    cfg = load_config()
+    cfg["github_repo"] = github_repo.strip() or updater.DEFAULT_REPO
+    if clear_token:
+        cfg.pop("github_token", None)
+    elif github_token.strip():
+        cfg["github_token"] = github_token.strip()
+    save_config(cfg)
+    return _redirect("/admin/settings?fetch=1", msg="Update source saved")
 
 
 @router.post("/settings/restart", dependencies=[Depends(require_admin)])

@@ -5,17 +5,30 @@ beltpacks, radios, RSMs, headsets, earpieces and anything else with an SI
 barcode. Runs on a Windows 11 box, stores everything locally in SQLite, and is
 used from browsers on the LAN (kiosk PC, customer-facing mirror screen, phones).
 
-## Quick start (Windows)
+## Install (Windows, one click)
 
-1. Install Python 3.11+ from python.org (tick *Add python.exe to PATH*).
-2. Install Git for Windows (needed for the in-app *Update from Git*).
-3. `git clone <repo-url> RDR` and double-click **`RDR.bat`**.
-4. The browser opens on `http://localhost:8080`. Go to **Admin**, set the
+1. Download **RDR-Setup-&lt;version&gt;.exe** from the latest
+   [GitHub release](https://github.com/odd-one77/rdr/releases/latest).
+2. Run it. No admin rights needed: it installs to `%LOCALAPPDATA%\RDR` with its
+   own embedded Python, adds Start Menu and Desktop shortcuts, and starts RDR.
+3. The browser opens on `http://localhost:8080`. Go to **Admin**, set the
    admin password, then **Event** to name the event, upload the logo and add
    sites and technician usernames.
 
-Other machines on the LAN use `http://<pc-ip>:8080`; the address is shown in
-Admin → Settings.
+Windows Firewall asks once whether to allow Python on the network; say yes so
+phones and the mirror screen can reach it. Other machines on the LAN use
+`http://<pc-ip>:8080`; the address is shown in Admin → Settings.
+
+Upgrading: Admin → Settings → **Update & restart** downloads the newest
+release and swaps the app code in place. The repo is private, so paste a
+GitHub fine-grained token (Contents: read) under *Update source* once.
+Re-running a newer setup exe over the top also works and keeps `data/`.
+
+### Developer start (git checkout)
+
+Install Python 3.11+ and Git, `git clone` the repo and double-click
+`RDR.bat`: it creates `.venv`, installs requirements and starts the server.
+In this mode *Update & restart* uses `git pull`.
 
 | URL | What |
 |-----|------|
@@ -47,11 +60,16 @@ Admin → Import sheets accepts `.xlsx` / `.csv` for **people**, **devices**
 layout of the sheet does not matter. Re-importing updates existing records;
 look-alike people are flagged with options (update / create / skip).
 
-## Updating during prototyping
+## Releasing a new version
 
-Admin → Settings → **Update & restart** runs `git pull --ff-only`, reinstalls
-`requirements.txt` and restarts the server. No reinstall needed. The database,
-uploaded logo and import staging live in `data/` and are never touched by git.
+1. Bump `__version__` in `app/__init__.py` and commit.
+2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
+3. GitHub Actions (`.github/workflows/release.yml`) runs the tests, builds
+   `RDR-Setup-0.2.0.exe` and `rdr-app-0.2.0.zip` on a Windows runner and
+   publishes the release. Installed copies pick it up via *Update & restart*.
+
+To build locally on Windows: `powershell -File installer\build_windows.ps1`
+(needs Inno Setup 6 for the exe; without it you still get `dist\RDR`).
 
 ## Reset
 

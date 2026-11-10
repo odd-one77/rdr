@@ -45,6 +45,13 @@ def main() -> int:
     ap.add_argument("--reload", action="store_true", help="developer auto-reload")
     args = ap.parse_args()
 
+    if os.name == "nt":  # name the console window so it is easy to find / close
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetConsoleTitleW("RDR - Radio Distribution Room")
+        except Exception:  # noqa: BLE001
+            pass
+
     first = True
     while True:
         cfg = load_config()  # re-read each loop so a port change applies after restart
