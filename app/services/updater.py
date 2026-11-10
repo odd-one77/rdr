@@ -33,7 +33,7 @@ from ..config import RESTART_EXIT_CODE, ROOT_DIR, load_config
 DEFAULT_REPO = "odd-one77/rdr"
 # Top-level entries the release zip may replace. Anything else (data/, python/,
 # .venv/) is left alone.
-UPDATABLE = {"app", "run.py", "requirements.txt", "README.md", "RDR.bat", "rdr.sh", "VERSION", "installer", "tests"}
+UPDATABLE = {"app", "run.py", "tray.py", "requirements.txt", "README.md", "RDR.bat", "rdr.sh", "VERSION", "installer", "tests"}
 
 _last_output: list[str] = []
 _lock = threading.Lock()

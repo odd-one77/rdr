@@ -44,12 +44,12 @@ $GetPip = Join-Path $Dist "get-pip.py"
 if (-not (Test-Path $GetPip)) { Invoke-WebRequest "https://bootstrap.pypa.io/get-pip.py" -OutFile $GetPip }
 & $EmbPy $GetPip --no-warn-script-location -q
 & $EmbPy -m pip install -q --disable-pip-version-check -r requirements.txt
-& $EmbPy -c "import fastapi, uvicorn, jinja2, openpyxl, multipart, itsdangerous; print('runtime ok')"
+& $EmbPy -c "import fastapi, uvicorn, jinja2, openpyxl, multipart, itsdangerous, cryptography, pystray, PIL; print('runtime ok')"
 
 # 3. Application files
 Copy-Item -Recurse "app" (Join-Path $Out "app")
 Get-ChildItem -Recurse (Join-Path $Out "app") -Include "__pycache__" -Directory | Remove-Item -Recurse -Force
-Copy-Item "run.py", "requirements.txt", "README.md" $Out
+Copy-Item "run.py", "tray.py", "requirements.txt", "README.md" $Out
 Copy-Item (Join-Path $PSScriptRoot "RDR.cmd") $Out
 Set-Content -Path (Join-Path $Out "VERSION") -Value $Version -NoNewline
 
@@ -74,7 +74,7 @@ if ($env:RDR_SKIP_FFMPEG -ne "1") {
 # 4. App-only zip for the in-app updater
 $AppZip = Join-Path $Dist "rdr-app-$Version.zip"
 if (Test-Path $AppZip) { Remove-Item $AppZip }
-Compress-Archive -Path (Join-Path $Out "app"), (Join-Path $Out "run.py"), (Join-Path $Out "requirements.txt"), (Join-Path $Out "README.md"), (Join-Path $Out "VERSION") -DestinationPath $AppZip
+Compress-Archive -Path (Join-Path $Out "app"), (Join-Path $Out "run.py"), (Join-Path $Out "tray.py"), (Join-Path $Out "requirements.txt"), (Join-Path $Out "README.md"), (Join-Path $Out "VERSION") -DestinationPath $AppZip
 
 # 5. Installer
 $Iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1

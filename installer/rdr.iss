@@ -50,6 +50,7 @@ Source: "{#DistDir}\python\*"; DestDir: "{app}\python"; Flags: ignoreversion rec
 ; Application code (replaced on upgrade; data\ is not part of the installer)
 Source: "{#DistDir}\app\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#DistDir}\run.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#DistDir}\tray.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#DistDir}\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#DistDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#DistDir}\VERSION"; DestDir: "{app}"; Flags: ignoreversion
@@ -63,14 +64,26 @@ Source: "{#DistDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recur
 Type: filesandordirs; Name: "{app}\app"
 
 [Icons]
-Name: "{group}\RDR"; Filename: "{app}\RDR.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\rdr.ico"; Comment: "Start the RDR server and open the kiosk"
+; Tray application: no console window, icon in the notification area
+Name: "{group}\RDR"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\tray.py"""; WorkingDir: "{app}"; IconFilename: "{app}\rdr.ico"; Comment: "Start RDR in the background (tray icon)"
+Name: "{group}\RDR (console window)"; Filename: "{app}\RDR.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\rdr.ico"; Comment: "Start RDR with a visible log window"
 Name: "{group}\RDR Admin"; Filename: "http://localhost:8080/admin"; IconFilename: "{app}\rdr.ico"
 Name: "{group}\Uninstall RDR"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\RDR"; Filename: "{app}\RDR.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\rdr.ico"; Tasks: desktopicon
-Name: "{userstartup}\RDR"; Filename: "{app}\RDR.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\rdr.ico"; Tasks: startup
+Name: "{autodesktop}\RDR"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\tray.py"""; WorkingDir: "{app}"; IconFilename: "{app}\rdr.ico"; Tasks: desktopicon
+Name: "{userstartup}\RDR"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\tray.py"""; WorkingDir: "{app}"; IconFilename: "{app}\rdr.ico"; Tasks: startup
 
 [Run]
-Filename: "{app}\RDR.cmd"; WorkingDir: "{app}"; Description: "Start RDR now"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\tray.py"""; WorkingDir: "{app}"; Description: "Start RDR now"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
-Filename: "taskkill"; Parameters: "/F /IM python.exe /FI ""WINDOWTITLE eq RDR*"""; Flags: runhidden; RunOnceId: "StopRDR"
+Filename: "powershell"; Parameters: "-NoProfile -WindowStyle Hidden -Command ""Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*{app}*' }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}"""; Flags: runhidden; RunOnceId: "StopRDR"
+
+[Code]
+// Stop a running RDR (tray or console) before files are replaced.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Exec('powershell', '-NoProfile -WindowStyle Hidden -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like ''*' + ExpandConstant('{app}') + '*'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := '';
+end;

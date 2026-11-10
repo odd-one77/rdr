@@ -10,7 +10,11 @@ used from browsers on the LAN (kiosk PC, customer-facing mirror screen, phones).
 1. Download **RDR-Setup-&lt;version&gt;.exe** from the latest
    [GitHub release](https://github.com/odd-one77/rdr/releases/latest).
 2. Run it. No admin rights needed: it installs to `%LOCALAPPDATA%\RDR` with its
-   own embedded Python, adds Start Menu and Desktop shortcuts, and starts RDR.
+   own embedded Python, adds Start Menu and Desktop shortcuts, and starts RDR
+   as a tray application: no window, just an icon in the hidden icons area.
+   Left-click the icon for Settings; right-click for kiosk, mirror, restart
+   and quit. "RDR (console window)" in the Start Menu runs it with a visible
+   log instead.
 3. The browser opens on `http://localhost:8080`. Go to **Admin**, set the
    admin password, then **Event** to name the event, upload the logo and add
    sites and technician usernames.
@@ -132,7 +136,8 @@ python run.py --reload --no-browser
 python -m pytest            # tests in tests/
 ```
 
-Layout: `app/main.py` (FastAPI app), `app/db.py` (schema), `app/services/`
+Layout: `app/main.py` (FastAPI app), `app/launcher.py` (process supervisor
+used by `run.py` and `tray.py`), `app/db.py` (schema), `app/services/`
 (inventory rules, importer, updater), `app/routers/` (kiosk, api, admin),
 `app/templates/` + `app/static/` (server-rendered UI, no build step).
 
