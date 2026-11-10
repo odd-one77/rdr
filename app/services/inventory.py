@@ -84,6 +84,10 @@ def search_people(db: sqlite3.Connection, q: str, limit: int = 12) -> list[sqlit
         """
         SELECT p.*,
                (SELECT COUNT(*) FROM devices d WHERE d.holder_id = p.id) AS held_count,
+               (SELECT COALESCE(NULLIF(d.label,''), t.name) FROM devices d JOIN device_types t ON t.id = d.type_id
+                 WHERE d.holder_id = p.id AND d.status = 'out' AND t.name LIKE '%radio%' ORDER BY d.label LIMIT 1) AS radio_label,
+               (SELECT COALESCE(NULLIF(d.linked_id,''), NULLIF(d.label,''), 'Bolero') FROM devices d JOIN device_types t ON t.id = d.type_id
+                 WHERE d.holder_id = p.id AND d.status = 'out' AND t.name LIKE '%bolero%' AND t.name NOT LIKE '%antenna%' LIMIT 1) AS held_bolero,
                (SELECT COUNT(*) FROM assignments a JOIN devices d ON d.id = a.device_id
                  WHERE a.person_id = p.id AND (d.holder_id IS NULL OR d.holder_id <> p.id)) AS assigned_count
         FROM people p
@@ -170,21 +174,36 @@ def log(
     return ts
 
 
+def is_bolero_pack(type_name: str) -> bool:
+    t = (type_name or "").lower()
+    return "bolero" in t and "antenna" not in t
+
+
 def _set_device(db: sqlite3.Connection, device_id: int, status: str, holder_id: Optional[int]) -> None:
-    """Update status/holder. While a Bolero-type pack is out to someone with a Bolero ID, the pack
-    carries that ID (soft link); it is cleared whenever the pack comes back."""
-    linked = ""
-    if status == "out" and holder_id is not None:
-        row = db.execute(
-            "SELECT p.bolero_id, t.name AS type_name FROM devices d JOIN device_types t ON t.id = d.type_id, people p WHERE d.id = ? AND p.id = ?",
-            (device_id, holder_id),
-        ).fetchone()
-        if row and row["bolero_id"] and "bolero" in row["type_name"].lower() and "antenna" not in row["type_name"].lower():
-            linked = row["bolero_id"]
     db.execute(
-        "UPDATE devices SET status = ?, holder_id = ?, linked_id = ?, updated_at = ? WHERE id = ?",
-        (status, holder_id, linked, now_iso(), device_id),
+        "UPDATE devices SET status = ?, holder_id = ?, updated_at = ? WHERE id = ?",
+        (status, holder_id, now_iso(), device_id),
     )
+
+
+def _link_bolero(db: sqlite3.Connection, device_id: int, person_id: int) -> None:
+    """Soft-link a Bolero pack and a person on sign out.
+
+    * person has an ID  -> the pack is now configured as that ID (linked_id)
+    * person has no ID but the pack has one (imported / previous) -> the person adopts the pack's ID
+    The ID stays on the pack when it comes back; a later scan to a different person re-links it.
+    """
+    row = db.execute(
+        "SELECT d.linked_id, t.name AS type_name, p.bolero_id FROM devices d JOIN device_types t ON t.id = d.type_id, people p "
+        "WHERE d.id = ? AND p.id = ?",
+        (device_id, person_id),
+    ).fetchone()
+    if not row or not is_bolero_pack(row["type_name"]):
+        return
+    if row["bolero_id"]:
+        db.execute("UPDATE devices SET linked_id = ? WHERE id = ?", (row["bolero_id"], device_id))
+    elif row["linked_id"]:
+        db.execute("UPDATE people SET bolero_id = ?, updated_at = ? WHERE id = ?", (row["linked_id"], now_iso(), person_id))
 
 
 def _brief(d: sqlite3.Row) -> dict:
@@ -209,6 +228,7 @@ def sign_out(
     person_id: int,
     tech: Optional[dict],
     force_ids: Optional[set[int]] = None,
+    collector_id: Optional[int] = None,
 ) -> list[dict]:
     """Issue devices to a person.
 
@@ -224,6 +244,12 @@ def sign_out(
     person = person_by_id(db, person_id)
     if person is None:
         raise ValueError("Unknown person")
+    via = ""
+    if collector_id and collector_id != person_id:
+        c = person_by_id(db, collector_id)
+        if c is None:
+            raise ValueError("Unknown collector")
+        via = f"Collected by {c['name']}"
     devices = devices_by_ids(db, device_ids)
     results = []
     for did in device_ids:
@@ -234,7 +260,8 @@ def sign_out(
         r = _brief(d)
         if d["status"] == "in":
             _set_device(db, did, "out", person_id)
-            r.update(outcome="issued", message=f"Signed out to {person['name']}", ts=log(db, "out", did, person_id, tech))
+            _link_bolero(db, did, person_id)
+            r.update(outcome="issued", message=f"Signed out to {person['name']}", ts=log(db, "out", did, person_id, tech, note=via))
         elif d["status"] == "out" and d["holder_id"] == person_id:
             r.update(outcome="already_held", message="Already signed out to this person", ts=log(db, "out_noop", did, person_id, tech))
         elif d["status"] == "out":
@@ -242,16 +269,20 @@ def sign_out(
                 old = d["holder_id"]
                 log(db, "in", did, old, tech, note=f"Reassigned to {person['name']}")
                 _set_device(db, did, "out", person_id)
-                r.update(outcome="reassigned", message=f"Reassigned from {d['holder_name']}", ts=log(db, "out_reassign", did, person_id, tech, note=f"Was out to {d['holder_name']}"))
+                _link_bolero(db, did, person_id)
+                r.update(outcome="reassigned", message=f"Reassigned from {d['holder_name']}", ts=log(db, "out_reassign", did, person_id, tech, note=(f"Was out to {d['holder_name']}" + (f". {via}" if via else ""))))
             else:
                 r.update(outcome="conflict", message=f"Already OUT to {d['holder_name']}")
         else:  # lost / damaged
             if did in force_ids:
                 log(db, "restored", did, None, tech, note="Restored on sign out")
                 _set_device(db, did, "out", person_id)
-                r.update(outcome="reissued", message=f"Was {d['status']}, restored and signed out", ts=log(db, "out", did, person_id, tech))
+                _link_bolero(db, did, person_id)
+                r.update(outcome="reissued", message=f"Was {d['status']}, restored and signed out", ts=log(db, "out", did, person_id, tech, note=via))
             else:
                 r.update(outcome="conflict", message=f"Device is marked {d['status'].upper()}")
+        if r.get("outcome") in ("issued", "reassigned", "reissued"):
+            r["linked_id"] = device_by_id(db, did)["linked_id"]
         results.append(r)
     return results
 
@@ -336,6 +367,16 @@ def swap(
     if new["status"] in ("lost", "damaged"):
         log(db, "restored", new_device_id, None, tech, note="Restored on swap")
     _set_device(db, new_device_id, "out", person_id)
+    if is_bolero_pack(old["type_name"]) and is_bolero_pack(new["type_name"]):
+        # The IDs trade places: the spare becomes the person's ID, the returned pack takes the spare's old ID.
+        person = person_by_id(db, person_id)
+        keep = (person["bolero_id"] if person and person["bolero_id"] else old["linked_id"]) or ""
+        db.execute("UPDATE devices SET linked_id = ? WHERE id = ?", (new["linked_id"] or "", old_device_id))
+        db.execute("UPDATE devices SET linked_id = ? WHERE id = ?", (keep, new_device_id))
+        if keep:
+            note = (note + " " if note else "") + f"Bolero ID {keep} moved to {new['label'] or new['si']}"
+    else:
+        _link_bolero(db, new_device_id, person_id)
     ts = log(db, "swap_in", new_device_id, person_id, tech, reason, note, related_device_id=old_device_id)
     return {"old": _brief(device_by_id(db, old_device_id)), "new": _brief(device_by_id(db, new_device_id)), "ts": ts}
 
@@ -349,12 +390,13 @@ def quick_create_device(
     site_id: Optional[int] = None,
     notes: str = "",
     action: str = "created",
+    linked_id: str = "",
 ) -> sqlite3.Row:
     ts = now_iso()
     cur = db.execute(
-        """INSERT INTO devices (si, type_id, label, site_id, status, notes, created_at, updated_at)
-           VALUES (?,?,?,?, 'in', ?, ?, ?)""",
-        (norm_si(si), type_id, (label or "").strip(), site_id, notes, ts, ts),
+        """INSERT INTO devices (si, type_id, label, site_id, status, notes, linked_id, created_at, updated_at)
+           VALUES (?,?,?,?, 'in', ?, ?, ?, ?)""",
+        (norm_si(si), type_id, (label or "").strip(), site_id, notes, (linked_id or "").strip(), ts, ts),
     )
     log(db, action, cur.lastrowid, None, tech)
     return device_by_id(db, cur.lastrowid)
@@ -377,6 +419,21 @@ def create_person(
         ((external_id or "").strip() or None, name.strip(), dept.strip(), role.strip(), phone.strip(), (bolero_id or "").strip(), notes, ts, ts),
     )
     return person_by_id(db, cur.lastrowid)
+
+
+def update_person(db: sqlite3.Connection, person_id: int, **fields) -> sqlite3.Row:
+    allowed = {"name", "dept", "role", "phone", "external_id", "bolero_id", "notes"}
+    sets, vals = [], []
+    for k, v in fields.items():
+        if k in allowed and v is not None:
+            v = v.strip()
+            if k == "external_id":
+                v = v or None
+            sets.append(f"{k} = ?"); vals.append(v)
+    if sets:
+        sets.append("updated_at = ?"); vals.append(now_iso())
+        db.execute(f"UPDATE people SET {', '.join(sets)} WHERE id = ?", vals + [person_id])
+    return person_by_id(db, person_id)
 
 
 def set_assignment(db: sqlite3.Connection, device_id: int, person_id: int, tech: Optional[dict], note: str = "") -> None:

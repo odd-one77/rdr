@@ -52,10 +52,21 @@ In this mode *Update & restart* uses `git pull`.
 - **Swap**: on the person's held item press *Swap*, scan the replacement, pick
   a reason. The returned item is marked damaged / lost / OK.
 - **Lost / damaged**: the `!` button on a held item.
-- **Bolero IDs** belong to the person (people sheet or person page). When any
-  Bolero pack is scanned out to them, the pack carries that ID until it comes
-  back, so swaps keep the ID with the person. The ID shows beside their name
-  on the kiosk, the mirror and the reports.
+- **Bolero IDs** are planned on the person (people sheet or person page); some
+  people have one, radio-only people don't. Nothing is matched until the first
+  Bolero pack is scanned out to them: the pack is then linked to their ID (or,
+  if the person has no ID and the pack came in with one from the device sheet,
+  the person takes the pack's ID). The ID stays on the pack when it comes back;
+  the kiosk warns when a pack configured as one ID goes to someone with
+  another. On a swap the IDs trade places: the spare becomes the person's ID
+  and the damaged pack takes the spare's old ID. Beside each name the kiosk
+  and mirror show a Bolero chip, a Radio chip, both, or nothing, depending on
+  what the person has.
+- **Picking up for someone else**: select the collector, press "Picking up
+  for someone else", pick the recipient. The devices go to the recipient and
+  the history notes who collected them.
+- **Edit details** on the kiosk person card fixes a name, role, phone or
+  Bolero ID without leaving the counter.
 - **Reserved devices**: a particular serial number held for a particular
   person, for the rare case. Admin → Reserved devices.
 - **Unknown barcode**: the kiosk offers to create the device on the spot.
@@ -155,9 +166,9 @@ devices, per-event archives, multi-event history.
 |---|---|
 | ![Start](docs/screenshots/01-start.png) | ![Kiosk](docs/screenshots/03-kiosk-signout.png) |
 
-| Conflict decision | Swap | Unknown barcode |
-|---|---|---|
-| ![Conflict](docs/screenshots/03c-kiosk-conflict.png) | ![Swap](docs/screenshots/03d-kiosk-swap.png) | ![Quick create](docs/screenshots/03b-kiosk-quick-create.png) |
+| Picking up for someone else | Conflict decision | Swap | Unknown barcode |
+|---|---|---|---|
+| ![On behalf](docs/screenshots/03e-kiosk-on-behalf.png) | ![Conflict](docs/screenshots/03c-kiosk-conflict.png) | ![Swap](docs/screenshots/03d-kiosk-swap.png) | ![Quick create](docs/screenshots/03b-kiosk-quick-create.png) |
 
 | Mirror idle | Mirror processing | Mirror done |
 |---|---|---|

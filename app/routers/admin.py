@@ -322,11 +322,11 @@ def device_new(request: Request):
 
 
 @router.post("/devices/new", dependencies=[Depends(require_admin)])
-def device_create(request: Request, si: str = Form(...), type_id: int = Form(...), label: str = Form(""), site_id: str = Form(""), notes: str = Form("")):
+def device_create(request: Request, si: str = Form(...), type_id: int = Form(...), label: str = Form(""), site_id: str = Form(""), notes: str = Form(""), linked_id: str = Form("")):
     with get_db() as db:
         if inventory.device_by_si(db, si):
             return _redirect("/admin/devices/new", err=f"SI {inventory.norm_si(si)} already exists")
-        d = inventory.quick_create_device(db, si, type_id, label, current_tech(request), int(site_id) if site_id else None, notes)
+        d = inventory.quick_create_device(db, si, type_id, label, current_tech(request), int(site_id) if site_id else None, notes, linked_id=linked_id)
     return _redirect(f"/admin/devices/{d['id']}", msg="Device created")
 
 
@@ -361,7 +361,7 @@ def device_page(request: Request, device_id: int):
 
 
 @router.post("/devices/{device_id}", dependencies=[Depends(require_admin)])
-def device_save(request: Request, device_id: int, action: str = Form("save"), si: str = Form(""), type_id: int = Form(0), label: str = Form(""), site_id: str = Form(""), notes: str = Form(""), status: str = Form(""), reason: str = Form(""), assign_person_id: str = Form("")):
+def device_save(request: Request, device_id: int, action: str = Form("save"), si: str = Form(""), type_id: int = Form(0), label: str = Form(""), site_id: str = Form(""), notes: str = Form(""), status: str = Form(""), reason: str = Form(""), assign_person_id: str = Form(""), linked_id: str = Form("")):
     tech = current_tech(request)
     with get_db() as db:
         if action == "delete":
@@ -383,8 +383,8 @@ def device_save(request: Request, device_id: int, action: str = Form("save"), si
         if dup:
             return _redirect(f"/admin/devices/{device_id}", err="Another device already has that SI")
         db.execute(
-            "UPDATE devices SET si = ?, type_id = ?, label = ?, site_id = ?, notes = ?, updated_at = ? WHERE id = ?",
-            (inventory.norm_si(si), type_id, label.strip(), int(site_id) if site_id else None, notes.strip(), now_iso(), device_id),
+            "UPDATE devices SET si = ?, type_id = ?, label = ?, site_id = ?, notes = ?, linked_id = ?, updated_at = ? WHERE id = ?",
+            (inventory.norm_si(si), type_id, label.strip(), int(site_id) if site_id else None, notes.strip(), linked_id.strip(), now_iso(), device_id),
         )
     return _redirect(f"/admin/devices/{device_id}", msg="Saved")
 

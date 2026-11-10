@@ -45,7 +45,8 @@ KINDS = {
         "fields": [
             ("si", "SI number / barcode"),
             ("type", "Device type"),
-            ("label", "Label / display name (e.g. Bolero 61)"),
+            ("label", "Label / display name"),
+            ("bolero_id", "Configured Bolero ID (packs only)"),
             ("site", "Site (optional)"),
             ("notes", "Notes"),
         ],
@@ -80,6 +81,7 @@ GUESSES = {
     "devices": [
         (("si", "serial", "barcode", "asset", "inventory no", "inventar"), "si"),
         (("type", "category", "group", "article", "item", "description", "product"), "type"),
+        (("bolero id", "bolero", "beltpack id", "pack id"), "bolero_id"),
         (("label", "display", "name", "number", "no.", "id"), "label"),
         (("site", "zone", "location", "rdr"), "site"),
         (("note", "comment", "remark"), "notes"),
@@ -292,6 +294,7 @@ def _analyze_devices(db, rows, mapping) -> list[dict]:
             "si": norm_si(_val(row, mapping, "si")),
             "type": _val(row, mapping, "type"),
             "label": _val(row, mapping, "label"),
+            "bolero_id": _val(row, mapping, "bolero_id"),
             "site": _val(row, mapping, "site"),
             "notes": _val(row, mapping, "notes"),
         }
@@ -433,8 +436,8 @@ def _commit_devices(db, items, decisions, tech) -> dict:
         site_id = sites.get(d["site"].lower()) if d["site"] else None
         if it["action"] == "create":
             cur = db.execute(
-                "INSERT INTO devices (si, type_id, label, site_id, status, notes, created_at, updated_at) VALUES (?,?,?,?,'in',?,?,?)",
-                (d["si"], types[tkey], d["label"], site_id, d["notes"], ts, ts),
+                "INSERT INTO devices (si, type_id, label, site_id, status, notes, linked_id, created_at, updated_at) VALUES (?,?,?,?,'in',?,?,?,?)",
+                (d["si"], types[tkey], d["label"], site_id, d["notes"], d.get("bolero_id", ""), ts, ts),
             )
             log(db, "imported", cur.lastrowid, None, tech)
             created += 1
@@ -443,10 +446,11 @@ def _commit_devices(db, items, decisions, tech) -> dict:
                 """UPDATE devices SET type_id = ?,
                      label = CASE WHEN ? <> '' THEN ? ELSE label END,
                      site_id = CASE WHEN ? <> '' THEN ? ELSE site_id END,
+                     linked_id = CASE WHEN ? <> '' THEN ? ELSE linked_id END,
                      notes = CASE WHEN ? <> '' THEN ? ELSE notes END,
                      updated_at = ?
                    WHERE id = ?""",
-                (types[tkey], d["label"], d["label"], d["site"], site_id, d["notes"], d["notes"], ts, it["existing_id"]),
+                (types[tkey], d["label"], d["label"], d["site"], site_id, d.get("bolero_id", ""), d.get("bolero_id", ""), d["notes"], d["notes"], ts, it["existing_id"]),
             )
             updated += 1
     return {"created": created, "updated": updated, "skipped": skipped, "new_types": new_types}

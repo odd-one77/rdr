@@ -162,7 +162,7 @@ def test_bolero_id_soft_link(client):
     assert by_si["SI-LINK-1"]["linked_id"] == "961"      # the pack now carries the person's Bolero ID
     assert by_si["SI-LINK-2"]["linked_id"] == ""         # headsets do not
     client.post("/api/signin", json={"device_ids": [pack["id"]]})
-    assert client.get("/api/devices/lookup?si=SI-LINK-1").json()["device"]["linked_id"] == ""
+    assert client.get("/api/devices/lookup?si=SI-LINK-1").json()["device"]["linked_id"] == "961"   # the pack keeps its configured ID
     # people import carries the Bolero ID column
     csv = "Name,Phone,Bolero\nImported Link,+44 7700 900998,63\n"
     loc = client.post("/admin/import/people", files={"file": ("crew.csv", csv.encode(), "text/csv")}).headers["location"]
@@ -223,3 +223,50 @@ def test_pgm_size_setting(client):
     page = client.get("/mirror?site=1").text
     assert "pgm-large" in page and "youtube.com/embed/dQw4w9WgXcQ" in page
     client.post("/admin/sites/1", data={"action": "save", "name": "RDR North", "stock_mode": "shared", "rtsp_url": "", "active": "1"})
+
+
+def test_bolero_rules_adopt_keep_and_swap(client):
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    client.post("/admin/login", data={"password": "test1234"})
+    types = {t["name"]: t["id"] for t in client.get("/api/types").json()["types"]}
+    bol = types["Bolero Beltpack"]
+    # rule 2b: a pack imported/created with an ID gives it to a person who has none
+    nobody = client.post("/api/people", json={"name": "No Id Yet"}).json()["person"]
+    r = client.post("/admin/devices/new", data={"si": "SI-RULE-1", "type_id": bol, "label": "Pack A", "linked_id": "71"})
+    pack_a = client.get("/api/devices/lookup?si=SI-RULE-1").json()["device"]
+    assert pack_a["linked_id"] == "71"
+    client.post("/api/signout", json={"person_id": nobody["id"], "device_ids": [pack_a["id"]]})
+    assert client.get(f"/api/people/{nobody['id']}").json()["person"]["bolero_id"] == "71"
+    # the ID stays on the pack when it comes back
+    client.post("/api/signin", json={"device_ids": [pack_a["id"]]})
+    assert client.get("/api/devices/lookup?si=SI-RULE-1").json()["device"]["linked_id"] == "71"
+    # rule 2a: person's ID wins when a pack with another ID is scanned to them
+    boss = client.post("/api/people", json={"name": "Has Id", "bolero_id": "80"}).json()["person"]
+    client.post("/api/signout", json={"person_id": boss["id"], "device_ids": [pack_a["id"]]})
+    assert client.get("/api/devices/lookup?si=SI-RULE-1").json()["device"]["linked_id"] == "80"
+    # rule 3: swap trades IDs; the spare (ID 99) becomes 80, the damaged pack becomes 99
+    client.post("/admin/devices/new", data={"si": "SI-RULE-2", "type_id": bol, "label": "Spare", "linked_id": "99"})
+    r = client.post("/api/swap", json={"old_device_id": pack_a["id"], "new_si": "SI-RULE-2", "reason": "Damaged", "old_status": "damaged"}).json()
+    assert r["new"]["linked_id"] == "80" and r["old"]["linked_id"] == "99"
+    assert client.get(f"/api/people/{boss['id']}").json()["holdings"][0]["si"] == "SI-RULE-2"
+    # quick edit from the kiosk
+    r = client.post(f"/api/people/{boss['id']}", json={"role": "Floor", "bolero_id": "81"})
+    assert r.json()["person"]["role"] == "Floor" and r.json()["person"]["bolero_id"] == "81"
+    assert client.post(f"/api/people/{boss['id']}", json={"name": "  "}).status_code == 400
+
+
+def test_sign_out_on_behalf_and_chip_data(client):
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    client.post("/admin/login", data={"password": "test1234"})
+    types = {t["name"]: t["id"] for t in client.get("/api/types").json()["types"]}
+    receiver = client.post("/api/people", json={"name": "Recipient Person"}).json()["person"]
+    collector = client.post("/api/people", json={"name": "Collector Person"}).json()["person"]
+    radio = client.post("/api/devices/quick", json={"si": "SI-RADIO-9", "type_id": types["Radio"], "label": "Radio 09"}).json()["device"]
+    r = client.post("/api/signout", json={"person_id": receiver["id"], "device_ids": [radio["id"]], "collector_id": collector["id"]}).json()["results"]
+    assert r[0]["outcome"] == "issued"
+    recent = client.get("/api/recent?limit=3").json()["transactions"]
+    assert any("Collected by Collector Person" in (t["note"] or "") for t in recent)
+    assert client.get(f"/api/people/{receiver['id']}").json()["holdings"][0]["si"] == "SI-RADIO-9"
+    hit = client.get("/api/people/search?q=Recipient").json()["results"][0]
+    assert hit["radio_label"] == "Radio 09" and hit["held_bolero"] is None
+    assert client.post("/api/signout", json={"person_id": receiver["id"], "device_ids": [], "collector_id": 999999}).status_code == 400

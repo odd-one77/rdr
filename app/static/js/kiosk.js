@@ -5,13 +5,26 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const TECH = window.RDR.tech;
   const TYPES = window.RDR.types;
+  const idOf = v => String(v || '').replace(/^bolero\s*/i, '');
+  const isPack = d => /bolero/i.test(d.type_name || d.type || '') && !/antenna/i.test(d.type_name || d.type || '');
+  // What sits beside a name: Bolero (person's ID or the held pack), Radio (held radio), both, or nothing.
+  function chips(p, holdings) {
+    const out = [];
+    const pack = (holdings || []).find(isPack);
+    const bol = p.bolero_id ? idOf(p.bolero_id) : (pack ? idOf(pack.linked_id || pack.label) : (p.held_bolero ? idOf(p.held_bolero) : ''));
+    if (bol || pack) out.push(`<span class="bolero" title="Bolero ID">${bol ? 'Bolero ' + esc(bol) : 'Bolero'}</span>`);
+    const radio = (holdings || []).find(d => /radio/i.test(d.type_name || ''));
+    const radioLabel = radio ? (radio.label || 'Radio') : (p.radio_label || '');
+    if (radioLabel) out.push(`<span class="bolero radio" title="Radio">${esc(radioLabel)}</span>`);
+    return out.join(' ');
+  }
   const ACTIONS = {
     out: 'OUT', in: 'IN', in_noop: 'Scan (already in)', out_noop: 'Scan (already out)', out_reassign: 'OUT (reassigned)',
     swap_out: 'Swap returned', swap_in: 'Swap issued', lost: 'LOST', damaged: 'DAMAGED', restored: 'Restored',
     created: 'Created', imported: 'Imported', assigned: 'Pre-assigned', unassigned: 'Unassigned',
   };
 
-  const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null };
+  const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null, collector: null, pickingFor: false };
 
   // ---- api ---------------------------------------------------------------
   async function api(path, opts = {}) {
@@ -84,7 +97,7 @@
     pushTimer = setTimeout(() => {
       const brief = d => ({ si: d.si, label: d.label, type: d.type_name || d.type, linked_id: d.linked_id || '' });
       post('/api/kiosk/state', { state: {
-        person: state.person ? { name: state.person.name, dept: state.person.dept, role: state.person.role, bolero_id: state.person.bolero_id } : null,
+        person: state.person ? { name: state.person.name, dept: state.person.dept, role: state.person.role, bolero_id: state.person.bolero_id, radio: (state.holdings.find(d => /radio/i.test(d.type_name)) || {}).label || '', collector: state.collector ? state.collector.name : '' } : null,
         holdings: state.holdings.map(brief),
         basket: state.basket.map(brief),
         result: state.result,
@@ -120,11 +133,13 @@
     try {
       const d = await api(`/api/people/search?q=${encodeURIComponent(q)}`);
       lastResults = d.results; activeIdx = d.results.length ? 0 : -1;
-      resultsEl.innerHTML = d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)}</div><div class="meta">${esc([p.dept, p.role, p.phone].filter(Boolean).join(' · '))}</div></div><div class="counts">${p.bolero_id ? `Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}` : ''}${p.held_count ? `${p.bolero_id ? ' · ' : ''}${p.held_count} out` : ''}</div></div>`).join('') +
+      resultsEl.innerHTML = (state.pickingFor ? `<div class="empty" style="border-top:0;border-bottom:1px solid var(--border)"><span>Picking up for someone else. Choose who receives the devices.</span><button class="btn sm ghost" data-cancel-for>Cancel</button></div>` : '') +
+        d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)} ${chips(p, null)}</div><div class="meta">${esc([p.dept, p.role, p.phone].filter(Boolean).join(' · '))}</div></div><div class="counts">${p.held_count ? `${p.held_count} out` : ''}</div></div>`).join('') +
         `<div class="empty"><span>${d.results.length ? 'Not listed?' : 'No match for “' + esc(q) + '”'}</span><button class="btn sm" data-new>+ Create “${esc(q)}”</button></div>`;
       resultsEl.classList.remove('hidden'); paintActive();
       resultsEl.querySelectorAll('.item').forEach(el => el.onmousedown = () => selectPerson(+el.dataset.id));
       resultsEl.querySelector('[data-new]').onmousedown = () => openNewPerson(q);
+      const cf = resultsEl.querySelector('[data-cancel-for]'); if (cf) cf.onmousedown = () => { state.pickingFor = false; hideResults(); searchEl.value = ''; renderPerson(); };
     } catch (e) { toast('err', 'Search failed', e.message); }
   }
 
@@ -132,12 +147,18 @@
     hideResults();
     try {
       const d = await api(`/api/people/${id}`);
+      if (state.pickingFor && state.person && state.person.id !== id) {
+        state.collector = state.person;             // the first person picked becomes the collector
+      } else if (!state.pickingFor) {
+        state.collector = null;
+      }
+      state.pickingFor = false;
       state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.result = null;
       searchEl.value = '';
       renderPerson(); renderBasket(); pushState(); focusScan();
     } catch (e) { toast('err', 'Could not load person', e.message); }
   }
-  function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; renderPerson(); renderBasket(); pushState(); }
+  function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; state.collector = null; state.pickingFor = false; renderPerson(); renderBasket(); pushState(); }
 
   function renderPerson() {
     const panel = $('#personPanel');
@@ -150,20 +171,29 @@
     const hold = state.holdings, pre = state.assignments;
     const line1 = [p.dept, p.role].filter(Boolean).map(esc).join(' · ');
     const line2 = [p.phone ? `<span class="mono">${esc(p.phone)}</span>` : '', p.external_id ? `<span class="si">ID ${esc(p.external_id)}</span>` : ''].filter(Boolean).join(' · ');
+    // Assigned list: one row per device, led by its type, then linked ID and SI.
     const devRow = (d, actions) => `<li>
           <span class="badge ${d.status}">${esc(d.status)}</span>
-          <span class="txt"><div class="label">${esc(d.label || d.si)}${d.linked_id ? ` <span class="bolero">Bolero ${esc(d.linked_id)}</span>` : ''}</div><div class="type">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${d.holder_name && (!p || d.holder_id !== p.id) ? ` · <span class="amber">with ${esc(d.holder_name)}</span>` : ''}</div></span>
+          <span class="txt"><div class="label">${esc(d.type_name)}${d.linked_id ? ` <span class="bolero">ID ${esc(d.linked_id)}</span>` : ''}</div><div class="type">${d.label && d.label !== d.type_name ? esc(d.label) + ' · ' : ''}<span class="si">${esc(d.si)}</span>${d.holder_name && (!p || d.holder_id !== p.id) ? ` · <span class="amber">with ${esc(d.holder_name)}</span>` : ''}</div></span>
           <span class="actions">${actions}</span></li>`;
+    const byType = [...hold].sort((a, b) => (a.type_name > b.type_name ? 1 : a.type_name < b.type_name ? -1 : 0));
+    const hasPack = hold.some(isPack);
+    const plannedRow = p.bolero_id && !hasPack ? `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">Bolero Beltpack <span class="bolero">ID ${esc(idOf(p.bolero_id))}</span></div><div class="type">no pack linked yet, scan one to this person</div></span></li>` : '';
     panel.innerHTML = `
       <div class="person-card">
-        <div class="row"><div class="name grow">${esc(p.name)}</div>${p.bolero_id ? `<span class="bolero" title="This person's Bolero ID">Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
+        <div class="row"><div class="name grow">${esc(p.name)}</div>${chips(p, hold)}<button class="btn sm ghost" id="btnEditPerson" title="Edit details">Edit</button><button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
         ${line1 ? `<div class="meta">${line1}</div>` : ''}${line2 ? `<div class="meta">${line2}</div>` : ''}
+        ${state.collector ? `<div class="meta collector">Collected by <b>${esc(state.collector.name)}</b> <button class="btn sm ghost" id="btnDropCollector" title="Remove">&#10005;</button></div>` : `<div class="meta"><button class="btn sm ghost" id="btnForSomeone">Picking up for someone else…</button></div>`}
       </div>
-      <div class="section-title"><h3>Signed out <span class="mono">${hold.length}</span></h3>${hold.length ? '<button class="btn sm ghost" data-return-all>Return all</button>' : ''}</div>
-      <ul class="dev-list">${hold.map(d => devRow(d, `<button class="btn sm" data-swap="${d.id}" title="Swap for another item">Swap</button><button class="btn sm ghost" data-flag="${d.id}" title="Mark lost or damaged">!</button><button class="btn sm ghost" data-add="${d.id}" title="Add to list">+</button>`)).join('') || '<li class="empty">Nothing signed out.</li>'}</ul>
+      <div class="section-title"><h3>Assigned <span class="mono">${hold.length}</span></h3>${hold.length ? '<button class="btn sm ghost" data-return-all>Return all</button>' : ''}</div>
+      <ul class="dev-list">${plannedRow}${byType.map(d => devRow(d, `<button class="btn sm" data-swap="${d.id}" title="Swap for another item">Swap</button><button class="btn sm ghost" data-flag="${d.id}" title="Mark lost or damaged">!</button><button class="btn sm ghost" data-add="${d.id}" title="Add to list">+</button>`)).join('') || (plannedRow ? '' : '<li class="empty">Nothing assigned.</li>')}</ul>
       ${pre.length ? `<div class="section-title"><h3>Reserved devices <span class="mono">${pre.length}</span></h3><button class="btn sm ghost" data-add-all>Add all</button></div>
       <ul class="dev-list">${pre.map(d => devRow(d, `<button class="btn sm" data-add="${d.id}">+ Add</button>`)).join('')}</ul>` : ''}`;
     $('#btnClearPerson').onclick = clearPerson;
+    $('#btnEditPerson').onclick = () => openEditPerson(p);
+    const fs = $('#btnForSomeone'); if (fs) fs.onclick = () => { state.pickingFor = true; searchEl.placeholder = 'Who are the devices for?'; searchEl.focus(); toast('ok', 'Search the person who receives the devices', `${p.name} will be recorded as collecting them`, 3500); };
+    const dc = $('#btnDropCollector'); if (dc) dc.onclick = () => { state.collector = null; renderPerson(); pushState(); };
+    if (!state.pickingFor) searchEl.placeholder = 'Name, phone or ID  (F2)';
     panel.querySelectorAll('[data-add]').forEach(b => b.onclick = () => addById(+b.dataset.add));
     const addAll = panel.querySelector('[data-add-all]'); if (addAll) addAll.onclick = () => pre.forEach(d => addToBasket(d, true));
     const retAll = panel.querySelector('[data-return-all]'); if (retAll) retAll.onclick = () => hold.forEach(d => addToBasket(d, true));
@@ -188,6 +218,20 @@
   }
   $('#btnNewPerson').onclick = () => openNewPerson(searchEl.value.trim());
 
+  function openEditPerson(p) {
+    modal('Edit details', `
+      <div class="field"><label>Full name</label><input id="ep_name" value="${esc(p.name)}"></div>
+      <div class="grid cols-2"><div class="field"><label>Department</label><input id="ep_dept" value="${esc(p.dept || '')}"></div><div class="field"><label>Role</label><input id="ep_role" value="${esc(p.role || '')}"></div></div>
+      <div class="grid cols-2"><div class="field"><label>Phone</label><input id="ep_phone" value="${esc(p.phone || '')}"></div><div class="field"><label>Bolero ID</label><input id="ep_bolero" value="${esc(p.bolero_id || '')}" placeholder="e.g. 61"></div></div>
+      <div class="field"><label>Unique ID</label><input id="ep_ext" value="${esc(p.external_id || '')}"></div>`,
+      [{ label: 'Cancel' }, { label: 'Save', cls: 'primary', onClick: async root => {
+        try {
+          await post(`/api/people/${p.id}`, { name: $('#ep_name', root).value, dept: $('#ep_dept', root).value, role: $('#ep_role', root).value, phone: $('#ep_phone', root).value, bolero_id: $('#ep_bolero', root).value, external_id: $('#ep_ext', root).value });
+          closeModal(); toast('ok', 'Details saved'); await selectPerson(p.id);
+        } catch (e) { toast('err', 'Could not save', e.message); }
+      } }]);
+  }
+
   // ---- scanning / basket -------------------------------------------------
   const scanEl = $('#scanInput');
   function focusScan() { if (!isModalOpen()) scanEl.focus(); }
@@ -206,9 +250,10 @@
     const known = state.holdings.concat(state.assignments).find(d => d.id === id);
     if (known) addToBasket(known);
   }
+  let justAdded = null;
   function addToBasket(device, quiet = false) {
     if (state.basket.some(d => d.id === device.id)) { if (!quiet) toast('warn', 'Already in the list', device.label || device.si, 1500); return; }
-    state.basket.push(device); state.result = null;
+    state.basket.push(device); state.result = null; justAdded = device.id;
     renderBasket(); pushState();
   }
   function removeFromBasket(id) { state.basket = state.basket.filter(d => d.id !== id); renderBasket(); pushState(); }
@@ -225,19 +270,27 @@
         else { cls = 'conflict'; note = `OUT to ${d.holder_name}`; }
       } else if (d.status === 'lost' || d.status === 'damaged') { cls = 'warn'; note = `Marked ${d.status.toUpperCase()}`; }
       if (d.site_name && d.site_name !== TECH.site_name) note += (note ? ' · ' : '') + `${d.site_name} stock`;
+      const isPack = /bolero/i.test(d.type_name) && !/antenna/i.test(d.type_name);
+      if (isPack && p && d.status !== 'out') {
+        const mine = (p.bolero_id || '').replace(/^bolero\s*/i, '');
+        if (d.linked_id && mine && d.linked_id !== mine) { cls = cls || 'warn'; note += (note ? ' · ' : '') + `configured as ${d.linked_id}, re-ID to ${mine}`; }
+        else if (d.linked_id && !mine) note += (note ? ' · ' : '') + `configured as ${d.linked_id}, ${p.name.split(' ')[0]} takes this ID`;
+        else if (!d.linked_id && mine) note += (note ? ' · ' : '') + `set pack to ID ${mine}`;
+      }
       if (d.assigned_person_name && (!p || d.assigned_person_id !== p.id)) note += (note ? ' · ' : '') + `pre-assigned to ${d.assigned_person_name}`;
-      return `<li class="${cls}"><span class="idx">${i + 1}</span>
+      return `<li class="${cls}${d.id === justAdded ? ' new' : ''}"><span class="idx">${i + 1}</span>
         <span class="txt"><div class="label">${esc(d.label || d.si)}</div><div class="sub">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${note ? ` · <span class="${cls === 'conflict' ? 'red' : 'amber'}">${esc(note)}</span>` : ''}</div></span>
         <span class="badge ${d.status}">${esc(d.status)}</span>
         <span class="remove" data-rm="${d.id}" title="Remove">&#10005;</span></li>`;
     }).join('');
     ul.querySelectorAll('[data-rm]').forEach(el => el.onclick = () => removeFromBasket(+el.dataset.rm));
+    justAdded = null;
     $('#basketEmpty').classList.toggle('hidden', state.basket.length > 0);
     $('#basketCount').textContent = state.basket.length;
     const n = state.basket.length;
     $('#btnSignIn').disabled = !n;
     $('#btnSignOut').disabled = !n || !p;
-    $('#btnSignOut').innerHTML = p ? `&#8593; Sign OUT to ${esc(p.name.split(' ')[0])}` : '&#8593; Sign OUT';
+    $('#btnSignOut').innerHTML = p ? `&#8593; Sign OUT to ${esc(p.name.split(' ')[0])}${state.collector ? ` <small>via ${esc(state.collector.name.split(' ')[0])}</small>` : ''}` : '&#8593; Sign OUT';
     $('#actionHint').textContent = !n ? (p ? `Scan the items for ${p.name}.` : 'Pick a person and scan items to sign out. Scan items alone to sign in.')
       : (p ? `${n} item${n > 1 ? 's' : ''} ready.` : `${n} item${n > 1 ? 's' : ''} ready to sign in. Pick a person to sign out instead.`);
   }
@@ -265,6 +318,8 @@
   const NICE = { issued: ['ok', 'Signed OUT'], reassigned: ['warn', 'Reassigned'], reissued: ['warn', 'Restored & signed out'], already_held: ['warn', 'Already with this person'], returned: ['ok', 'Signed IN'], already_in: ['warn', 'Already in stock (scan logged)'], restored: ['ok', 'Restored to stock'], conflict: ['err', 'Not processed'], missing: ['err', 'Unknown device'] };
 
   function announce(results) {
+    const linked = results.filter(r => r.outcome === 'issued' && r.linked_id).map(r => `${r.label || r.si} → Bolero ${r.linked_id}`);
+    if (linked.length) toast('ok', 'Bolero ID linked', linked.join(', '), 5000);
     const grouped = {};
     results.forEach(r => (grouped[r.outcome] = grouped[r.outcome] || []).push(r.label || r.si));
     Object.entries(grouped).forEach(([o, items]) => { const [k, t] = NICE[o] || ['warn', o]; toast(k, `${t} (${items.length})`, items.join(', '), 5000); });
@@ -296,7 +351,7 @@
     if (!state.basket.length || !state.person) return;
     const person = state.person;
     try {
-      const d = await post('/api/signout', { person_id: person.id, device_ids: state.basket.map(x => x.id), force_ids: forceIds });
+      const d = await post('/api/signout', { person_id: person.id, device_ids: state.basket.map(x => x.id), force_ids: forceIds, collector_id: state.collector ? state.collector.id : null });
       const conflicts = d.results.filter(r => r.outcome === 'conflict');
       announce(d.results.filter(r => r.outcome !== 'conflict'));
       setResult('out', d.results, person.name);

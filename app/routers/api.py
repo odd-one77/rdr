@@ -67,6 +67,29 @@ def person_create(body: PersonIn, tech: dict = Depends(require_tech)):
         return {"person": dict(p)}
 
 
+class PersonUpdate(BaseModel):
+    name: str | None = None
+    dept: str | None = None
+    role: str | None = None
+    phone: str | None = None
+    external_id: str | None = None
+    bolero_id: str | None = None
+
+
+@router.post("/people/{person_id}")
+def person_update(person_id: int, body: PersonUpdate, tech: dict = Depends(require_tech)):
+    """Quick edit from the kiosk: name, department, role, phone, IDs."""
+    with get_db() as db:
+        if inventory.person_by_id(db, person_id) is None:
+            raise HTTPException(404, "Unknown person")
+        if body.name is not None and not body.name.strip():
+            raise HTTPException(400, "Name cannot be empty")
+        if body.external_id and db.execute("SELECT 1 FROM people WHERE external_id = ? AND id <> ?", (body.external_id.strip(), person_id)).fetchone():
+            raise HTTPException(409, "That unique ID is already used")
+        p = inventory.update_person(db, person_id, **body.model_dump())
+        return {"person": dict(p)}
+
+
 # -- devices ------------------------------------------------------------------
 
 @router.get("/devices/lookup")
@@ -124,13 +147,14 @@ class SignOut(BaseModel):
     person_id: int
     device_ids: list[int]
     force_ids: list[int] = []
+    collector_id: int | None = None   # someone picking up on the person's behalf
 
 
 @router.post("/signout")
 def signout(body: SignOut, tech: dict = Depends(require_tech)):
     with get_db() as db:
         try:
-            results = inventory.sign_out(db, body.device_ids, body.person_id, tech, set(body.force_ids))
+            results = inventory.sign_out(db, body.device_ids, body.person_id, tech, set(body.force_ids), collector_id=body.collector_id)
         except ValueError as e:
             raise HTTPException(400, str(e))
         return {"results": results, "summary": inventory.summary(db, tech["site_id"])}

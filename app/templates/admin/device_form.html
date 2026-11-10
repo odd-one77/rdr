@@ -14,6 +14,7 @@
         <div class="field"><label>Type</label><select name="type_id">{% for t in types %}<option value="{{ t.id }}" {{ 'selected' if device and device.type_id == t.id }}>{{ t.name }}</option>{% endfor %}</select></div>
         <div class="field"><label>Site</label><select name="site_id"><option value="">Shared stock</option>{% for s in sites %}<option value="{{ s.id }}" {{ 'selected' if device and device.site_id == s.id }}>{{ s.name }}</option>{% endfor %}</select></div>
       </div>
+      <div class="field"><label>Configured Bolero ID (packs only; set by scanning to a person, or here)</label><input name="linked_id" value="{{ device.linked_id if device else '' }}" placeholder="e.g. 61"></div>
       <div class="field"><label>Notes</label><textarea name="notes" rows="2">{{ device.notes if device else '' }}</textarea></div>
       <div class="row"><button class="btn primary" name="action" value="save">Save</button>{% if device %}<button class="btn danger" name="action" value="delete" data-confirm="Delete {{ device.si }}? Its history is kept but unlinked.">Delete</button>{% endif %}</div>
     </div>
