@@ -22,7 +22,7 @@
   const ACTIONS = {
     out: 'OUT', in: 'IN', in_noop: 'Scan (already in)', out_noop: 'Scan (already out)', out_reassign: 'OUT (reassigned)',
     swap_out: 'Swap returned', swap_in: 'Swap issued', lost: 'LOST', damaged: 'DAMAGED', restored: 'Restored',
-    created: 'Created', imported: 'Imported', assigned: 'Pre-assigned', unassigned: 'Unassigned',
+    created: 'Created', imported: 'Imported', assigned: 'Reserved', unassigned: 'Unreserved',
   };
 
   const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null, collector: null, recipients: [], served: [], lastPerson: null };
@@ -43,7 +43,7 @@
     el.className = `toast ${kind}`;
     el.innerHTML = `<div class="t">${esc(title)}</div>${detail ? `<div class="d">${esc(detail)}</div>` : ''}`;
     $('#toasts').appendChild(el);
-    setTimeout(() => { el.classList.add('hide'); setTimeout(() => el.remove(), 340); }, ms);
+    setTimeout(() => { el.classList.add('hide'); setTimeout(() => el.remove(), 220); }, ms);
   }
   function modal(title, bodyHtml, buttons) {
     closeModal();
@@ -70,7 +70,7 @@
       const s = state.scope === 'site' ? d.site : d.all;
       const t = s.totals;
       const bad = t.n_lost + t.n_damaged;
-      $('#summary').innerHTML = `<div class="chip total"><span class="name">All items</span><span class="nums"><span class="in">${t.n_in} in</span><span class="out">${t.n_out} out</span>${bad ? `<span class="bad">${bad} !</span>` : ''}</span></div>` +
+      $('#summary').innerHTML = `<div class="chip total"><span class="name">All devices</span><span class="nums"><span class="in">${t.n_in} in</span><span class="out">${t.n_out} out</span>${bad ? `<span class="bad">${bad} !</span>` : ''}</span></div>` +
         s.types.map(x => `<div class="chip"><span class="name">${esc(x.name)}</span><span class="nums"><span class="in">${x.n_in}</span><span class="out">${x.n_out}</span>${(x.n_lost + x.n_damaged) ? `<span class="bad">${x.n_lost + x.n_damaged}</span>` : ''}</span></div>`).join('');
     } catch (e) { /* ignore */ }
   }
@@ -134,7 +134,7 @@
     try {
       const d = await api(`/api/people/search?q=${encodeURIComponent(q)}`);
       lastResults = d.results; activeIdx = d.results.length ? 0 : -1;
-      resultsEl.innerHTML = (state.collector ? `<div class="empty" style="border-top:0;border-bottom:1px solid var(--border)"><span>${esc(state.collector.name)} is collecting. Pick who these devices are for.</span></div>` : '') +
+      resultsEl.innerHTML = (state.collector ? `<div class="empty top"><span>${esc(state.collector.name)} is collecting. Pick who these devices are for.</span></div>` : '') +
         d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)} ${chips(p, null)}</div><div class="meta">${esc([p.dept, p.role, p.phone].filter(Boolean).join(' · '))}</div></div><div class="counts">${p.held_count ? `${p.held_count} out` : ''}</div></div>`).join('') +
         `<div class="empty"><span>${d.results.length ? 'Not listed?' : 'No match for “' + esc(q) + '”'}</span><button class="btn sm" data-new>+ Create “${esc(q)}”</button></div>`;
       resultsEl.classList.remove('hidden'); paintActive();
@@ -155,7 +155,7 @@
         state.recipients.push({ id, name: d.person.name });
         const added = d.assignments.filter(a => !state.basket.some(b => b.id === a.id));
         added.forEach(a => addToBasket(a, true));
-        toast('ok', `Added ${d.person.name.split(' ')[0]}`, added.length ? `${added.length} reserved device${added.length > 1 ? 's' : ''} in the list. Scan anything else for them.` : 'Nothing reserved; scan their devices.', 3000);
+        toast('ok', `Added ${d.person.name.split(' ')[0]}`, added.length ? `${added.length} reserved device${added.length > 1 ? 's' : ''} in the list. Scan anything else for them.` : 'Nothing reserved. Scan their devices.', 3000);
       }
       renderPerson(); renderBasket(); pushState(); updatePrev();
       if (state.collector) searchEl.focus(); else focusScan();
@@ -177,7 +177,7 @@
     const c = state.collector;
     state.collector = null; state.served = []; state.recipients = [];
     state.basket.forEach(x => { delete x.for; });
-    searchEl.placeholder = 'Name, phone or ID  (F2)';
+    searchEl.placeholder = 'Name, phone or ID';
     renderPerson(); renderBasket(); pushState();
     if (c) toast('ok', 'Stopped collecting', `${c.name} is no longer recorded as collector`, 2500);
     focusScan();
@@ -189,7 +189,7 @@
     const active = state.person ? state.person.id : null;
     const chips = state.recipients.map(r => `<span class="rcpt${r.id === active ? ' active' : ''}" data-rcpt="${r.id}" title="Scan for ${esc(r.name)}">${esc(r.name)} <b>${state.basket.filter(x => x.for && x.for.id === r.id).length}</b><span class="x" data-rm-rcpt="${r.id}" title="Remove">&#10005;</span></span>`).join('');
     const done = state.served.map(x => `<span class="chip-done">${esc(x.name.split(' ')[0])} ${x.count} &#10003;</span>`).join(' ');
-    el.innerHTML = `<div class="row"><div class="grow"><div class="t">${esc(c.name)} is collecting for</div><div class="d rcpts">${chips || '<span class="dim">search and add each person; their reserved devices join the list</span>'}${done ? ` <span class="dim">done:</span> ${done}` : ''}</div></div><button class="btn sm" id="btnExitCollect">Exit</button></div>`;
+    el.innerHTML = `<div class="row"><div class="grow"><div class="t">${esc(c.name)} is collecting for</div><div class="d rcpts">${chips || '<span class="dim">Search and add each person. Their reserved devices join the list.</span>'}${done ? ` <span class="dim">Done:</span> ${done}` : ''}</div></div><button class="btn sm" id="btnExitCollect">Exit</button></div>`;
     $('#btnExitCollect').onclick = exitCollecting;
     el.querySelectorAll('[data-rcpt]').forEach(x => x.onclick = e => { if (e.target.dataset.rmRcpt) return; selectPerson(+x.dataset.rcpt); });
     el.querySelectorAll('[data-rm-rcpt]').forEach(x => x.onclick = () => removeRecipient(+x.dataset.rmRcpt));
@@ -204,7 +204,7 @@
     const b = $('#btnPrev'), lp = state.lastPerson;
     const show = lp && (!state.person || state.person.id !== lp.id);
     b.classList.toggle('hidden', !show);
-    if (show) b.textContent = `← ${lp.name.split(' ')[0]}`;
+    if (show) b.textContent = `Back to ${lp.name.split(' ')[0]}`;
   }
   $('#btnPrev').onclick = () => { if (state.lastPerson) selectPerson(state.lastPerson.id); };
 
@@ -230,8 +230,8 @@
     renderCollectStrip();
     if (!p) {
       panel.innerHTML = state.collector
-        ? `<div class="empty-state">Add the people <b>${esc(state.collector.name)}</b> is collecting for.<br><span class="dim">Each person's reserved devices join the list; scan anything extra while their name is selected. One Sign OUT does everyone.</span></div>`
-        : `<div class="empty-state">Type a name to start. Items can be signed in without a person.</div>`;
+        ? `<div class="empty-state">Add the people <b>${esc(state.collector.name)}</b> is collecting for.<span class="dim">Each person's reserved devices join the list. Scan anything extra while their name is selected. One sign out covers everyone.</span></div>`
+        : `<div class="empty-state">Search for a person to sign devices out.<span class="dim">To sign in, just scan. No name needed.</span></div>`;
       $('#btnAddAssigned').classList.add('hidden');
       return;
     }
@@ -247,10 +247,10 @@
     const hasPack = hold.some(isPack);
     const myId = idOf(p.bolero_id);
     const reservedPack = pre.find(d => isPack(d) && (!d.linked_id || idOf(d.linked_id) === myId));
-    const plannedRow = p.bolero_id && !hasPack ? `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">Bolero Beltpack <span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : ''}>ID ${esc(myId)}</span></div><div class="type">${reservedPack ? `linked to reserved ${esc(reservedPack.label || reservedPack.si)} · <span class="si">${esc(reservedPack.si)}</span>, scan it to issue` : 'no pack linked yet, scan one to this person'}</div></span></li>` : '';
+    const plannedRow = p.bolero_id && !hasPack ? `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">Bolero Beltpack <span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : ''}>ID ${esc(myId)}</span></div><div class="type">${reservedPack ? `Reserved: ${esc(reservedPack.label || reservedPack.si)} · <span class="si">${esc(reservedPack.si)}</span>. Scan it to sign out.` : 'No pack linked yet. Scan one for this person.'}</div></span></li>` : '';
     // Everything else on the allocation line (headset, radio, …) that the person does not hold yet.
     const allocRows = allocationItems(p).filter(a => !(a.pack && (hasPack || p.bolero_id)) && !hold.some(d => a.matches(d))).map(a =>
-      `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">${esc(a.type ? a.type.name : a.text)}</div><div class="type">${a.type ? 'from allocation, scan one to this person' : `from allocation: ${esc(a.text)}`}</div></span></li>`).join('');
+      `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">${esc(a.type ? a.type.name : a.text)}</div><div class="type">${a.type ? 'From allocation. Scan one for this person.' : `From allocation: ${esc(a.text)}`}</div></span></li>`).join('');
     panel.innerHTML = `
       <div class="person-card">
         <div class="row"><div class="name grow">${esc(p.name)}</div>${chips(p, hold)}<button class="btn sm ghost" id="btnEditPerson" title="Edit details">Edit</button><button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
@@ -260,10 +260,10 @@
         ${state.collector ? `<div class="meta collector">Scans go to <b>${esc(p.name)}</b>, collected by <b>${esc(state.collector.name)}</b></div>` : ''}
       </div>
       <div class="section-title"><h3>Assigned <span class="mono">${hold.length}</span></h3>${hold.length ? '<button class="btn sm ghost" data-return-all>Return all</button>' : ''}</div>
-      <ul class="dev-list">${plannedRow}${allocRows}${byType.map(d => devRow(d, `<button class="btn sm" data-swap="${d.id}" title="Swap for another item">Swap</button><button class="btn sm ghost" data-flag="${d.id}" title="Mark lost or damaged">!</button><button class="btn sm ghost" data-add="${d.id}" title="Add to list">+</button>`)).join('') || (plannedRow || allocRows ? '' : '<li class="empty">Nothing assigned.</li>')}</ul>
+      <ul class="dev-list">${plannedRow}${allocRows}${byType.map(d => devRow(d, `<button class="btn sm" data-swap="${d.id}" title="Swap for another device">Swap</button><button class="btn sm ghost" data-flag="${d.id}" title="Mark lost or damaged">!</button><button class="btn sm ghost" data-add="${d.id}" title="Add to list">+</button>`)).join('') || (plannedRow || allocRows ? '' : '<li class="empty">Nothing assigned.</li>')}</ul>
       ${pre.length ? `<div class="section-title"><h3>Reserved devices <span class="mono">${pre.length}</span></h3><button class="btn sm ghost" data-add-all>Add all</button></div>
-      <ul class="dev-list">${pre.map(d => devRow(d, `<button class="btn sm" data-add="${d.id}">+ Add</button>`)).join('')}</ul>` : ''}
-      ${state.collector ? '' : `<div class="collect-cta"><button class="btn block" id="btnForSomeone">Picking up for other people?</button><div class="dim">Their own devices stay with them; the next people you pick receive the devices.</div></div>`}`;
+      <ul class="dev-list">${pre.map(d => devRow(d, `<button class="btn sm" data-add="${d.id}">Add</button>`)).join('')}</ul>` : ''}
+      ${state.collector ? '' : `<div class="collect-cta"><button class="btn block" id="btnForSomeone">Picking up for other people?</button><div class="dim">Their own devices stay with them. The people you pick next receive the devices.</div></div>`}`;
     $('#btnClearPerson').onclick = clearPerson;
     $('#btnEditPerson').onclick = () => openEditPerson(p);
     refreshPackLive();
@@ -283,9 +283,9 @@
     modal('New person', `
       <div class="field"><label>Full name</label><input id="np_name" value="${esc(prefill)}"></div>
       <div class="grid cols-2"><div class="field"><label>Department</label><input id="np_dept"></div><div class="field"><label>Role</label><input id="np_role"></div></div>
-      <div class="grid cols-2"><div class="field"><label>Phone</label><input id="np_phone"></div><div class="field"><label>Bolero ID (optional)</label><input id="np_bolero" placeholder="e.g. 61"></div></div>
+      <div class="grid cols-2"><div class="field"><label>Phone</label><input id="np_phone"></div><div class="field"><label>Bolero ID (optional)</label><input id="np_bolero" placeholder="61"></div></div>
       <div class="field"><label>Unique ID (optional)</label><input id="np_ext"></div>`,
-      [{ label: 'Cancel' }, { label: 'Create & select', cls: 'primary', onClick: async root => {
+      [{ label: 'Cancel' }, { label: 'Create and select', cls: 'primary', onClick: async root => {
         try {
           const d = await post('/api/people', { name: $('#np_name', root).value, dept: $('#np_dept', root).value, role: $('#np_role', root).value, phone: $('#np_phone', root).value, external_id: $('#np_ext', root).value, bolero_id: $('#np_bolero', root).value });
           closeModal(); toast('ok', 'Person created', d.person.name); selectPerson(d.person.id);
@@ -298,8 +298,8 @@
     modal('Edit details', `
       <div class="field"><label>Full name</label><input id="ep_name" value="${esc(p.name)}"></div>
       <div class="grid cols-2"><div class="field"><label>Department</label><input id="ep_dept" value="${esc(p.dept || '')}"></div><div class="field"><label>Role</label><input id="ep_role" value="${esc(p.role || '')}"></div></div>
-      <div class="grid cols-2"><div class="field"><label>Phone</label><input id="ep_phone" value="${esc(p.phone || '')}"></div><div class="field"><label>Bolero ID</label><input id="ep_bolero" value="${esc(p.bolero_id || '')}" placeholder="e.g. 61"></div></div>
-      <div class="grid cols-2"><div class="field"><label>Unique ID</label><input id="ep_ext" value="${esc(p.external_id || '')}"></div><div class="field"><label>Allocation</label><input id="ep_alloc" value="${esc(p.allocation || '')}" placeholder="e.g. Bolero · Pro-D1 headset"></div></div>`,
+      <div class="grid cols-2"><div class="field"><label>Phone</label><input id="ep_phone" value="${esc(p.phone || '')}"></div><div class="field"><label>Bolero ID</label><input id="ep_bolero" value="${esc(p.bolero_id || '')}" placeholder="61"></div></div>
+      <div class="grid cols-2"><div class="field"><label>Unique ID</label><input id="ep_ext" value="${esc(p.external_id || '')}"></div><div class="field"><label>Allocation</label><input id="ep_alloc" value="${esc(p.allocation || '')}" placeholder="Bolero · Pro-D1 headset"></div></div>`,
       [{ label: 'Cancel' }, { label: 'Save', cls: 'primary', onClick: async root => {
         try {
           await post(`/api/people/${p.id}`, { name: $('#ep_name', root).value, dept: $('#ep_dept', root).value, role: $('#ep_role', root).value, phone: $('#ep_phone', root).value, bolero_id: $('#ep_bolero', root).value, external_id: $('#ep_ext', root).value, allocation: $('#ep_alloc', root).value });
@@ -329,7 +329,7 @@
       const d = await api(`/api/devices/search?q=${encodeURIComponent(q)}`);
       if (seq !== scanSeq || scanEl.value.trim() !== q) return;   // a newer keystroke or a scan happened meanwhile
       scanHits = d.results; scanIdx = scanHits.length ? 0 : -1;
-      scanResults.innerHTML = scanHits.map(x => `<div class="item" data-id="${x.id}"><div><div class="name">${esc(x.label || x.si)} <span class="muted" style="font-weight:400">· ${esc(x.type_name)}</span>${x.linked_id ? ` <span class="bolero">ID ${esc(x.linked_id)}</span>` : ''}</div><div class="meta"><span class="mono">${esc(x.si)}</span>${x.holder_name ? ` · with ${esc(x.holder_name)}` : ''}${x.site_name ? ` · ${esc(x.site_name)}` : ''}</div></div><span class="badge ${x.status}">${esc(x.status)}</span></div>`).join('')
+      scanResults.innerHTML = scanHits.map(x => `<div class="item" data-id="${x.id}"><div><div class="name">${esc(x.label || x.si)} <span class="muted fw-n">· ${esc(x.type_name)}</span>${x.linked_id ? ` <span class="bolero">ID ${esc(x.linked_id)}</span>` : ''}</div><div class="meta"><span class="mono">${esc(x.si)}</span>${x.holder_name ? ` · with ${esc(x.holder_name)}` : ''}${x.site_name ? ` · ${esc(x.site_name)}` : ''}</div></div><span class="badge ${x.status}">${esc(x.status)}</span></div>`).join('')
         + `<div class="empty"><span>${scanHits.length ? 'Not it?' : 'No device matches “' + esc(q) + '”'}</span><button class="btn sm" data-create>+ Create “${esc(q)}”</button></div>`;
       scanResults.classList.remove('hidden'); paintScanActive();
       scanResults.querySelectorAll('.item').forEach(el => el.onmousedown = () => pickScanHit(scanHits.find(x => x.id === +el.dataset.id)));
@@ -384,8 +384,8 @@
       let cls = '', note = '';
       if (d.status === 'out') {
         if (p && d.holder_id === p.id) { cls = 'warn'; note = 'Already with this person'; }
-        else { cls = 'conflict'; note = `OUT to ${d.holder_name}`; }
-      } else if (d.status === 'lost' || d.status === 'damaged') { cls = 'warn'; note = `Marked ${d.status.toUpperCase()}`; }
+        else { cls = 'conflict'; note = `Out to ${d.holder_name}`; }
+      } else if (d.status === 'lost' || d.status === 'damaged') { cls = 'warn'; note = `Marked ${d.status}`; }
       if (d.site_name && d.site_name !== TECH.site_name) note += (note ? ' · ' : '') + `${d.site_name} stock`;
       const isPack = /bolero/i.test(d.type_name) && !/antenna/i.test(d.type_name);
       if (isPack && p && d.status !== 'out') {
@@ -394,7 +394,7 @@
         else if (d.linked_id && !mine) note += (note ? ' · ' : '') + `configured as ${d.linked_id}, ${p.name.split(' ')[0]} takes this ID`;
         else if (!d.linked_id && mine) note += (note ? ' · ' : '') + `set pack to ID ${mine}`;
       }
-      if (d.assigned_person_name && (!p || d.assigned_person_id !== p.id)) note += (note ? ' · ' : '') + `pre-assigned to ${d.assigned_person_name}`;
+      if (d.assigned_person_name && (!p || d.assigned_person_id !== p.id)) note += (note ? ' · ' : '') + `reserved for ${d.assigned_person_name}`;
       return `<li class="${cls}${d.id === justAdded ? ' new' : ''}"><span class="idx">${i + 1}</span>
         <span class="txt"><div class="label">${esc(d.label || d.si)}${d.for && state.collector ? ` <span class="for${p && d.for.id === p.id ? ' active' : ''}">for ${esc(d.for.name.split(' ')[0])}</span>` : ''}</div><div class="sub">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${note ? ` · <span class="${cls === 'conflict' ? 'red' : 'amber'}">${esc(note)}</span>` : ''}</div></span>
         <span class="badge ${d.status}">${esc(d.status)}</span>
@@ -409,13 +409,13 @@
     const forIds = [...new Set(state.basket.filter(x => x.for).map(x => x.for.id))];
     if (state.collector) {
       $('#btnSignOut').disabled = !n || !forIds.length;
-      $('#btnSignOut').innerHTML = forIds.length > 1 ? `&#8593; Sign OUT for ${forIds.length} people <small>collected by ${esc(state.collector.name.split(' ')[0])}</small>` : `&#8593; Sign OUT${p ? ` to ${esc(p.name.split(' ')[0])}` : ''} <small>collected by ${esc(state.collector.name.split(' ')[0])}</small>`;
-      $('#actionHint').textContent = !n ? (state.recipients.length ? `Scan extra items for ${p ? p.name : 'the selected person'}, or add more people.` : `Add the people ${state.collector.name.split(' ')[0]} is collecting for.`) : `${n} item${n > 1 ? 's' : ''} for ${forIds.length} ${forIds.length === 1 ? 'person' : 'people'} ready.`;
+      $('#btnSignOut').innerHTML = forIds.length > 1 ? `Sign out for ${forIds.length} people <small>collected by ${esc(state.collector.name.split(' ')[0])}</small>` : `Sign out${p ? ` to ${esc(p.name.split(' ')[0])}` : ''} <small>collected by ${esc(state.collector.name.split(' ')[0])}</small>`;
+      $('#actionHint').textContent = !n ? (state.recipients.length ? `Scan extra devices for ${p ? p.name : 'the selected person'}, or add more people.` : `Add the people ${state.collector.name.split(' ')[0]} is collecting for.`) : `${n} device${n > 1 ? 's' : ''} for ${forIds.length} ${forIds.length === 1 ? 'person' : 'people'} ready.`;
     } else {
       $('#btnSignOut').disabled = !n || !p;
-      $('#btnSignOut').innerHTML = p ? `&#8593; Sign OUT to ${esc(p.name.split(' ')[0])}` : '&#8593; Sign OUT';
-      $('#actionHint').textContent = !n ? (p ? `Scan the items for ${p.name}.` : 'Pick a person and scan items to sign out. Scan items alone to sign in.')
-        : (p ? `${n} item${n > 1 ? 's' : ''} ready.` : `${n} item${n > 1 ? 's' : ''} ready to sign in. Pick a person to sign out instead.`);
+      $('#btnSignOut').innerHTML = p ? `Sign out to ${esc(p.name.split(' ')[0])}` : 'Sign out';
+      $('#actionHint').textContent = !n ? (p ? `Scan the devices for ${p.name}.` : 'Scan devices to sign in. Pick a person first to sign out.')
+        : (p ? `${n} device${n > 1 ? 's' : ''} ready.` : `${n} device${n > 1 ? 's' : ''} ready to sign in. Pick a person to sign out instead.`);
     }
     renderCollectStrip();
   }
@@ -426,10 +426,10 @@
       <div class="field"><label>SI number</label><input id="qc_si" value="${esc(si)}" class="mono"></div>
       <div class="grid cols-2">
         <div class="field"><label>Type</label><select id="qc_type">${TYPES.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
-        <div class="field"><label>Label (e.g. Bolero 61)</label><input id="qc_label"></div>
+        <div class="field"><label>Label</label><input id="qc_label" placeholder="Bolero 61"></div>
       </div>
-      <label class="check"><input type="checkbox" id="qc_site"> This item belongs to ${esc(TECH.site_name)} only</label>`,
-      [{ label: 'Cancel' }, { label: 'Create & add', cls: 'primary', onClick: async root => {
+      <label class="check"><input type="checkbox" id="qc_site"> This device belongs to ${esc(TECH.site_name)} only</label>`,
+      [{ label: 'Cancel' }, { label: 'Create and add', cls: 'primary', onClick: async root => {
         try {
           const d = await post('/api/devices/quick', { si: $('#qc_si', root).value, type_id: +$('#qc_type', root).value, label: $('#qc_label', root).value, site_specific: $('#qc_site', root).checked });
           closeModal(); toast('ok', 'Device created', `${d.device.label || d.device.si} · ${d.device.type_name}`); addToBasket(d.device); refreshSummary();
@@ -440,14 +440,14 @@
 
   // ---- sign out / in -----------------------------------------------------
   const OK_OUTCOMES = ['issued', 'reassigned', 'reissued', 'returned', 'restored'];
-  const NICE = { issued: ['ok', 'Signed OUT'], reassigned: ['warn', 'Reassigned'], reissued: ['warn', 'Restored & signed out'], already_held: ['warn', 'Already with this person'], returned: ['ok', 'Signed IN'], already_in: ['warn', 'Already in stock (scan logged)'], restored: ['ok', 'Restored to stock'], conflict: ['err', 'Not processed'], missing: ['err', 'Unknown device'] };
+  const NICE = { issued: ['ok', 'Signed out'], reassigned: ['warn', 'Reassigned'], reissued: ['warn', 'Restored and signed out'], already_held: ['warn', 'Already with this person'], returned: ['ok', 'Signed in'], already_in: ['warn', 'Already in stock, scan logged'], restored: ['ok', 'Restored to stock'], conflict: ['err', 'Not processed'], missing: ['err', 'Unknown device'] };
 
   function announce(results) {
-    const linked = results.filter(r => r.outcome === 'issued' && r.linked_id).map(r => `${r.label || r.si} → Bolero ${r.linked_id}`);
+    const linked = results.filter(r => r.outcome === 'issued' && r.linked_id).map(r => `${r.label || r.si} is Bolero ${r.linked_id}`);
     if (linked.length) toast('ok', 'Bolero ID linked', linked.join(', '), 5000);
     const grouped = {};
     results.forEach(r => (grouped[r.outcome] = grouped[r.outcome] || []).push(r.label || r.si));
-    Object.entries(grouped).forEach(([o, items]) => { const [k, t] = NICE[o] || ['warn', o]; toast(k, `${t} (${items.length})`, items.join(', '), 5000); });
+    Object.entries(grouped).forEach(([o, items]) => { const [k, t] = NICE[o] || ['warn', o]; toast(k, `${t} · ${items.length}`, items.join(', '), 5000); });
   }
   function setResult(kind, results, personName) {
     const ok = results.filter(r => OK_OUTCOMES.includes(r.outcome));
@@ -513,10 +513,10 @@
     } catch (e) { toast('err', 'Sign out failed', e.message); }
   }
   function openConflicts(conflicts, person) {
-    modal('Items not available', `
+    modal('Devices not available', `
       <p class="help">Tick the ones to give ${person ? `to <b>${esc(person.name)}</b>` : 'out'} anyway. The rest stay in the list.</p>
-      <ul class="conflict-list" style="list-style:none;padding:0;margin:0">${conflicts.map(c => `<li>
-        <span><div style="font-weight:800">${esc(c.label || c.si)} <span class="si">${esc(c.si)}</span>${!person && c.for ? ` <span class="muted">for ${esc(c.for.name)}</span>` : ''}</div><div class="red" style="font-size:13px">${esc(c.message)}</div></span>
+      <ul class="conflict-list">${conflicts.map(c => `<li>
+        <span><div class="t">${esc(c.label || c.si)} <span class="si">${esc(c.si)}</span>${!person && c.for ? ` <span class="muted">for ${esc(c.for.name)}</span>` : ''}</div><div class="red sm">${esc(c.message)}</div></span>
         <label class="check"><input type="checkbox" data-force="${c.id}"> ${c.status === 'out' ? 'Reassign' : 'Issue anyway'}</label></li>`).join('')}</ul>`,
       [{ label: 'Leave in list' }, { label: 'Apply', cls: 'primary', onClick: async root => {
         const force = [...root.querySelectorAll('[data-force]:checked')].map(x => +x.dataset.force);
@@ -531,23 +531,23 @@
   function openSwap(old) {
     if (!old) return;
     modal(`Swap ${old.label || old.si}`, `
-      <p class="help">${esc(state.person.name)} returns <b>${esc(old.label || old.si)}</b> and gets the item you scan now.</p>
-      <div class="field"><label>Scan replacement SI</label><input id="sw_si" class="mono" placeholder="Scan…" autocomplete="off"></div>
+      <p class="help">${esc(state.person.name)} returns <b>${esc(old.label || old.si)}</b> and gets the device you scan now.</p>
+      <div class="field"><label>Scan replacement SI</label><input id="sw_si" class="mono" placeholder="Scan the replacement" autocomplete="off"></div>
       <div class="grid cols-2">
-        <div class="field"><label>Reason</label><select id="sw_reason"><option>Damaged</option><option>Faulty</option><option>Battery issue</option><option>Wrong item</option><option>Lost</option><option>Other</option></select></div>
-        <div class="field"><label>Returned item becomes</label><select id="sw_status"><option value="damaged">Damaged</option><option value="in">Back in stock (OK)</option><option value="lost">Lost</option></select></div>
+        <div class="field"><label>Reason</label><select id="sw_reason"><option>Damaged</option><option>Faulty</option><option>Battery issue</option><option>Wrong device</option><option>Lost</option><option>Other</option></select></div>
+        <div class="field"><label>Returned device becomes</label><select id="sw_status"><option value="damaged">Damaged</option><option value="in">Back in stock</option><option value="lost">Lost</option></select></div>
       </div>
       <div class="field"><label>Note</label><input id="sw_note" placeholder="Optional"></div>`,
       [{ label: 'Cancel' }, { label: 'Swap', cls: 'primary', onClick: root => submitSwap(root, old) }]);
     $('#sw_si').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitSwap($('#modalRoot'), old); } });
-    $('#sw_reason').onchange = e => { if (e.target.value === 'Lost') $('#sw_status').value = 'lost'; if (e.target.value === 'Wrong item') $('#sw_status').value = 'in'; };
+    $('#sw_reason').onchange = e => { if (e.target.value === 'Lost') $('#sw_status').value = 'lost'; if (e.target.value === 'Wrong device') $('#sw_status').value = 'in'; };
   }
   async function submitSwap(root, old) {
     const newSi = $('#sw_si', root).value.trim();
     if (!newSi) { toast('warn', 'Scan the replacement first'); return; }
     try {
       const d = await post('/api/swap', { old_device_id: old.id, new_si: newSi, reason: $('#sw_reason', root).value, note: $('#sw_note', root).value, old_status: $('#sw_status', root).value });
-      closeModal(); toast('ok', 'Swapped', `${d.old.label || d.old.si} → ${d.new.label || d.new.si}`);
+      closeModal(); toast('ok', 'Swapped', `${d.new.label || d.new.si} replaces ${d.old.label || d.old.si}`);
       state.result = { kind: 'out', person: state.person.name, personInfo: { bolero_id: state.person.bolero_id, faceplate: state.person.faceplate || '' }, items: [{ si: d.new.si, label: d.new.label, type: d.new.type, linked_id: d.new.linked_id || '' }], ts: Date.now() };
       await selectPerson(state.person.id); refreshSummary(); refreshFeed();
     } catch (e) { toast('err', 'Swap failed', e.message); }
@@ -555,10 +555,10 @@
   function openFlag(d) {
     if (!d) return;
     modal(`Flag ${d.label || d.si}`, `
-      <p class="help">The item comes off <b>${esc(state.person.name)}</b>'s list and the change is logged against them.</p>
+      <p class="help">The device comes off <b>${esc(state.person.name)}</b>'s list and the change is logged against them.</p>
       <div class="grid cols-2">
         <div class="field"><label>Status</label><select id="fl_status"><option value="damaged">Damaged</option><option value="lost">Lost</option></select></div>
-        <div class="field"><label>Reason</label><input id="fl_reason" placeholder="e.g. cable cut, dropped"></div>
+        <div class="field"><label>Reason</label><input id="fl_reason" placeholder="Cable cut, dropped"></div>
       </div>
       <div class="field"><label>Note</label><input id="fl_note" placeholder="Optional"></div>`,
       [{ label: 'Cancel' }, { label: 'Save', cls: 'danger', onClick: async root => {
@@ -567,7 +567,7 @@
           await post(`/api/devices/${d.id}/status`, { status, reason: $('#fl_reason', root).value, note: $('#fl_note', root).value });
           closeModal(); toast('warn', `Marked ${status}`, d.label || d.si);
           await selectPerson(state.person.id); refreshSummary(); refreshFeed();
-        } catch (e) { toast('err', 'Failed', e.message); }
+        } catch (e) { toast('err', 'Could not save', e.message); }
       } }]);
   }
 
@@ -591,7 +591,7 @@
     if (!el) return;
     const n = el.dataset.number;
     if (!n) {
-      try { const i = await api('/api/bolero/pack/0'); el.innerHTML = i.configured ? '<span class="dim">No Bolero ID on this person, nothing to flash</span>' : ''; if (!i.configured) el.remove(); } catch (e) { el.remove(); }
+      try { const i = await api('/api/bolero/pack/0'); el.innerHTML = i.configured ? '<span class="dim">No Bolero ID on this person. Nothing to flash.</span>' : ''; if (!i.configured) el.remove(); } catch (e) { el.remove(); }
       return;
     }
     try {
@@ -631,12 +631,12 @@
   const PRESETS = [['Be right back', {}], ['5 min', { minutes: 5 }], ['10 min', { minutes: 10 }], ['15 min', { minutes: 15 }], ['30 min', { minutes: 30 }], ['1 hour', { minutes: 60 }]];
   function openAway() {
     modal('Away from desk', `
-      <p class="help">Locks this desk behind the admin password. The mirror keeps the programme feed and shows when you are back.</p>
+      <p class="help">Locks this desk behind the admin password. The mirror keeps the PGM feed and shows when you are back.</p>
       <div class="preset-grid">${PRESETS.map(([l], i) => `<button class="btn" data-preset="${i}">${esc(l)}</button>`).join('')}</div>
-      <div class="grid cols-2" style="margin-top:10px"><div class="field"><label>Or back at</label><input type="time" id="aw_until"></div><div class="field"><label>Note for the mirror (optional)</label><input id="aw_note" placeholder="e.g. Gone to stage, call 1234"></div></div>`,
+      <div class="grid cols-2 mt-s"><div class="field"><label>Or back at</label><input type="time" id="aw_until"></div><div class="field"><label>Note for the mirror (optional)</label><input id="aw_note" placeholder="Gone to stage, call 1234"></div></div>`,
       [{ label: 'Cancel' }, { label: 'Lock until the time above', cls: 'primary', onClick: async root => {
         const until = $('#aw_until', root).value;
-        if (!until) { toast('warn', 'Pick a time', 'or use one of the buttons above'); return; }
+        if (!until) { toast('warn', 'Pick a time', 'Or use one of the buttons above.'); return; }
         await goAway({ until, note: $('#aw_note', root).value });
       } }]);
     document.querySelectorAll('#modalRoot [data-preset]').forEach(b => b.onclick = () => goAway(Object.assign({ note: ($('#aw_note') || {}).value || '' }, PRESETS[+b.dataset.preset][1])));

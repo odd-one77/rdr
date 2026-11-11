@@ -23,11 +23,15 @@ router = APIRouter(prefix="/admin")
 
 
 def _redirect(path: str, msg: str | None = None, err: str | None = None) -> RedirectResponse:
+    # a "#section" on the path (the settings tabs) has to stay after the query string
+    path, _, frag = path.partition("#")
     sep = "&" if "?" in path else "?"
     if msg:
         path += f"{sep}msg={quote(msg)}"
     elif err:
         path += f"{sep}err={quote(err)}"
+    if frag:
+        path += f"#{frag}"
     return RedirectResponse(path, status_code=303)
 
 
@@ -380,9 +384,9 @@ def device_save(request: Request, device_id: int, action: str = Form("save"), si
         if action == "assign":
             if assign_person_id:
                 inventory.set_assignment(db, device_id, int(assign_person_id), tech)
-                return _redirect(f"/admin/devices/{device_id}", msg="Pre-assigned")
+                return _redirect(f"/admin/devices/{device_id}", msg="Device reserved")
             inventory.clear_assignment(db, device_id, tech)
-            return _redirect(f"/admin/devices/{device_id}", msg="Pre-assignment removed")
+            return _redirect(f"/admin/devices/{device_id}", msg="Reservation removed")
         dup = db.execute("SELECT id FROM devices WHERE si = ? COLLATE NOCASE AND id <> ?", (inventory.norm_si(si), device_id)).fetchone()
         if dup:
             return _redirect(f"/admin/devices/{device_id}", err="Another device already has that SI")
@@ -415,7 +419,7 @@ def assignment_add(request: Request, si: str = Form(...), person_id: int = Form(
         if inventory.person_by_id(db, person_id) is None:
             return _redirect("/admin/assignments", err="Unknown person")
         inventory.set_assignment(db, d["id"], person_id, current_tech(request), note)
-    return _redirect("/admin/assignments", msg=f"{d['si']} pre-assigned")
+    return _redirect("/admin/assignments", msg=f"{d['si']} reserved")
 
 
 @router.post("/assignments/{device_id}/delete", dependencies=[Depends(require_admin)])
@@ -431,7 +435,7 @@ def assignments_clear(request: Request, confirm: str = Form("")):
         return _redirect("/admin/assignments", err="Type CLEAR to confirm")
     with get_db() as db:
         db.execute("DELETE FROM assignments")
-    return _redirect("/admin/assignments", msg="All pre-assignments removed")
+    return _redirect("/admin/assignments", msg="All reservations removed")
 
 
 # -- direct edit (inline cells) --------------------------------------------------
@@ -641,11 +645,11 @@ def settings_page(request: Request, fetch: int = 0):
 def settings_password(current: str = Form(""), password: str = Form(""), confirm: str = Form("")):
     with get_db() as db:
         if not check_admin_password(db, current):
-            return _redirect("/admin/settings", err="Current password is wrong")
+            return _redirect("/admin/settings#password", err="Current password is wrong")
         if len(password) < 4 or password != confirm:
-            return _redirect("/admin/settings", err="New passwords must match and be at least 4 characters")
+            return _redirect("/admin/settings#password", err="New passwords must match and be at least 4 characters")
         set_admin_password(db, password)
-    return _redirect("/admin/settings", msg="Password changed")
+    return _redirect("/admin/settings#password", msg="Password changed")
 
 
 @router.post("/settings/server", dependencies=[Depends(require_admin)])
@@ -654,15 +658,15 @@ def settings_server(port: int = Form(8080), open_browser: str = Form("")):
     cfg["port"] = max(1, min(65535, port))
     cfg["open_browser"] = bool(open_browser)
     save_config(cfg)
-    return _redirect("/admin/settings", msg="Server settings saved. They apply after a restart.")
+    return _redirect("/admin/settings#server", msg="Server settings saved. They apply after a restart.")
 
 
 @router.post("/settings/update", dependencies=[Depends(require_admin)])
 def settings_update():
     report = updater.update(restart=True)
     if report["ok"]:
-        return _redirect("/admin/settings?restarting=1", msg="Update installed. Restarting the server now...")
-    return _redirect("/admin/settings", err="No update applied. See the log below.")
+        return _redirect("/admin/settings?restarting=1#updates", msg="Update installed. Restarting the server now.")
+    return _redirect("/admin/settings#updates", err="No update applied. See the log below.")
 
 
 @router.post("/settings/mirror", dependencies=[Depends(require_admin)])
@@ -674,13 +678,13 @@ def settings_mirror(mirror_title: str = Form(""), mirror_prompt: str = Form(""),
         set_setting(db, "mirror_title", mirror_title.strip() or None)
         set_setting(db, "mirror_prompt", mirror_prompt.strip() or None)
         set_setting(db, "mirror_sayings", "\n".join(ln.strip() for ln in mirror_sayings.splitlines() if ln.strip()) or None)
-    return _redirect("/admin/settings", msg="Mirror screen saved")
+    return _redirect("/admin/settings#mirror", msg="Mirror screen saved")
 
 
 @router.get("/settings/capture-devices", dependencies=[Depends(require_admin)])
 def settings_capture_devices(request: Request):
     """List DirectShow / DeckLink inputs ffmpeg can see, for the PGM feed setting."""
-    return _redirect("/admin/settings?devices=1")
+    return _redirect("/admin/settings?devices=1#mirror")
 
 
 @router.post("/settings/github", dependencies=[Depends(require_admin)])
@@ -692,19 +696,19 @@ def settings_github(github_repo: str = Form(""), github_token: str = Form(""), c
     elif github_token.strip():
         cfg["github_token"] = github_token.strip()
     save_config(cfg)
-    return _redirect("/admin/settings?fetch=1", msg="Update source saved")
+    return _redirect("/admin/settings?fetch=1#updates", msg="Update source saved")
 
 
 @router.post("/settings/restart", dependencies=[Depends(require_admin)])
 def settings_restart():
     updater.schedule_restart()
-    return _redirect("/admin/settings?restarting=1", msg="Restarting the server...")
+    return _redirect("/admin/settings?restarting=1#server", msg="Restarting the server.")
 
 
 @router.post("/settings/reset", dependencies=[Depends(require_admin)])
 def settings_reset(confirm: str = Form(""), keep_password: str = Form("")):
     if confirm != "RESET":
-        return _redirect("/admin/settings", err="Type RESET to confirm a full database reset")
+        return _redirect("/admin/settings#data", err="Type RESET to confirm a full database reset")
     with get_db() as db:
         pw = db.execute("SELECT value FROM settings WHERE key = 'admin_password_hash'").fetchone()
     reset_db()
@@ -752,7 +756,9 @@ def bolero_page(request: Request, path: str = "", host: str = ""):
                 text = _json.dumps(data, indent=2)[:200_000] if not isinstance(data, str) else data[:200_000]
             except Exception as e:  # noqa: BLE001
                 err = f"{type(e).__name__}: {e}"
-    return render(request, "admin/bolero.html", bolero=bolero.status(), path=path, host=host, text=text, err=err, active="bolero")
+    st = bolero.status()
+    polled = datetime.fromtimestamp(st["updated"]).strftime("%H:%M:%S") if st.get("updated") else ""
+    return render(request, "admin/bolero.html", bolero=st, polled=polled, path=path, host=host, text=text, err=err, active="bolero")
 
 
 @router.post("/bolero/settings", dependencies=[Depends(require_admin)])
@@ -810,18 +816,18 @@ def settings_https(action: str = Form("enable"), https_port: int = Form(8443), e
         cfg["https"] = False
         save_config(cfg)
         updater.schedule_restart()
-        return _redirect("/admin/settings?restarting=1", msg="HTTPS off. Restarting...")
+        return _redirect("/admin/settings?restarting=1#phones", msg="HTTPS off. Restarting.")
     if not certs.available():
-        return _redirect("/admin/settings", err="The 'cryptography' package is missing. Run Update & restart to install requirements, then try again.")
+        return _redirect("/admin/settings#phones", err="The cryptography package is missing. Run Update and restart, then try again.")
     try:
         certs.issue_server_cert([h for h in extra_hosts.replace(",", " ").split() if h])
     except Exception as e:  # noqa: BLE001
-        return _redirect("/admin/settings", err=f"Could not create certificate: {e}")
+        return _redirect("/admin/settings#phones", err=f"Could not create certificate: {e}")
     cfg["https"] = True
     cfg["https_port"] = max(1, min(65535, https_port))
     save_config(cfg)
     updater.schedule_restart()
-    return _redirect("/admin/settings?restarting=1", msg="HTTPS on. Restarting... phones then use the https address and /trust.")
+    return _redirect("/admin/settings?restarting=1#phones", msg="HTTPS on. Restarting. Phones then use the https address and /trust.")
 
 
 # -- reports ------------------------------------------------------------------
@@ -832,7 +838,7 @@ def reports_page(request: Request, format: str = "html", report: str = "outstand
         if format == "csv":
             buf = io.StringIO(); w = csv.writer(buf)
             if report == "endofevent":
-                w.writerow(["Person", "Department", "Role", "Phone", "Bolero ID", "Last seen", "Item", "SI", "Type", "Status", "Issued at", "Issued at site", "Issued by"])
+                w.writerow(["Person", "Department", "Role", "Phone", "Bolero ID", "Last seen", "Device", "SI", "Type", "Status", "Issued at", "Issued at site", "Issued by"])
                 for person in reports.end_of_event(db):
                     for d in person["items"]:
                         w.writerow([person["name"], person["dept"], person["role"], person["phone"], person["bolero_id"], person["last_seen"],
@@ -845,7 +851,7 @@ def reports_page(request: Request, format: str = "html", report: str = "outstand
                         w.writerow([block["site"]["name"], t["type_name"], t["own_in"], t["own_total"], t["shared_in"], t["shared_total"], t["n_out"], t["issued_here"], t["n_bad"]])
                 name = "rdr-stock.csv"
             else:
-                w.writerow(["Status", "Department", "Person", "Phone", "Item", "SI", "Type", "Since"])
+                w.writerow(["Status", "Department", "Person", "Phone", "Device", "SI", "Type", "Since"])
                 for d in reports.outstanding(db):
                     w.writerow([d["status"], d["holder_dept"] or "", d["holder_name"] or "", d["holder_phone"] or "", d["label"], d["si"], d["type_name"], d["last_event_at"] or ""])
                 name = "rdr-outstanding.csv"

@@ -19,34 +19,34 @@
 <div class="kiosk-main">
   <div class="col">
     <div class="panel fill">
-      <div class="panel-head"><h2>Who</h2><div class="row" style="gap:4px"><button class="btn sm ghost hidden" id="btnPrev" title="Bring back the last person (F3)"></button><button class="btn sm ghost" id="btnNewPerson">+ New person</button></div></div>
-      <div class="panel-body" style="padding:12px 12px 0;overflow:visible">
+      <div class="panel-head"><h2>Who</h2><div class="row"><button class="btn sm ghost hidden" id="btnPrev" title="Bring back the last person (F3)"></button><button class="btn sm ghost" id="btnNewPerson">New person</button></div></div>
+      <div class="panel-body pad-search">
         <div class="search-box">
-          <input type="search" id="personSearch" placeholder="Name, phone or ID  (F2)" autocomplete="off">
+          <input type="search" id="personSearch" placeholder="Name, phone or ID" autocomplete="off">
           <div class="results hidden" id="personResults"></div>
         </div>
       </div>
       <div id="collectStrip" class="collect-strip hidden"></div>
-      <div id="personPanel" class="grow" style="min-height:0;overflow:auto">
-        <div class="empty-state">Type a name to start. Items can be signed in without a person.</div>
+      <div id="personPanel" class="grow scroll">
+        <div class="empty-state">Search for a person to sign devices out.<span class="dim">To sign in, just scan. No name needed.</span></div>
       </div>
     </div>
   </div>
 
   <div class="col">
     <div class="panel scan-panel">
-      <div class="panel-body" style="padding:12px 14px;overflow:visible">
+      <div class="panel-body pad-scan">
         <div class="search-box scan-box">
-          <input type="text" id="scanInput" placeholder="Scan SI number, or type part of it" autocomplete="off" autofocus>
+          <input type="text" id="scanInput" placeholder="Scan or type an SI number" autocomplete="off" autofocus>
           <div class="results hidden" id="scanResults"></div>
         </div>
-        <div class="scan-hint">Scan, or type a few digits (the last four, say) and pick from the list. F4 returns here, F2 searches people, F3 recalls the previous person.</div>
+        <div class="scan-hint"><span><kbd>F4</kbd>Scan</span><span><kbd>F2</kbd>Find person</span><span><kbd>F3</kbd>Last person</span><span>Type the last few digits to pick from a list.</span></div>
       </div>
     </div>
     <div class="panel fill">
-      <div class="panel-head"><h2>Items <span class="mono" id="basketCount">0</span></h2>
-        <div class="row"><button class="btn sm ghost hidden" id="btnAddAssigned">Add pre-assigned</button><button class="btn sm ghost" id="btnClear">Clear</button></div></div>
-      <div class="panel-body tight" style="overflow:auto">
+      <div class="panel-head"><h2>Devices <span class="mono" id="basketCount">0</span></h2>
+        <div class="row"><button class="btn sm ghost hidden" id="btnAddAssigned">Add reserved</button><button class="btn sm ghost" id="btnClear">Clear</button></div></div>
+      <div class="panel-body tight">
         <ul class="basket" id="basket"></ul>
         <div class="empty-state" id="basketEmpty">Nothing scanned yet.</div>
       </div>
@@ -55,17 +55,17 @@
 
   <div class="col col-right">
     <div class="panel fill">
-      <div class="panel-head"><h2>Activity</h2><span class="muted" style="font-size:12px" id="feedScope">this site</span></div>
-      <div class="panel-body tight" style="overflow:auto"><ul class="feed" id="feed"></ul></div>
+      <div class="panel-head"><h2>Activity</h2><span class="muted sm" id="feedScope">This site</span></div>
+      <div class="panel-body tight"><ul class="feed" id="feed"></ul></div>
     </div>
   </div>
 </div>
 
 <div class="action-bar">
-  <span class="count" id="actionHint">Pick a person and scan items to sign out. Scan items alone to sign in.</span>
+  <span class="count" id="actionHint">Scan devices to sign in. Pick a person first to sign out.</span>
   <div class="grow"></div>
-  <button class="btn success lg" id="btnSignIn" disabled>&#8595; Sign IN</button>
-  <button class="btn primary lg" id="btnSignOut" disabled>&#8593; Sign OUT</button>
+  <button class="btn success lg" id="btnSignIn" disabled>Sign in</button>
+  <button class="btn primary lg" id="btnSignOut" disabled>Sign out</button>
 </div>
 
 <div class="drawer-back" id="drawerBack"></div>

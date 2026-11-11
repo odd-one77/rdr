@@ -398,11 +398,11 @@ def swap(
     if old is None or new is None:
         raise ValueError("Unknown device")
     if old["holder_id"] is None:
-        raise ValueError("The item being swapped out is not signed out to anyone")
+        raise ValueError("The device being swapped out is not signed out to anyone")
     if new["status"] == "out":
         raise ValueError(f"Replacement {new['si']} is already out to {new['holder_name']}")
     if old_status not in ("damaged", "lost", "in"):
-        raise ValueError("Bad status for returned item")
+        raise ValueError("Bad status for the returned device")
     person_id = old["holder_id"]
     _set_device(db, old_device_id, old_status, None)
     log(db, "swap_out", old_device_id, person_id, tech, reason, note, related_device_id=new_device_id)

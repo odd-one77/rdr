@@ -1,8 +1,8 @@
 {% extends "admin/base_admin.html" %}
 {% block title %}Review import{% endblock %}
 {% block admin %}
-<div class="page-head"><div><h1>Review · {{ kind.title }}</h1><div class="muted mono">{{ staged.filename }}</div></div><a class="btn ghost" href="/admin/import/s/{{ staged.token }}">← Change mapping</a></div>
-<div class="grid cols-4" style="margin-bottom:16px">
+<div class="page-head"><div><h1>Review · {{ kind.title }}</h1><div class="sub mono">{{ staged.filename }}</div></div><a class="btn" href="/admin/import/s/{{ staged.token }}">Change mapping</a></div>
+<div class="grid cols-4 mb">
   <div class="panel stat"><div class="label">Will create</div><div class="value green">{{ counts.get('create', 0) }}</div></div>
   <div class="panel stat"><div class="label">Will update</div><div class="value">{{ counts.get('update', 0) }}</div></div>
   <div class="panel stat"><div class="label">Need a decision</div><div class="value amber">{{ counts.get('conflict', 0) }}</div></div>
@@ -10,9 +10,9 @@
 </div>
 <form method="post" action="/admin/import/s/{{ staged.token }}/commit">
   {% if conflicts %}
-  <div class="panel" style="margin-bottom:16px"><div class="panel-head"><h2>Possible duplicates — choose what to do</h2></div>
+  <div class="panel mb"><div class="panel-head"><h2>Possible duplicates</h2><span class="muted sm">Choose what happens to each row</span></div>
     <div class="table-wrap"><table>
-      <tr><th>Row in sheet</th><th>Existing match(es)</th><th>Decision</th></tr>
+      <tr><th>Row in sheet</th><th>Existing match</th><th>Decision</th></tr>
       {% for c in conflicts %}
       <tr><td><b>{{ c.data.name or c.data.person_name or c.data.si }}</b><br><span class="muted">{{ [c.data.dept, c.data.role, c.data.phone, c.data.external_id, c.data.person_phone, c.data.person_external_id] | select | join(' · ') }}</span><br><span class="dim">row {{ c.row + 2 }} · {{ c.message }}</span></td>
         <td>{% for e in c.candidates %}<div>#{{ e.id }} <b>{{ e.name }}</b> <span class="muted">{{ [e.dept, e.phone, e.external_id] | select | join(' · ') }}</span></div>{% endfor %}</td>
@@ -24,11 +24,11 @@
     </table></div></div>
   {% endif %}
   {% if errors %}
-  <div class="panel" style="margin-bottom:16px"><div class="panel-head"><h2>Rows that will be skipped ({{ errors | length }})</h2><span class="muted" style="font-size:12px">ignored item types, missing SI numbers, rows without a name</span></div>
-    <div class="table-wrap" style="max-height:240px"><table>{% for e in errors %}<tr><td class="dim">row {{ e.row + 2 }}</td><td>{{ e.data.values() | select | join(' · ') }}</td><td class="amber">{{ e.message }}</td></tr>{% endfor %}</table></div></div>
+  <div class="panel mb"><div class="panel-head"><h2>Rows that will be skipped · {{ errors | length }}</h2><span class="muted sm">Ignored device types, missing SI numbers, rows without a name</span></div>
+    <div class="table-wrap short"><table>{% for e in errors %}<tr><td class="dim">row {{ e.row + 2 }}</td><td>{{ e.data.values() | select | join(' · ') }}</td><td class="amber">{{ e.message }}</td></tr>{% endfor %}</table></div></div>
   {% endif %}
-  <div class="panel" style="margin-bottom:16px"><div class="panel-head"><h2>Sample of what will be imported</h2></div>
-    <div class="table-wrap" style="max-height:300px"><table>{% for s in sample %}<tr><td><span class="badge {{ 'in' if s.action == 'create' else 'neutral' }}">{{ s.action }}</span></td><td>{{ s.data.values() | select | join(' · ') }}</td><td class="muted">{{ s.message }}</td></tr>{% endfor %}</table></div></div>
-  <div class="row"><button class="btn primary lg" name="action" value="commit">Import now</button><button class="btn ghost" name="action" value="discard">Discard</button></div>
+  <div class="panel mb"><div class="panel-head"><h2>Sample of what will be imported</h2></div>
+    <div class="table-wrap short"><table>{% for s in sample %}<tr><td><span class="badge {{ 'in' if s.action == 'create' else 'neutral' }}">{{ s.action }}</span></td><td>{{ s.data.values() | select | join(' · ') }}</td><td class="muted">{{ s.message }}</td></tr>{% endfor %}</table></div></div>
+  <div class="row"><button class="btn primary" name="action" value="commit">Import now</button><button class="btn ghost" name="action" value="discard">Discard</button></div>
 </form>
 {% endblock %}

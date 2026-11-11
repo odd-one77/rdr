@@ -11,7 +11,7 @@
   <aside class="sidenav">
     <a href="/admin" class="{{ 'on' if active == 'dashboard' }}">Dashboard</a>
     <div class="group">Event</div>
-    <a href="/admin/event" class="{{ 'on' if active == 'event' }}">Event & sites</a>
+    <a href="/admin/event" class="{{ 'on' if active == 'event' }}">Event and sites</a>
     <a href="/admin/assignments" class="{{ 'on' if active == 'assignments' }}">Reserved devices</a>
     <div class="group">Data</div>
     <a href="/admin/people" class="{{ 'on' if active == 'people' }}">People</a>
@@ -24,7 +24,7 @@
     <div class="group">System</div>
     <a href="/admin/settings" class="{{ 'on' if active == 'settings' }}">Settings</a>
     <a href="/admin/bolero" class="{{ 'on' if active == 'bolero' }}">Bolero link</a>
-    <a href="/admin/backup" class="{{ 'on' if active == 'backup' }}">Backup & restore</a>
+    <a href="/admin/backup" class="{{ 'on' if active == 'backup' }}">Backup and restore</a>
   </aside>
   <main class="content">
     {% block admin %}{% endblock %}

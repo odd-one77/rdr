@@ -1,7 +1,7 @@
 {% extends "admin/base_admin.html" %}
 {% block title %}Device types{% endblock %}
 {% block admin %}
-<div class="page-head"><h1>Device types</h1><label class="check toggle" title="Changes save as soon as you leave a field"><input type="checkbox" id="directEdit" data-direct-edit="types"> Direct edit</label></div>
+<div class="page-head"><h1>Device types</h1><label class="check toggle" title="Each change saves when you leave the field."><input type="checkbox" id="directEdit" data-direct-edit="types"> Direct edit</label></div>
 <div class="panel">
   {% for t in types %}<form id="type-{{ t.id }}" method="post" action="/admin/types/{{ t.id }}"></form>{% endfor %}<form id="type-new" method="post" action="/admin/types"></form>
   <div class="table-wrap"><table class="table-form autosave" data-endpoint="/admin/types/{id}/field">
@@ -13,16 +13,16 @@
       <td><input form="{{ fid }}" type="number" name="sort_order" value="{{ t.sort_order }}"></td>
       <td class="num"><a href="/admin/devices?type_id={{ t.id }}">{{ t.n }}</a></td>
       <td><input form="{{ fid }}" type="checkbox" name="active" value="1" {{ 'checked' if t.active }}></td>
-      <td class="actions"><button form="{{ fid }}" class="btn sm" name="action" value="save">Save</button> <button form="{{ fid }}" class="btn sm danger" name="action" value="delete" data-confirm="Delete type {{ t.name }}?">✕</button></td>
+      <td class="actions"><button form="{{ fid }}" class="btn sm" name="action" value="save">Save</button> <button form="{{ fid }}" class="btn sm danger" name="action" value="delete" data-confirm="Delete type {{ t.name }}?">Delete</button></td>
     </tr>
     {% endfor %}
     <tr>{% set fid = "type-new" %}
-      <td><input form="{{ fid }}" name="name" placeholder="New type, e.g. Bolero Beltpack" required></td>
+      <td><input form="{{ fid }}" name="name" placeholder="New type" required></td>
       <td><input form="{{ fid }}" name="short_code" placeholder="BOL"></td>
       <td><input form="{{ fid }}" type="number" name="sort_order" value="100"></td>
       <td></td><td></td><td class="right"><button form="{{ fid }}" class="btn sm primary">Add</button></td>
     </tr>
   </table></div>
-  <div class="panel-body help">Display order sets where a type appears in the kiosk summary bar, lists and drop-downs (lower first). Code is a short tag for compact views. Unknown types from an easyjob import are added here automatically with order 500.</div>
+  <div class="panel-note">Display order sets where a type appears in the kiosk summary, lists and pickers. Lower numbers come first. Types that an easyjob import does not know are added here with order 500.</div>
 </div>
 {% endblock %}

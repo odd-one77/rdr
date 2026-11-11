@@ -1,23 +1,22 @@
 {% extends "admin/base_admin.html" %}
 {% block title %}Map columns{% endblock %}
 {% block admin %}
-<div class="page-head"><div><h1>Map columns · {{ kind.title }}</h1><div class="muted mono">{{ staged.filename }} · {{ staged.rows | length }} rows{% if staged.sheets | length > 1 %} · first sheet “{{ staged.sheets[0] }}” used{% endif %}</div></div></div>
-<form method="post" action="/admin/import/s/{{ staged.token }}" class="row" style="margin-bottom:12px"><input type="hidden" name="action" value="header">
-  <div class="field" style="margin:0;flex:1;max-width:640px"><label>Header row (the row with the column names)</label><select name="header_row" onchange="this.form.submit()">{% for i, txt in header_options %}<option value="{{ i }}" {{ 'selected' if i == staged.header_row }}>Row {{ i + 1 }}: {{ txt }}</option>{% endfor %}</select></div>
-  <noscript><button class="btn">Use this row</button></noscript>
+<div class="page-head"><div><h1>Map columns · {{ kind.title }}</h1><div class="sub mono">{{ staged.filename }} · {{ staged.rows | length }} rows{% if staged.sheets | length > 1 %} · first sheet "{{ staged.sheets[0] }}" used{% endif %}</div></div></div>
+<form method="post" action="/admin/import/s/{{ staged.token }}" class="filters"><input type="hidden" name="action" value="header">
+  <div class="field wide grow"><label>Header row (the row with the column names)</label><select name="header_row">{% for i, txt in header_options %}<option value="{{ i }}" {{ 'selected' if i == staged.header_row }}>Row {{ i + 1 }}: {{ txt }}</option>{% endfor %}</select></div>
 </form>
-<form method="post" action="/admin/import/s/{{ staged.token }}" class="grid cols-2" style="align-items:start">
+<form method="post" action="/admin/import/s/{{ staged.token }}" class="grid cols-2 top">
   <div class="panel"><div class="panel-head"><h2>Fields</h2></div>
     <div class="table-wrap"><table class="map-table">
       <tr><th>Field</th><th>Column in your sheet</th></tr>
       {% for field, label in kind.fields %}
-      <tr><td>{{ label }}</td><td><select name="map_{{ field }}"><option value="">— not in sheet —</option>{% for h in staged.headers %}<option value="{{ loop.index0 }}" {{ 'selected' if staged.mapping.get(field) == loop.index0 }}>{{ h }}</option>{% endfor %}</select></td></tr>
+      <tr><td>{{ label }}</td><td><select name="map_{{ field }}"><option value="">Not in sheet</option>{% for h in staged.headers %}<option value="{{ loop.index0 }}" {{ 'selected' if staged.mapping.get(field) == loop.index0 }}>{{ h }}</option>{% endfor %}</select></td></tr>
       {% endfor %}
     </table></div>
-    <div class="panel-body row"><button class="btn primary">Analyse import →</button><a class="btn ghost" href="/admin/import">Cancel</a></div>
+    <div class="panel-foot"><a class="btn ghost" href="/admin/import">Cancel</a><button class="btn primary">Check import</button></div>
   </div>
-  <div class="panel"><div class="panel-head"><h2>Preview (first rows)</h2></div>
+  <div class="panel"><div class="panel-head"><h2>Preview · first rows</h2></div>
     <div class="table-wrap"><table class="preview-table"><tr>{% for h in staged.headers %}<th>{{ h }}</th>{% endfor %}</tr>{% for r in preview %}{% set f = preview_fills[loop.index0] if preview_fills|length > loop.index0 else [] %}<tr>{% for c in r %}<td title="{{ c }}" {% if f|length > loop.index0 and f[loop.index0] %}style="box-shadow:inset 4px 0 0 #{{ f[loop.index0] }}"{% endif %}>{{ c }}{% if not c and f|length > loop.index0 and f[loop.index0] %}<span class="muted">■ {{ f[loop.index0] }}</span>{% endif %}</td>{% endfor %}</tr>{% endfor %}</table></div>
-    <div class="panel-body help">Coloured cells are read as colours when a column is mapped to "Faceplate colour".</div></div>
+    <div class="panel-note">Coloured cells are read as colours when a column is mapped to "Faceplate colour".</div></div>
 </form>
 {% endblock %}

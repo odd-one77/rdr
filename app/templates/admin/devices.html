@@ -1,15 +1,15 @@
 {% extends "admin/base_admin.html" %}
 {% block title %}Devices{% endblock %}
 {% block admin %}
-<div class="page-head"><h1>Devices <span class="muted mono" style="font-size:16px">{{ total }}</span></h1>
-  <div class="row"><a class="btn" href="/admin/import">easyjob import</a><button class="btn" data-toggle="#bulk">Bulk paste</button><a class="btn primary" href="/admin/devices/new">+ New device</a></div></div>
-<form class="panel hidden" id="bulk" method="post" action="/admin/devices/bulk" style="margin-bottom:14px">
+<div class="page-head"><h1>Devices <span class="h-count">{{ total }}</span></h1>
+  <div class="row"><a class="btn" href="/admin/import">easyjob import</a><button class="btn" data-toggle="#bulk">Bulk paste</button><a class="btn primary" href="/admin/devices/new">New device</a></div></div>
+<form class="panel hidden mb" id="bulk" method="post" action="/admin/devices/bulk">
   <div class="panel-head"><h2>Bulk create by pasting</h2></div>
   <div class="panel-body grid cols-3">
     <div><div class="field"><label>Type</label><select name="type_id">{% for t in types if t.active %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
       <div class="field"><label>Site</label><select name="site_id"><option value="">Shared stock</option>{% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></div>
       <button class="btn primary">Create</button></div>
-    <div style="grid-column:span 2"><div class="field"><label>One per line: SI or SI, label</label><textarea name="lines" rows="6" class="mono" placeholder="SI-1001, Bolero 61&#10;SI-1002, Bolero 62"></textarea></div></div>
+    <div class="span-2"><div class="field"><label>One per line: SI or SI, label</label><textarea name="lines" rows="6" class="mono" placeholder="SI-1001, Bolero 61&#10;SI-1002, Bolero 62"></textarea></div></div>
   </div>
 </form>
 <form class="filters" method="get">
@@ -19,11 +19,11 @@
   <div class="field"><label>Site</label><select name="site_id"><option value="">All</option><option value="shared" {{ 'selected' if f_site == 'shared' }}>Shared stock</option>{% for s in sites %}<option value="{{ s.id }}" {{ 'selected' if f_site == s.id|string }}>{{ s.name }}</option>{% endfor %}</select></div>
 </form>
 <div class="panel"><div class="table-wrap"><table>
-  <tr><th>Status</th><th>Label</th><th>SI</th><th>Type</th><th>Site</th><th>Holder</th><th>Pre-assigned</th><th>Last event</th></tr>
+  <tr><th>Status</th><th>Label</th><th>SI</th><th>Type</th><th>Site</th><th>Holder</th><th>Reserved for</th><th>Last event</th></tr>
   {% for d in devices %}
-  <tr><td><span class="badge {{ d.status }}">{{ d.status }}</span></td><td><a href="/admin/devices/{{ d.id }}"><b>{{ d.label or '—' }}</b></a></td><td class="mono">{{ d.si }}</td><td>{{ d.type_name }}</td><td class="muted">{{ d.site_name or 'shared' }}</td>
+  <tr><td><span class="badge {{ d.status }}">{{ d.status }}</span></td><td><a href="/admin/devices/{{ d.id }}"><b>{{ d.label or d.si }}</b></a></td><td class="mono">{{ d.si }}</td><td>{{ d.type_name }}</td><td class="muted">{{ d.site_name or 'Shared' }}</td>
     <td>{% if d.holder_id %}<a href="/admin/people/{{ d.holder_id }}">{{ d.holder_name }}</a>{% endif %}{% if d.linked_id %} <span class="bolero">Bolero {{ d.linked_id }}</span>{% endif %}</td><td class="muted">{{ d.assigned_person_name or '' }}</td><td class="mono muted">{{ d.last_event_at or '' }}</td></tr>
   {% endfor %}
-  {% if not devices %}<tr><td colspan="8" class="muted">No devices match.</td></tr>{% endif %}
+  {% if not devices %}<tr><td colspan="8" class="empty">No devices match.</td></tr>{% endif %}
 </table></div></div>
 {% endblock %}

@@ -1,101 +1,237 @@
 {% extends "admin/base_admin.html" %}
 {% block title %}Settings{% endblock %}
 {% block admin %}
-<div class="page-head"><h1>Settings & update</h1><span class="muted mono">RDR v{{ info.version }}{% if info.commit %} · {{ info.branch }}@{{ info.commit }}{% endif %}</span></div>
-{% if request.query_params.get('restarting') %}<div class="panel" style="margin:0 0 16px;padding:10px 14px;border-color:rgba(53,196,102,.4)" id="restartNote">Server is restarting. This page will reload when it is back…</div>
-<script>(function(){let n=0;const t=setInterval(async()=>{n++;try{const r=await fetch('/api/summary',{cache:'no-store'});if(r.ok&&n>2){clearInterval(t);location.href='/admin/settings?msg=Back+online';}}catch(e){}},1500);})();</script>{% endif %}
-<div class="grid cols-2" style="align-items:start">
-  <div class="stack">
-    <div class="panel"><div class="panel-head"><h2>{{ 'Update from Git' if info.mode == 'git' else 'Update from GitHub release' }}</h2><a class="btn sm ghost" href="/admin/settings?fetch=1">Check for updates</a></div>
-      <div class="panel-body">
-        {% if info.mode == 'git' %}
-        <dl class="kv"><dt>Branch</dt><dd>{{ info.branch }}</dd><dt>Commit</dt><dd>{{ info.commit }}</dd><dt>Last commit</dt><dd>{{ info.last_commit }}</dd><dt>Remote</dt><dd style="word-break:break-all">{{ info.remote }}</dd>
-          <dt>Status</dt><dd>{% if info.fetch_ok is defined and not info.fetch_ok %}<span class="red">fetch failed: {{ info.fetch_error }}</span>{% elif info.behind is none %}<span class="muted">unknown (no upstream, or not fetched yet)</span>{% elif info.behind == 0 %}<span class="green">up to date</span>{% else %}<span class="amber">{{ info.behind }} commit(s) behind</span>{% endif %}{% if info.dirty %} · <span class="amber">local changes present</span>{% endif %}</dd></dl>
-        {% else %}
-        <dl class="kv"><dt>Installed</dt><dd>v{{ info.version }}</dd><dt>Source</dt><dd>github.com/{{ info.repo }}{% if info.has_token %} <span class="green">· token saved</span>{% else %} <span class="amber">· no token</span>{% endif %}</dd>
-          <dt>Latest</dt><dd>{% if info.fetch_error %}<span class="red">{{ info.fetch_error }}</span>{% elif info.latest %}{{ info.latest.tag }} <span class="muted">({{ info.latest.published }})</span> {% if info.update_available %}<span class="amber">· update available</span>{% else %}<span class="green">· up to date</span>{% endif %}{% else %}<span class="muted">not checked yet</span>{% endif %}</dd></dl>
-        {% endif %}
-        <form method="post" action="/admin/settings/update" class="row" style="margin-top:14px"><button class="btn primary" data-confirm="Download the latest version, reinstall requirements and restart the server?">Update & restart</button>
-          <button class="btn" formaction="/admin/settings/restart" data-confirm="Restart the server now?">Restart only</button></form>
-        {% if info.mode == 'git' %}
-        <p class="help" style="margin-top:10px">Runs <span class="mono">git pull --ff-only</span> in this folder, then <span class="mono">pip install -r requirements.txt</span>, then restarts. Data in <span class="mono">data/</span> is untouched. Kiosks reconnect automatically.</p>
-        {% else %}
-        <p class="help" style="margin-top:10px">Downloads the latest release from GitHub and unpacks it over the app folder, then reinstalls requirements and restarts. Data in <span class="mono">data/</span> is untouched.</p>
-        <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Update source (private repo needs a token)</summary>
-          <form method="post" action="/admin/settings/github" style="margin-top:10px">
-            <div class="grid cols-2"><div class="field"><label>GitHub repo</label><input name="github_repo" value="{{ info.repo }}"></div>
-              <div class="field"><label>GitHub token (fine-grained, Contents: read)</label><input type="password" name="github_token" placeholder="{{ 'saved — leave blank to keep' if info.has_token else 'github_pat_…' }}"></div></div>
-            <div class="row"><button class="btn">Save</button>{% if info.has_token %}<label class="check"><input type="checkbox" name="clear_token" value="1"> Remove saved token</label>{% endif %}</div>
-          </form></details>
-        {% endif %}
-        {% if update_log %}<div class="code" style="margin-top:12px">{{ update_log | join('\n') }}</div>{% endif %}
-      </div></div>
-    <div class="panel"><div class="panel-head"><h2>Server</h2></div>
-      <div class="panel-body">
-        <form method="post" action="/admin/settings/server">
-          <div class="grid cols-2"><div class="field"><label>Port</label><input type="number" name="port" value="{{ config.port }}" min="1" max="65535"></div>
-            <div class="field"><label>&nbsp;</label><label class="check"><input type="checkbox" name="open_browser" value="1" {{ 'checked' if config.open_browser }}> Open browser on start</label></div></div>
-          <button class="btn">Save server settings</button>
-        </form>
-        <dl class="kv" style="margin-top:14px"><dt>Addresses</dt><dd>{% for ip in lan %}http://{{ ip }}:{{ config.port }}<br>{% endfor %}<span class="muted">Point phones and the mirror screen here.</span></dd><dt>Python</dt><dd>{{ info.python }}</dd><dt>Folder</dt><dd style="word-break:break-all">{{ info.root }}</dd></dl>
-      </div></div>
-  </div>
-  <div class="stack">
-    <div class="panel"><div class="panel-head"><h2>Mirror screen</h2><a class="btn sm ghost" href="/mirror" target="_blank">Open mirror</a></div>
-      <div class="panel-body"><form method="post" action="/admin/settings/mirror">
-        <div class="field"><label>Welcome line</label><input name="mirror_title" value="{{ mirror.title }}" placeholder="Welcome to RDR"></div>
-        <div class="field"><label>Your own sayings (one per line, shown instead of the welcome line when set)</label><textarea name="mirror_sayings" rows="3" placeholder="Comms is life.&#10;Have you tried turning it off and on again?&#10;Please return all devices before you leave.">{{ mirror.sayings }}</textarea></div>
-        <div class="field">
-          <label class="check"><input type="checkbox" name="movie_quotes" value="1" {{ 'checked' if mirror.quotes_on }}> Movie quotes <span class="muted">· {{ mirror.quotes | length }} famous film lines, shown with their credit, mixed in with your own sayings</span></label>
-          <details style="margin-top:6px"><summary>See the list</summary>
+<div class="page-head"><h1>Settings</h1><span class="muted mono sm">RDR v{{ info.version }}{% if info.commit %} · {{ info.branch }}@{{ info.commit }}{% endif %}</span></div>
+{% if request.query_params.get('restarting') %}<div class="banner ok" id="restartNote">Server is restarting. This page reloads when it is back.</div>
+<script>(function(){let n=0;const t=setInterval(async()=>{n++;try{const r=await fetch('/api/summary',{cache:'no-store'});if(r.ok&&n>2){clearInterval(t);location.href='/admin/settings?msg=Back+online'+location.hash;}}catch(e){}},1500);})();</script>{% endif %}
+
+<nav class="tabs" id="setTabs">
+  <a href="#mirror" data-tab="mirror">Mirror screen</a>
+  <a href="#phones" data-tab="phones">Phones</a>
+  <a href="#server" data-tab="server">Server</a>
+  <a href="#updates" data-tab="updates">Updates{% if info.update_available or (info.behind and info.behind > 0) %}<span class="dot" title="Update available"></span>{% endif %}</a>
+  <a href="#password" data-tab="password">Password</a>
+  <a href="#data" data-tab="data">Data</a>
+</nav>
+
+<div class="set-wrap" id="setWrap">
+
+  <section class="set-section" data-tab="mirror">
+    <form method="post" action="/admin/settings/mirror" class="panel">
+      <div class="panel-head"><h2>Mirror screen</h2><a class="btn sm ghost" href="/mirror" target="_blank">Open mirror</a></div>
+      <div class="set-row">
+        <div class="set-label"><b>Welcome line</b><span>Shown large while the desk is idle.</span></div>
+        <div class="set-control"><input name="mirror_title" value="{{ mirror.title }}" placeholder="Welcome to RDR"></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Prompt line</b><span><span class="mono">{tech}</span> becomes the tech on that site's kiosk.</span></div>
+        <div class="set-control"><input name="mirror_prompt" value="{{ mirror.prompt }}" placeholder="Please give your name and role to {tech}"></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Your own sayings</b><span>One per line. They replace the welcome line, one at a time.</span></div>
+        <div class="set-control"><textarea name="mirror_sayings" rows="4" placeholder="Comms is life.&#10;Have you tried turning it off and on again?&#10;Please return all devices before you leave.">{{ mirror.sayings }}</textarea></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Movie quotes</b><span>{{ mirror.quotes | length }} famous film lines with their credit, mixed in with your own sayings.</span></div>
+        <div class="set-control">
+          <label class="check"><input type="checkbox" name="movie_quotes" value="1" {{ 'checked' if mirror.quotes_on }}> Show movie quotes</label>
+          <details><summary>See the list</summary>
             <div class="quote-grid">{% for q in mirror.quotes %}<div class="quote"><span class="q">{{ q.text }}</span><span class="c">{{ q.credit }}</span></div>{% endfor %}</div>
           </details>
         </div>
-        <div class="field"><label>Prompt line</label><input name="mirror_prompt" value="{{ mirror.prompt }}" placeholder="Please give your name and role to {tech}"><div class="help" style="margin-top:4px"><span class="mono">{tech}</span> is the tech on that site's kiosk.</div></div>
-        <div class="grid cols-2" style="align-items:end;margin-bottom:12px">
-          <div class="field" style="margin:0"><label>PGM feed size on the mirror</label><select name="pgm_size"><option value="small" {{ 'selected' if mirror.pgm_size == 'small' }}>Small (a third)</option><option value="half" {{ 'selected' if mirror.pgm_size == 'half' }}>Half</option><option value="large" {{ 'selected' if mirror.pgm_size == 'large' }}>Large (two thirds)</option></select></div>
-          <label class="check" style="height:36px"><input type="checkbox" name="stream_transcode" value="1" {{ 'checked' if mirror.transcode }}> Re-encode RTSP (source not H.264)</label>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>PGM feed size</b><span>How much of the mirror the feed takes. The box follows the source's picture format.</span></div>
+        <div class="set-control"><select name="pgm_size" class="mid"><option value="small" {{ 'selected' if mirror.pgm_size == 'small' }}>Small (a third)</option><option value="half" {{ 'selected' if mirror.pgm_size == 'half' }}>Half</option><option value="large" {{ 'selected' if mirror.pgm_size == 'large' }}>Large (two thirds)</option></select></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Re-encode RTSP</b><span>Turn on when the source is not H.264. Uses more CPU.</span></div>
+        <div class="set-control"><label class="check"><input type="checkbox" name="stream_transcode" value="1" {{ 'checked' if mirror.transcode }}> Re-encode the feed</label></div>
+      </div>
+      <div class="panel-foot"><span class="note">Kiosks and mirrors pick changes up within a few seconds.</span><button class="btn primary">Save</button></div>
+    </form>
+
+    <div class="panel">
+      <div class="panel-head"><h2>PGM feed</h2><a class="btn sm ghost" href="/admin/settings?devices=1#mirror">List capture devices</a></div>
+      <div class="set-row">
+        <div class="set-label"><b>Source</b><span>Set per site.</span></div>
+        <div class="set-control"><p class="help">Each site's feed address is under <a href="/admin/event">Event and sites</a>: RTSP, a <span class="mono">dshow:</span> capture card, YouTube or a direct link. For a capture card, pin the input format in the address, for example <span class="mono">dshow:Blackmagic WDM Capture?video_size=1920x1080&amp;framerate=50</span>.</p></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Status</b></div>
+        <div class="set-control"><dl class="kv">
+          <dt>ffmpeg</dt><dd>{% if streams.ffmpeg %}<span class="green mono sm">{{ streams.ffmpeg }}</span>{% else %}<span class="amber">Not found. Put ffmpeg.exe in the tools folder next to the app.</span>{% endif %}</dd>
+          {% for sid, st in streams.streams.items() %}<dt>Site {{ sid }}</dt><dd>{{ 'Running' if st.running else 'Stopped' }}{% if st.error %} · <span class="red">{{ st.error }}</span>{% endif %}</dd>{% endfor %}
+        </dl></div>
+      </div>
+      {% if capture_devices is not none %}<div class="panel-body"><div class="code">{{ capture_devices }}</div></div>{% endif %}
+    </div>
+  </section>
+
+  <section class="set-section" data-tab="phones">
+    <div class="panel">
+      <div class="panel-head"><h2>HTTPS for phones</h2>{% if https.on %}<span class="badge in">On · port {{ https.port }}</span>{% else %}<span class="badge neutral">Off</span>{% endif %}</div>
+      <div class="set-note">Phone browsers only allow the camera on a secure address. Turning this on adds an https server with a local certificate. Each phone installs it once from <span class="mono">/trust</span>.</div>
+      {% if https.on %}
+      <div class="set-row">
+        <div class="set-label"><b>Status</b></div>
+        <div class="set-control"><dl class="kv">
+          <dt>Server</dt><dd>{% if https.listening %}<span class="green">Listening on port {{ https.port }}</span>{% else %}<span class="red">Not listening on port {{ https.port }}</span> <span class="muted">· see the log below, or restart the server from its window</span>{% endif %}</dd>
+          <dt>Address</dt><dd class="mono">{% for ip in lan %}https://{{ ip }}:{{ https.port }}<br>{% endfor %}{% if not lan %}https://&lt;this-pc-ip&gt;:{{ https.port }}{% endif %}</dd>
+          <dt>Valid for</dt><dd class="mono">{{ https.cert.hosts | join(', ') }}</dd>
+          <dt>Expires</dt><dd>{{ https.cert.expires or 'unknown' }}</dd>
+        </dl>
+        {% if https.log and not https.listening %}<div class="code mt-s">{{ https.log | join('\n') }}</div>{% endif %}
+        <p class="help">Phones still can't connect? Allow <span class="mono">python.exe</span> through Windows Firewall for private networks, or open port {{ https.port }}.</p></div>
+      </div>
+      <form method="post" action="/admin/settings/https">
+        <input type="hidden" name="https_port" value="{{ https.port }}">
+        <div class="set-row">
+          <div class="set-label"><b>Certificate</b><span>Re-issue when the PC gets a new IP address. Phones keep their trust.</span></div>
+          <div class="set-control"><input name="extra_hosts" placeholder="Extra hostnames or IPs (optional)"></div>
         </div>
-        <p class="help" style="margin-top:-4px;margin-bottom:12px">The feed box takes the picture format of the source (16:9, 4:3, portrait). For a capture card, pin the input format in the feed address, e.g. <span class="mono">dshow:Blackmagic WDM Capture?video_size=1920x1080&amp;framerate=50</span>.</p>
-        <button class="btn">Save mirror screen</button></form>
-        <p class="help" style="margin-top:12px">PGM feed: set each site's feed under Event & sites (RTSP, <span class="mono">dshow:</span> capture card, YouTube or direct link). <a href="/admin/settings?devices=1">List capture devices</a>. ffmpeg: {% if streams.ffmpeg %}<span class="green mono">{{ streams.ffmpeg }}</span>{% else %}<span class="amber">not found. Put ffmpeg.exe in the tools folder next to the app.</span>{% endif %}{% for sid, st in streams.streams.items() %}<br>Site {{ sid }}: {{ 'running' if st.running else 'stopped' }}{% if st.error %} · <span class="red">{{ st.error }}</span>{% endif %}{% endfor %}</p>
-        {% if capture_devices is not none %}<div class="code" style="margin-top:10px">{{ capture_devices }}</div>{% endif %}
-      </div></div>
-    <div class="panel"><div class="panel-head"><h2>HTTPS for phones</h2>{% if https.on %}<span class="badge in">on · port {{ https.port }}</span>{% else %}<span class="badge neutral">off</span>{% endif %}</div>
-      <div class="panel-body">
-        <p class="help">Phone browsers only allow the camera on a secure address. Turning this on adds an https server with a local certificate; phones install it once from <span class="mono">/trust</span>.</p>
-        {% if https.on %}
-        <dl class="kv" style="margin:10px 0"><dt>Status</dt><dd>{% if https.listening %}<span class="green">listening on port {{ https.port }}</span>{% else %}<span class="red">not listening on port {{ https.port }}</span> <span class="muted">· see log below; restart the server from its window if needed</span>{% endif %}</dd><dt>Address</dt><dd>{% for ip in lan %}https://{{ ip }}:{{ https.port }}<br>{% endfor %}{% if not lan %}https://&lt;this-pc-ip&gt;:{{ https.port }}{% endif %}</dd><dt>Valid for</dt><dd>{{ https.cert.hosts | join(', ') }}</dd><dt>Expires</dt><dd>{{ https.cert.expires or '—' }}</dd></dl>
-        {% if https.log and not https.listening %}<div class="code" style="margin-bottom:10px">{{ https.log | join('\n') }}</div>{% endif %}
-        <p class="help">Phones still can't connect? Allow <span class="mono">python.exe</span> through Windows Firewall for private networks, or open port {{ https.port }}.</p>
-        <form method="post" action="/admin/settings/https" class="row wrap">
-          <input type="hidden" name="https_port" value="{{ https.port }}">
-          <input name="extra_hosts" placeholder="Extra hostnames or IPs (optional)" style="max-width:260px">
+        <div class="panel-foot">
           <button class="btn" name="action" value="enable" data-confirm="Re-issue the certificate for the current network addresses and restart?">Re-issue certificate</button>
-          <button class="btn danger" name="action" value="disable" data-confirm="Turn HTTPS off and restart?">Turn off</button>
-        </form>
-        <p class="help" style="margin-top:8px">If the PC gets a new IP address, re-issue the certificate. Phones keep their trust.</p>
-        {% else %}
-        <form method="post" action="/admin/settings/https" class="row wrap">
-          <div class="field" style="margin:0;max-width:120px"><label>Port</label><input type="number" name="https_port" value="{{ https.port }}"></div>
-          <div class="field grow" style="margin:0"><label>Extra hostnames / IPs (optional)</label><input name="extra_hosts" placeholder="e.g. rdr.local 192.168.10.5"></div>
-          <button class="btn primary" name="action" value="enable" data-confirm="Create a certificate, turn HTTPS on and restart?" {{ 'disabled' if not https.cert.available }}>Turn on</button>
-        </form>
-        {% if not https.cert.available %}<p class="amber" style="margin-top:8px">The cryptography package is not installed yet. Update & restart first.</p>{% endif %}
-        {% endif %}
-      </div></div>
-    <div class="panel"><div class="panel-head"><h2>Admin password</h2></div>
-      <div class="panel-body"><form method="post" action="/admin/settings/password">
-        <div class="field"><label>Current password</label><input type="password" name="current" required></div>
-        <div class="grid cols-2"><div class="field"><label>New password</label><input type="password" name="password" required></div><div class="field"><label>Confirm</label><input type="password" name="confirm" required></div></div>
-        <button class="btn">Change password</button></form></div></div>
-    <div class="panel"><div class="panel-head"><h2>Demo data</h2></div>
-      <div class="panel-body"><form method="post" action="/admin/settings/demo" class="row"><span class="help grow">Adds a sample event, two sites, people, devices and some activity so you can try the kiosk.</span><button class="btn">Load demo data</button></form></div></div>
-    <div class="panel danger-zone"><div class="panel-head"><h2 class="red">Reset database</h2></div>
-      <div class="panel-body"><form method="post" action="/admin/settings/reset">
-        <p class="help">Deletes <b>everything</b>: event, sites, techs, people, devices, pre-assignments and the full transaction history. Brand new setup. Export transactions first if you need them.</p>
-        <div class="row wrap"><input name="confirm" placeholder="Type RESET" style="max-width:160px"><label class="check"><input type="checkbox" name="keep_password" value="1" checked> Keep admin password</label><button class="btn danger" data-confirm="Really wipe the whole database? This cannot be undone.">Reset everything</button></div>
-      </form></div></div>
-  </div>
+          <button class="btn danger lead" name="action" value="disable" data-confirm="Turn HTTPS off and restart?">Turn off HTTPS</button>
+        </div>
+      </form>
+      {% else %}
+      <form method="post" action="/admin/settings/https">
+        <div class="set-row">
+          <div class="set-label"><b>Port</b><span>The https address is this PC's IP and this port.</span></div>
+          <div class="set-control"><input type="number" name="https_port" value="{{ https.port }}" class="short"></div>
+        </div>
+        <div class="set-row">
+          <div class="set-label"><b>Extra hostnames or IPs</b><span>Optional. Added to the certificate next to the PC's own addresses.</span></div>
+          <div class="set-control"><input name="extra_hosts" placeholder="rdr.local 192.168.10.5"></div>
+        </div>
+        <div class="panel-foot">{% if not https.cert.available %}<span class="note amber">The cryptography package is missing. Run Update and restart first.</span>{% else %}<span class="note">The server restarts when HTTPS is turned on.</span>{% endif %}
+          <button class="btn primary" name="action" value="enable" data-confirm="Create a certificate, turn HTTPS on and restart?" {{ 'disabled' if not https.cert.available }}>Turn on</button></div>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="set-section" data-tab="server">
+    <form method="post" action="/admin/settings/server" class="panel">
+      <div class="panel-head"><h2>Server</h2></div>
+      <div class="set-row">
+        <div class="set-label"><b>Port</b><span>Kiosks, phones and the mirror connect on this port.</span></div>
+        <div class="set-control"><input type="number" name="port" value="{{ config.port }}" min="1" max="65535" class="short"></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Open browser on start</b><span>Opens the kiosk on this PC when RDR starts.</span></div>
+        <div class="set-control"><label class="check"><input type="checkbox" name="open_browser" value="1" {{ 'checked' if config.open_browser }}> Open the kiosk automatically</label></div>
+      </div>
+      <div class="panel-foot"><span class="note">Applies after a restart.</span><button class="btn primary">Save</button></div>
+    </form>
+
+    <div class="panel">
+      <div class="panel-head"><h2>This server</h2>
+        <form method="post" action="/admin/settings/restart"><button class="btn sm" data-confirm="Restart the server now?">Restart server</button></form></div>
+      <div class="set-row">
+        <div class="set-label"><b>Addresses</b><span>Point phones and the mirror screen here.</span></div>
+        <div class="set-control"><dl class="kv"><dt>Network</dt><dd class="mono">{% for ip in lan %}http://{{ ip }}:{{ config.port }}<br>{% endfor %}{% if not lan %}<span class="muted">No network address found</span>{% endif %}</dd>
+          <dt>Python</dt><dd class="mono">{{ info.python }}</dd><dt>Folder</dt><dd class="mono">{{ info.root }}</dd></dl></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="set-section" data-tab="updates">
+    <div class="panel">
+      <div class="panel-head"><h2>{{ 'Update from Git' if info.mode == 'git' else 'Update from GitHub release' }}</h2><a class="btn sm ghost" href="/admin/settings?fetch=1#updates">Check for updates</a></div>
+      <div class="set-row">
+        <div class="set-label"><b>Version</b><span>{% if info.mode == 'git' %}Pulls this folder's branch, reinstalls requirements and restarts.{% else %}Downloads the latest release, unpacks it over the app folder, reinstalls requirements and restarts.{% endif %}</span></div>
+        <div class="set-control">
+          {% if info.mode == 'git' %}
+          <dl class="kv"><dt>Branch</dt><dd class="mono">{{ info.branch }}</dd><dt>Commit</dt><dd class="mono">{{ info.commit }}</dd><dt>Last commit</dt><dd>{{ info.last_commit }}</dd><dt>Remote</dt><dd class="mono">{{ info.remote }}</dd>
+            <dt>Status</dt><dd>{% if info.fetch_ok is defined and not info.fetch_ok %}<span class="red">Fetch failed: {{ info.fetch_error }}</span>{% elif info.behind is none %}<span class="muted">Unknown (no upstream, or not checked yet)</span>{% elif info.behind == 0 %}<span class="green">Up to date</span>{% else %}<span class="amber">{{ info.behind }} commit(s) behind</span>{% endif %}{% if info.dirty %} · <span class="amber">local changes present</span>{% endif %}</dd></dl>
+          {% else %}
+          <dl class="kv"><dt>Installed</dt><dd class="mono">v{{ info.version }}</dd><dt>Source</dt><dd><span class="mono">github.com/{{ info.repo }}</span>{% if info.has_token %} <span class="green">· token saved</span>{% else %} <span class="amber">· no token</span>{% endif %}</dd>
+            <dt>Latest</dt><dd>{% if info.fetch_error %}<span class="red">{{ info.fetch_error }}</span>{% elif info.latest %}<span class="mono">{{ info.latest.tag }}</span> <span class="muted">({{ info.latest.published }})</span> {% if info.update_available %}<span class="amber">· update available</span>{% else %}<span class="green">· up to date</span>{% endif %}{% else %}<span class="muted">Not checked yet</span>{% endif %}</dd></dl>
+          {% endif %}
+        </div>
+      </div>
+      <form method="post" action="/admin/settings/update" class="panel-foot"><span class="note">Data in <span class="mono">data/</span> is untouched. Kiosks reconnect on their own.</span>
+        <button class="btn primary" data-confirm="Download the latest version, reinstall requirements and restart the server?">Update and restart</button></form>
+    </div>
+
+    {% if info.mode != 'git' %}
+    <form method="post" action="/admin/settings/github" class="panel">
+      <div class="panel-head"><h2>Update source</h2></div>
+      <div class="set-row">
+        <div class="set-label"><b>GitHub repo</b><span>Owner and name of the repo that publishes the releases.</span></div>
+        <div class="set-control"><input name="github_repo" value="{{ info.repo }}" class="mid"></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>GitHub token</b><span>Needed for a private repo. Fine-grained, Contents: read.</span></div>
+        <div class="set-control"><input type="password" name="github_token" placeholder="{{ 'Saved. Leave blank to keep it.' if info.has_token else 'github_pat_…' }}" autocomplete="off">
+          {% if info.has_token %}<label class="check mt-s"><input type="checkbox" name="clear_token" value="1"> Remove the saved token</label>{% endif %}</div>
+      </div>
+      <div class="panel-foot"><button class="btn primary">Save</button></div>
+    </form>
+    {% endif %}
+
+    {% if update_log %}<div class="panel"><div class="panel-head"><h2>Last update log</h2></div><div class="panel-body"><div class="code">{{ update_log | join('\n') }}</div></div></div>{% endif %}
+  </section>
+
+  <section class="set-section" data-tab="password">
+    <form method="post" action="/admin/settings/password" class="panel">
+      <div class="panel-head"><h2>Admin password</h2></div>
+      <div class="set-row">
+        <div class="set-label"><b>Current password</b></div>
+        <div class="set-control"><input type="password" name="current" required class="mid" autocomplete="current-password"></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>New password</b><span>At least 4 characters. It also unlocks the desk after a break.</span></div>
+        <div class="set-control"><input type="password" name="password" required class="mid" autocomplete="new-password"></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Confirm new password</b></div>
+        <div class="set-control"><input type="password" name="confirm" required class="mid" autocomplete="new-password"></div>
+      </div>
+      <div class="panel-foot"><button class="btn primary">Change password</button></div>
+    </form>
+  </section>
+
+  <section class="set-section" data-tab="data">
+    <div class="panel">
+      <div class="panel-head"><h2>Data</h2></div>
+      <div class="set-row">
+        <div class="set-label"><b>Backup and restore</b><span>Snapshots of the database, and full backups to take away.</span></div>
+        <div class="set-control"><a class="btn" href="/admin/backup">Open Backup and restore</a></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Demo data</b><span>A sample event, two sites, people, devices and some activity, to try the kiosk.</span></div>
+        <div class="set-control"><form method="post" action="/admin/settings/demo"><button class="btn">Load demo data</button></form></div>
+      </div>
+    </div>
+
+    <form method="post" action="/admin/settings/reset" class="panel danger-zone">
+      <div class="panel-head"><h2 class="red">Reset database</h2></div>
+      <div class="set-note">Deletes <b>everything</b>: event, sites, techs, people, devices, reservations and the full transaction history. Export transactions first if you need them.</div>
+      <div class="set-row">
+        <div class="set-label"><b>Confirm</b><span>Type RESET to allow it.</span></div>
+        <div class="set-control"><input name="confirm" placeholder="RESET" class="short" autocomplete="off">
+          <label class="check mt-s"><input type="checkbox" name="keep_password" value="1" checked> Keep the admin password</label></div>
+      </div>
+      <div class="panel-foot"><button class="btn danger" data-confirm="Really wipe the whole database? This cannot be undone.">Reset everything</button></div>
+    </form>
+  </section>
 </div>
+<script>
+(function () {
+  var wrap = document.getElementById('setWrap'), tabs = document.querySelectorAll('#setTabs a');
+  function show(name) {
+    var found = false;
+    wrap.querySelectorAll('.set-section').forEach(function (s) { var on = s.dataset.tab === name; s.classList.toggle('on', on); if (on) found = true; });
+    if (!found) return show('mirror');
+    tabs.forEach(function (a) { a.classList.toggle('on', a.dataset.tab === name); });
+  }
+  wrap.classList.add('tabbed');
+  show(location.hash.slice(1) || 'mirror');
+  tabs.forEach(function (a) { a.addEventListener('click', function (e) { e.preventDefault(); history.replaceState(null, '', '#' + a.dataset.tab); show(a.dataset.tab); }); });
+  window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
+})();
+</script>
 {% endblock %}

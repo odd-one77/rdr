@@ -5,11 +5,11 @@
   <form class="panel" method="post" action="/admin/login">
     <div class="panel-head"><h2>{{ 'Set the admin password' if first_time else 'Admin' }}</h2></div>
     <div class="panel-body">
-      {% if first_time %}<p class="help">First run. Choose the admin password for this installation. You can change it later in Settings.</p>{% endif %}
+      {% if first_time %}<p class="help">First run. Choose the admin password for this installation. It can be changed later in Settings.</p>{% endif %}
       <div class="field"><label>Password</label><input type="password" name="password" autofocus required></div>
       {% if first_time %}<div class="field"><label>Confirm</label><input type="password" name="confirm" required></div>{% endif %}
-      <button class="btn primary block" type="submit">{{ 'Save & continue' if first_time else 'Log in' }}</button>
-      <p style="margin-top:14px;text-align:center"><a class="muted" href="/">← Back to kiosk</a></p>
+      <button class="btn primary block" type="submit">{{ 'Save and continue' if first_time else 'Log in' }}</button>
+      <p class="center mt sm"><a class="muted" href="/">Back to kiosk</a></p>
     </div>
   </form>
 </div>

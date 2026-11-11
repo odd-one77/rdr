@@ -17,7 +17,7 @@
   function toast(kind, title, detail = '', ms = 3500) {
     const el = document.createElement('div'); el.className = `toast ${kind}`;
     el.innerHTML = `<div class="t">${esc(title)}</div>${detail ? `<div class="d">${esc(detail)}</div>` : ''}`;
-    $('#toasts').appendChild(el); setTimeout(() => { el.classList.add('hide'); setTimeout(() => el.remove(), 340); }, ms);
+    $('#toasts').appendChild(el); setTimeout(() => { el.classList.add('hide'); setTimeout(() => el.remove(), 220); }, ms);
   }
   function beep(ok = true) {
     try { const ctx = new (window.AudioContext || window.webkitAudioContext)(); const o = ctx.createOscillator(); const g = ctx.createGain();
@@ -40,7 +40,7 @@
   searchEl.addEventListener('blur', () => setTimeout(() => resultsEl.classList.add('hidden'), 150));
   async function search(q) {
     const d = await api(`/api/people/search?q=${encodeURIComponent(q)}`);
-    resultsEl.innerHTML = d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)}</div><div class="meta">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div></div><div class="counts">${p.held_count ? p.held_count + ' out' : ''}</div></div>`).join('') + `<div class="empty"><span>${d.results.length ? '' : 'No match'}</span><button class="btn sm" data-new>+ New</button></div>`;
+    resultsEl.innerHTML = d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)}</div><div class="meta">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div></div><div class="counts">${p.held_count ? p.held_count + ' out' : ''}</div></div>`).join('') + `<div class="empty"><span>${d.results.length ? '' : 'No match'}</span><button class="btn sm" data-new>New person</button></div>`;
     resultsEl.classList.remove('hidden');
     resultsEl.querySelectorAll('.item').forEach(el => el.onmousedown = () => selectPerson(+el.dataset.id));
     resultsEl.querySelector('[data-new]').onmousedown = () => openNewPerson(q);
@@ -55,9 +55,9 @@
   function renderPerson() {
     const p = state.person, el = $('#personPanel');
     if (!p) { el.innerHTML = ''; return; }
-    el.innerHTML = `<div class="row"><div class="grow"><b style="font-size:17px">${esc(p.name)}</b><div class="muted" style="font-size:12px">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div></div>${p.bolero_id ? `<span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : ''}>Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson">&#10005;</button></div>
-      ${state.holdings.length ? `<div class="muted" style="font-size:12px;margin-top:6px">Signed out ${state.holdings.length}: ${state.holdings.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-return-all>Return all</button></div>` : ''}
-      ${state.assignments.length ? `<div class="muted" style="font-size:12px;margin-top:6px">Reserved: ${state.assignments.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-add-all>Add all</button></div>` : ''}`;
+    el.innerHTML = `<div class="row"><div class="grow"><b class="pname">${esc(p.name)}</b><div class="muted sm">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div></div>${p.bolero_id ? `<span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : ''}>Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson">&#10005;</button></div>
+      ${state.holdings.length ? `<div class="muted sm mt-s">Signed out · ${state.holdings.length}: ${state.holdings.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-return-all>Return all</button></div>` : ''}
+      ${state.assignments.length ? `<div class="muted sm mt-s">Reserved: ${state.assignments.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-add-all>Add all</button></div>` : ''}`;
     $('#btnClearPerson').onclick = clearPerson;
     const ra = el.querySelector('[data-return-all]'); if (ra) ra.onclick = () => state.holdings.forEach(d => addToBasket(d, true));
     const aa = el.querySelector('[data-add-all]'); if (aa) aa.onclick = () => state.assignments.forEach(d => addToBasket(d, true));
@@ -81,7 +81,7 @@
       const r = await api(`/api/devices/search?q=${encodeURIComponent(si)}`);   // typed partial SI
       if (r.results.length === 1) { addToBasket(r.results[0]); return; }
       if (r.results.length > 1) {
-        modal('Which device?', `<ul class="conflict-list">${r.results.map(x => `<li><span><b>${esc(x.label || x.si)}</b> <span class="muted">· ${esc(x.type_name)}</span><div class="muted mono" style="font-size:12px">${esc(x.si)}</div></span><button class="btn sm" data-pick="${x.id}">Add</button></li>`).join('')}</ul>`, [{ label: 'Cancel' }]);
+        modal('Which device?', `<ul class="conflict-list">${r.results.map(x => `<li><span><b>${esc(x.label || x.si)}</b> <span class="muted">· ${esc(x.type_name)}</span><div class="muted mono sm">${esc(x.si)}</div></span><button class="btn sm" data-pick="${x.id}">Add</button></li>`).join('')}</ul>`, [{ label: 'Cancel' }]);
         document.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { closeModal(); addToBasket(r.results.find(x => x.id === +b.dataset.pick)); });
         return;
       }
@@ -111,14 +111,14 @@
   $('#scanInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); handleCode($('#scanInput').value); $('#scanInput').value = ''; } });
 
   function openQuickCreate(si) {
-    modal('New device', `<p class="help"><span class="mono">${esc(si)}</span> is not in the database yet.</p><div class="field"><label>Type</label><select id="qc_type">${TYPES.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div><div class="field"><label>Label</label><input id="qc_label" placeholder="e.g. Bolero 61"></div>`,
-      [{ label: 'Cancel' }, { label: 'Create & add', cls: 'primary', onClick: async root => { try { const d = await post('/api/devices/quick', { si, type_id: +$('#qc_type', root).value, label: $('#qc_label', root).value }); closeModal(); addToBasket(d.device); } catch (e) { toast('err', 'Could not create', e.message); } } }]);
+    modal('New device', `<p class="help"><span class="mono">${esc(si)}</span> is not in the database yet.</p><div class="field"><label>Type</label><select id="qc_type">${TYPES.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div><div class="field"><label>Label</label><input id="qc_label" placeholder="Bolero 61"></div>`,
+      [{ label: 'Cancel' }, { label: 'Create and add', cls: 'primary', onClick: async root => { try { const d = await post('/api/devices/quick', { si, type_id: +$('#qc_type', root).value, label: $('#qc_label', root).value }); closeModal(); addToBasket(d.device); } catch (e) { toast('err', 'Could not create', e.message); } } }]);
   }
 
-  const NICE = { issued: ['ok', 'Signed out'], reassigned: ['warn', 'Reassigned'], reissued: ['warn', 'Restored & signed out'], already_held: ['warn', 'Already with this person'], returned: ['ok', 'Signed in'], already_in: ['warn', 'Already in stock'], restored: ['ok', 'Restored'], conflict: ['err', 'Not processed'], missing: ['err', 'Unknown device'] };
+  const NICE = { issued: ['ok', 'Signed out'], reassigned: ['warn', 'Reassigned'], reissued: ['warn', 'Restored and signed out'], already_held: ['warn', 'Already with this person'], returned: ['ok', 'Signed in'], already_in: ['warn', 'Already in stock'], restored: ['ok', 'Restored'], conflict: ['err', 'Not processed'], missing: ['err', 'Unknown device'] };
   function announce(results) {
     const grouped = {}; results.forEach(r => (grouped[r.outcome] = grouped[r.outcome] || []).push(r.label || r.si));
-    Object.entries(grouped).forEach(([o, items]) => { const [k, t] = NICE[o] || ['warn', o]; toast(k, `${t} (${items.length})`, items.join(', ')); });
+    Object.entries(grouped).forEach(([o, items]) => { const [k, t] = NICE[o] || ['warn', o]; toast(k, `${t} · ${items.length}`, items.join(', ')); });
   }
   $('#btnSignIn').onclick = async () => {
     try { const d = await post('/api/signin', { device_ids: state.basket.map(x => x.id) }); announce(d.results); state.basket = []; if (state.person) await selectPerson(state.person.id); else renderBasket(); } catch (e) { toast('err', 'Sign in failed', e.message); }
@@ -132,7 +132,7 @@
       announce(d.results.filter(r => r.outcome !== 'conflict'));
       if (conflicts.length) {
         state.basket = state.basket.filter(x => conflicts.some(c => c.id === x.id)); renderBasket();
-        modal('Items not available', `<ul class="conflict-list">${conflicts.map(c => `<li><span><b>${esc(c.label || c.si)}</b><div class="red" style="font-size:12px">${esc(c.message)}</div></span><label class="check"><input type="checkbox" data-force="${c.id}"> ${c.status === 'out' ? 'Reassign' : 'Issue anyway'}</label></li>`).join('')}</ul>`,
+        modal('Devices not available', `<ul class="conflict-list">${conflicts.map(c => `<li><span><b>${esc(c.label || c.si)}</b><div class="red sm">${esc(c.message)}</div></span><label class="check"><input type="checkbox" data-force="${c.id}"> ${c.status === 'out' ? 'Reassign' : 'Issue anyway'}</label></li>`).join('')}</ul>`,
           [{ label: 'Leave' }, { label: 'Apply', cls: 'primary', onClick: async root => { const f = [...root.querySelectorAll('[data-force]:checked')].map(x => +x.dataset.force); closeModal(); if (!f.length) return; state.basket = state.basket.filter(x => f.includes(x.id)); await doSignOut(f); } }]);
         return;
       }
@@ -156,7 +156,7 @@
       const caps = scanner.getRunningTrackCapabilities ? scanner.getRunningTrackCapabilities() : {};
       if (caps && caps.torch) { const b = $('#btnTorch'); b.classList.remove('hidden'); let on = false; b.onclick = async () => { on = !on; try { await scanner.applyVideoConstraints({ advanced: [{ torch: on }] }); } catch (e) {} }; }
     } catch (e) {
-      msg.textContent = 'No camera available (' + (e && e.message ? e.message : e) + '). Allow camera access for this site and reload, or type SI numbers below.';
+      msg.textContent = 'No camera available. Allow camera access for this site and reload, or type SI numbers below.'; msg.title = e && e.message ? e.message : String(e);
     }
   }
 

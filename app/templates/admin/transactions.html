@@ -1,20 +1,20 @@
 {% extends "admin/base_admin.html" %}
 {% block title %}Transactions{% endblock %}
 {% block admin %}
-<div class="page-head"><h1>Transactions</h1><a class="btn" href="/admin/transactions?format=csv&q={{ q }}&action={{ f_action }}&site_id={{ f_site }}&date_from={{ date_from }}&date_to={{ date_to }}">Export CSV (filtered)</a></div>
+<div class="page-head"><h1>Transactions</h1><a class="btn" href="/admin/transactions?format=csv&q={{ q }}&action={{ f_action }}&site_id={{ f_site }}&date_from={{ date_from }}&date_to={{ date_to }}" title="Exports the rows that match the filters">Export CSV</a></div>
 <form class="filters" method="get">
-  <div class="field wide"><label>Search</label><input type="search" name="q" value="{{ q }}" placeholder="SI, label, person, note"></div>
+  <div class="field wide"><label>Search</label><input type="search" name="q" value="{{ q }}" placeholder="SI, label, person or note"></div>
   <div class="field"><label>Action</label><select name="action"><option value="">All</option>{% for k, v in ACTION_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if f_action == k }}>{{ v }}</option>{% endfor %}</select></div>
   <div class="field"><label>Site</label><select name="site_id"><option value="">All</option>{% for s in sites %}<option value="{{ s.id }}" {{ 'selected' if f_site == s.id|string }}>{{ s.name }}</option>{% endfor %}</select></div>
   <div class="field"><label>From</label><input type="date" name="date_from" value="{{ date_from }}"></div>
   <div class="field"><label>To</label><input type="date" name="date_to" value="{{ date_to }}"></div>
 </form>
-<div class="panel"><div class="table-wrap" style="max-height:none"><table>
+<div class="panel"><div class="table-wrap full"><table>
   <tr><th>Time</th><th>Action</th><th>Device</th><th>Person</th><th>Tech</th><th>Site</th><th>Reason / note</th></tr>
-  {% for x in rows %}<tr><td class="mono">{{ x.ts }}</td><td>{{ ACTION_LABELS.get(x.action, x.action) }}</td>
-    <td>{% if x.device_id %}<a href="/admin/devices/{{ x.device_id }}">{{ x.label or x.si }}</a> <span class="si">{{ x.si }}</span>{% endif %}{% if x.related_si %} <span class="muted">↔ {{ x.related_label or x.related_si }}</span>{% endif %}</td>
-    <td>{% if x.person_id %}<a href="/admin/people/{{ x.person_id }}">{{ x.person_name }}</a>{% endif %}</td><td class="muted">{{ x.tech_name or '' }}</td><td class="muted">{{ x.site_name or '' }}</td><td class="muted">{{ x.reason }}{% if x.reason and x.note %} · {% endif %}{{ x.note }}</td></tr>{% endfor %}
-  {% if not rows %}<tr><td colspan="7" class="muted">No transactions match.</td></tr>{% endif %}
+  {% for x in rows %}<tr><td class="mono nowrap">{{ x.ts }}</td><td class="nowrap">{{ ACTION_LABELS.get(x.action, x.action) }}</td>
+    <td>{% if x.device_id %}<a href="/admin/devices/{{ x.device_id }}">{{ x.label or x.si }}</a> <span class="si">{{ x.si }}</span>{% endif %}{% if x.related_si %} <span class="muted">with {{ x.related_label or x.related_si }}</span>{% endif %}</td>
+    <td>{% if x.person_id %}<a href="/admin/people/{{ x.person_id }}">{{ x.person_name }}</a>{% endif %}</td><td class="muted nowrap">{{ x.tech_name or '' }}</td><td class="muted nowrap">{{ x.site_name or '' }}</td><td class="muted">{{ x.reason }}{% if x.reason and x.note %} · {% endif %}{{ x.note }}</td></tr>{% endfor %}
+  {% if not rows %}<tr><td colspan="7" class="empty">No transactions match.</td></tr>{% endif %}
 </table></div>
-<div class="panel-body row"><span class="muted">Page {{ page }}</span><div class="grow"></div>{% if page > 1 %}<a class="btn sm" href="?q={{ q }}&action={{ f_action }}&site_id={{ f_site }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page - 1 }}">← Newer</a>{% endif %}{% if rows | length == limit %}<a class="btn sm" href="?q={{ q }}&action={{ f_action }}&site_id={{ f_site }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page + 1 }}">Older →</a>{% endif %}</div></div>
+<div class="panel-foot"><span class="note">Page {{ page }}</span>{% if page > 1 %}<a class="btn sm" href="?q={{ q }}&action={{ f_action }}&site_id={{ f_site }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page - 1 }}">Newer</a>{% endif %}{% if rows | length == limit %}<a class="btn sm" href="?q={{ q }}&action={{ f_action }}&site_id={{ f_site }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page + 1 }}">Older</a>{% endif %}</div></div>
 {% endblock %}

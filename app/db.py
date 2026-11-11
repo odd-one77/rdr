@@ -150,8 +150,8 @@ ACTION_LABELS = {
     "restored": "Restored to stock",
     "created": "Device created",
     "imported": "Device imported",
-    "assigned": "Pre-assigned device",
-    "unassigned": "Pre-assignment removed",
+    "assigned": "Device reserved",
+    "unassigned": "Reservation removed",
     "note": "Note",
 }
 

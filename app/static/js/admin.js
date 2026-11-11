@@ -2,6 +2,9 @@
 (function () {
   'use strict';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // On a narrow screen the menu is a scrolling strip: keep the current page in view.
+  const here = document.querySelector('.sidenav a.on');
+  if (here) { const nav = here.parentElement; if (nav.scrollWidth > nav.clientWidth) nav.scrollLeft += here.getBoundingClientRect().left - nav.getBoundingClientRect().left - 12; }
   document.addEventListener('click', e => {
     const c = e.target.closest('[data-confirm]');
     if (c && !confirm(c.dataset.confirm)) { e.preventDefault(); e.stopPropagation(); return; }

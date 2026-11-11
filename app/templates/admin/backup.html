@@ -1,52 +1,48 @@
 {% extends "admin/base_admin.html" %}
-{% block title %}Backup & restore<div class="panel" style="margin-top:16px"><div class="panel-head"><h2>Automatic snapshots</h2>
-  <div class="row"><span class="muted" style="font-size:12px">{% if snap_status.integrity_ok %}<span class="green">database OK</span>{% else %}<span class="red">integrity: {{ snap_status.integrity }}</span>{% endif %} · {{ snap_status.count }} snapshots{% if snap_status.error %} · <span class="red">{{ snap_status.error }}</span>{% endif %}</span><form method="post" action="/admin/backup/snapshot"><button class="btn sm">Snapshot now</button></form></div></div>
-  <div class="panel-body help" style="padding-bottom:0">A copy of the database is saved at start-up, at shutdown, before updates, resets and restores, and every 10 minutes while data changes. The last 72 are kept plus one per day for 30 days, in <span class="mono">{{ snap_status.dir }}</span>.</div>
-  <div class="table-wrap" style="max-height:360px"><table>
-    <tr><th>When</th><th>Reason</th><th class="num">Size</th><th></th></tr>
-    {% for s in snaps %}<tr><td class="mono">{{ s.when }}</td><td>{{ s.reason }}</td><td class="num">{{ (s.size / 1024) | round | int }} KB</td>
-      <td class="actions"><form method="post" action="/admin/backup/snapshots/{{ s.name }}/restore" class="inline-form" style="display:inline-flex;gap:6px;align-items:center"><a class="btn sm ghost" href="/admin/backup/snapshots/{{ s.name }}">Download</a><input name="confirm" placeholder="RESTORE" style="width:110px;height:28px;font-size:12px"><button class="btn sm danger" data-confirm="Replace the live database with this snapshot and restart?">Restore</button></form></td></tr>{% endfor %}
-    {% if not snaps %}<tr><td colspan="4" class="muted">No snapshots yet.</td></tr>{% endif %}
-  </table></div></div>
-{% endblock %}
+{% block title %}Backup and restore{% endblock %}
 {% block admin %}
-<div class="page-head"><div><h1>Backup & restore</h1><div class="sub">Move the whole setup between machines, or keep a copy before a show.</div></div></div>
-<div class="grid cols-2" style="align-items:start">
-  <div class="panel"><div class="panel-head"><h2>Export</h2></div>
-    <div class="panel-body">
-      <p class="help">One zip with the database (event, sites, techs, people, devices, pre-assignments, full history), the event logo and the server settings.</p>
-      <form method="post" action="/admin/backup/export" class="stack">
-        <label class="check"><input type="checkbox" name="include_token" value="1"> Include the GitHub update token</label>
-        <div><button class="btn primary">Download backup</button></div>
-      </form>
-    </div></div>
+<div class="page-head"><div><h1>Backup and restore</h1><div class="sub">Move the whole setup between machines, or keep a copy before a show.</div></div></div>
+<div class="grid cols-2 top">
+  <form class="panel" method="post" action="/admin/backup/export">
+    <div class="panel-head"><h2>Export</h2></div>
+    <div class="panel-body stack">
+      <p class="help">One zip with the database (event, sites, techs, people, devices, reservations, full history), the event logo and the server settings.</p>
+      <label class="check"><input type="checkbox" name="include_token" value="1"> Include the GitHub update token</label>
+    </div>
+    <div class="panel-foot"><button class="btn primary">Download backup</button></div>
+  </form>
   <div class="panel"><div class="panel-head"><h2>Import</h2></div>
-    <div class="panel-body">
-      {% if pending %}
-      <p><b>{{ pending.event }}</b>{% if pending.show %} · {{ pending.show }}{% endif %}<br><span class="muted">RDR {{ pending.version }} · created {{ pending.created }}</span></p>
-      <dl class="kv" style="margin-bottom:12px"><dt>People</dt><dd>{{ pending.counts.people }}</dd><dt>Devices</dt><dd>{{ pending.counts.devices }}</dd><dt>Transactions</dt><dd>{{ pending.counts.transactions }}</dd><dt>Sites / techs</dt><dd>{{ pending.counts.sites }} / {{ pending.counts.techs }}</dd><dt>Logo</dt><dd>{{ 'yes' if pending.has_logo else 'no' }}</dd></dl>
-      <form method="post" action="/admin/backup/restore" class="stack">
+    {% if pending %}
+    <form method="post" action="/admin/backup/restore">
+      <div class="panel-body stack">
+        <p><b>{{ pending.event }}</b>{% if pending.show %} · {{ pending.show }}{% endif %}<br><span class="muted sm">RDR {{ pending.version }} · created {{ pending.created }}</span></p>
+        <dl class="kv"><dt>People</dt><dd>{{ pending.counts.people }}</dd><dt>Devices</dt><dd>{{ pending.counts.devices }}</dd><dt>Transactions</dt><dd>{{ pending.counts.transactions }}</dd><dt>Sites / techs</dt><dd>{{ pending.counts.sites }} / {{ pending.counts.techs }}</dd><dt>Logo</dt><dd>{{ 'Yes' if pending.has_logo else 'No' }}</dd></dl>
         <input type="hidden" name="token" value="{{ pending.token }}">
         <label class="check"><input type="checkbox" name="restore_config" value="1" checked> Also restore server settings (port, update source)</label>
         <p class="help">This replaces everything on this machine with the backup, then restarts. The current database is kept as <span class="mono">data/rdr.db.before-restore</span>.</p>
-        <div class="row wrap"><input name="confirm" placeholder="Type RESTORE" style="max-width:160px"><button class="btn danger">Restore now</button><a class="btn ghost" href="/admin/backup">Cancel</a></div>
-      </form>
-      {% else %}
-      <form method="post" action="/admin/backup/inspect" enctype="multipart/form-data" class="stack">
+      </div>
+      <div class="panel-foot"><a class="btn ghost" href="/admin/backup">Cancel</a><input name="confirm" placeholder="Type RESTORE" class="short" autocomplete="off"><button class="btn danger">Restore now</button></div>
+    </form>
+    {% else %}
+    <form method="post" action="/admin/backup/inspect" enctype="multipart/form-data">
+      <div class="panel-body stack">
+        <p class="help">You see what is inside before anything is changed.</p>
         <div class="field"><label>Backup zip</label><input type="file" name="file" accept=".zip" required></div>
-        <div><button class="btn">Check backup</button></div>
-      </form>
-      <p class="help" style="margin-top:8px">You will see what is inside before anything is changed.</p>
-      {% endif %}
-    </div></div>
+      </div>
+      <div class="panel-foot"><button class="btn">Check backup</button></div>
+    </form>
+    {% endif %}
+  </div>
 </div>
-<div class="panel" style="margin-top:16px"><div class="panel-head"><h2>Automatic snapshots</h2>
-  <div class="row"><span class="muted" style="font-size:12px">{% if snap_status.integrity_ok %}<span class="green">database OK</span>{% else %}<span class="red">integrity: {{ snap_status.integrity }}</span>{% endif %} · {{ snap_status.count }} snapshots{% if snap_status.error %} · <span class="red">{{ snap_status.error }}</span>{% endif %}</span><form method="post" action="/admin/backup/snapshot"><button class="btn sm">Snapshot now</button></form></div></div>
-  <div class="panel-body help" style="padding-bottom:0">A copy of the database is saved at start-up, at shutdown, before updates, resets and restores, and every 10 minutes while data changes. The last 72 are kept plus one per day for 30 days, in <span class="mono">{{ snap_status.dir }}</span>.</div>
-  <div class="table-wrap" style="max-height:360px"><table>
-    <tr><th>When</th><th>Reason</th><th class="num">Size</th><th></th></tr>
+<div class="panel mt"><div class="panel-head"><h2>Automatic snapshots</h2>
+  <div class="row"><span class="muted sm">{% if snap_status.integrity_ok %}<span class="green">Database OK</span>{% else %}<span class="red">Integrity: {{ snap_status.integrity }}</span>{% endif %} · {{ snap_status.count }} snapshots{% if snap_status.error %} · <span class="red">{{ snap_status.error }}</span>{% endif %}</span><form method="post" action="/admin/backup/snapshot"><button class="btn sm">Snapshot now</button></form></div></div>
+  <div class="set-note">A copy of the database is saved at start-up, at shutdown, before updates, resets and restores, and every 10 minutes while data changes. The last 72 are kept, plus one per day for 30 days, in <span class="mono">{{ snap_status.dir }}</span>.</div>
+  <div class="table-wrap short"><table>
+    <thead><tr><th>When</th><th>Reason</th><th class="num">Size</th><th></th></tr></thead>
+    <tbody>
     {% for s in snaps %}<tr><td class="mono">{{ s.when }}</td><td>{{ s.reason }}</td><td class="num">{{ (s.size / 1024) | round | int }} KB</td>
-      <td class="actions"><form method="post" action="/admin/backup/snapshots/{{ s.name }}/restore" class="inline-form" style="display:inline-flex;gap:6px;align-items:center"><a class="btn sm ghost" href="/admin/backup/snapshots/{{ s.name }}">Download</a><input name="confirm" placeholder="RESTORE" style="width:110px;height:28px;font-size:12px"><button class="btn sm danger" data-confirm="Replace the live database with this snapshot and restart?">Restore</button></form></td></tr>{% endfor %}
-    {% if not snaps %}<tr><td colspan="4" class="muted">No snapshots yet.</td></tr>{% endif %}
+      <td class="actions"><form method="post" action="/admin/backup/snapshots/{{ s.name }}/restore" class="inline-form"><a class="btn sm ghost" href="/admin/backup/snapshots/{{ s.name }}">Download</a><input name="confirm" placeholder="RESTORE" class="xs" autocomplete="off"><button class="btn sm danger" data-confirm="Replace the live database with this snapshot and restart?">Restore</button></form></td></tr>{% endfor %}
+    {% if not snaps %}<tr><td colspan="4" class="empty">No snapshots yet.</td></tr>{% endif %}
+    </tbody>
   </table></div></div>
 {% endblock %}

@@ -1,23 +1,22 @@
 {% extends "admin/base_admin.html" %}
 {% block title %}Bolero link{% endblock %}
 {% block admin %}
-<div class="page-head"><div><h1>Bolero link</h1><div class="sub">Reads pack status from a Bolero standalone system through the antennas' own web interface, so the kiosk can say where a person's pack is and flash it in its charger bay. Works with standalone and Artist-connected systems. Unofficial interface; a firmware update may change it.</div></div>
-  <div class="row">{% if bolero.settings.enabled %}{% if bolero.ok %}<span class="badge in">connected · {{ bolero.packs | length }} packs</span>{% else %}<span class="badge damaged">no answer</span>{% endif %}<form method="post" action="/admin/bolero/poll"><button class="btn ghost">Poll now</button></form>{% else %}<span class="badge neutral">off</span>{% endif %}</div></div>
+<div class="page-head"><div><h1>Bolero link</h1><div class="sub">Reads pack status from the core antenna, so the kiosk can say where a person's pack is and flash it in its charger bay. The interface is unofficial and a firmware update may change it.</div></div>
+  <div class="row">{% if bolero.settings.enabled %}{% if bolero.ok %}<span class="badge in">Connected · {{ bolero.packs | length }} packs</span>{% else %}<span class="badge damaged">No answer</span>{% endif %}<form method="post" action="/admin/bolero/poll"><button class="btn ghost">Poll now</button></form>{% else %}<span class="badge neutral">Off</span>{% endif %}</div></div>
 
-<div class="grid cols-2" style="align-items:start">
-  <div class="panel"><div class="panel-head"><h2>Connection</h2></div>
+<div class="grid cols-2 top">
+  <form class="panel" method="post" action="/admin/bolero/settings"><div class="panel-head"><h2>Connection</h2></div>
     <div class="panel-body">
-      <form method="post" action="/admin/bolero/settings">
         <div class="field"><label>System</label><select name="bolero_mode"><option value="standalone" {{ 'selected' if bolero.settings.mode != 'artist' }}>Standalone (AES67)</option><option value="artist" {{ 'selected' if bolero.settings.mode == 'artist' }}>Artist-connected</option></select></div>
         <div class="field"><label>Core antenna address</label><input name="bolero_host" value="{{ bolero.settings.host }}" placeholder="192.168.1.20"><div class="help">The core (DECT master) antenna of the system, on the show network. It reports every pack and charger in either mode.</div></div>
         <div class="grid cols-2">
-          <div class="field"><label>Admin password</label><input type="password" name="bolero_admin_password" placeholder="{{ 'saved · leave blank to keep' if bolero.settings.has_password else 'needed only to flash packs' }}" autocomplete="new-password"></div>
+          <div class="field"><label>Admin password</label><input type="password" name="bolero_admin_password" placeholder="{{ 'Saved. Leave blank to keep.' if bolero.settings.has_password else 'Only needed to flash packs' }}" autocomplete="new-password"></div>
           <div class="field"><label>Charger resource</label><input name="bolero_charger_resource" value="{{ bolero.settings.charger_resource }}" placeholder="auto"><div class="help">Leave on auto unless the explorer shows a different name.</div></div>
         </div>
-        <div class="row wrap"><label class="check"><input type="checkbox" name="bolero_enabled" value="1" {{ 'checked' if bolero.settings.enabled }}> Link enabled</label>{% if bolero.settings.has_password %}<label class="check"><input type="checkbox" name="clear_password" value="1"> Remove saved password</label>{% endif %}<button class="btn primary">Save & test</button></div>
-      </form>
-      {% if bolero.settings.enabled and not bolero.ok %}<p class="red" style="margin-top:10px">{{ bolero.error }}</p>{% endif %}
-    </div></div>
+        <div class="row wrap"><label class="check"><input type="checkbox" name="bolero_enabled" value="1" {{ 'checked' if bolero.settings.enabled }}> Link enabled</label>{% if bolero.settings.has_password %}<label class="check"><input type="checkbox" name="clear_password" value="1"> Remove saved password</label>{% endif %}</div>
+      {% if bolero.settings.enabled and not bolero.ok %}<p class="red mt-s">{{ bolero.error }}</p>{% endif %}
+    </div>
+    <div class="panel-foot"><button class="btn primary">Save and test</button></div></form>
 
   <div class="panel"><div class="panel-head"><h2>What the kiosk does with it</h2></div>
     <div class="panel-body">
@@ -31,19 +30,19 @@
 </div>
 
 {% if bolero.settings.enabled %}
-<div class="panel" style="margin-top:16px"><div class="panel-head"><h2>Packs seen</h2><span class="muted" style="font-size:12px">{{ 'updated ' ~ (bolero.updated | int | string) if bolero.updated else 'not polled yet' }}</span></div>
-  <div class="table-wrap" style="max-height:360px"><table>
+<div class="panel mt"><div class="panel-head"><h2>Packs seen</h2><span class="muted sm">{{ ('Updated ' ~ polled) if polled else 'Not polled yet' }}</span></div>
+  <div class="table-wrap short"><table>
     <thead><tr><th>Pack</th><th>Name</th><th>State</th><th class="num">Battery</th><th>Antenna</th><th>Charger</th></tr></thead>
     <tbody>{% for n, p in bolero.packs.items() %}<tr><td class="mono">{{ n }}</td><td>{{ p.name }}</td><td>{% if p.online %}<span class="green">on</span>{% elif p.online is false %}<span class="muted">off</span>{% else %}<span class="muted">?</span>{% endif %}</td><td class="num">{{ (p.battery ~ '%') if p.battery is not none else '' }}</td><td>{{ p.antenna or '' }}</td><td class="muted">{% for c in bolero.chargers %}{% for b in c.bays %}{% if b.number == n %}{{ c.name }} · bay {{ b.bay }}{% endif %}{% endfor %}{% endfor %}</td></tr>
-    {% else %}<tr><td colspan="6" class="muted">{{ 'No packs reported.' if bolero.ok else 'Nothing yet.' }}</td></tr>{% endfor %}</tbody>
+    {% else %}<tr><td colspan="6" class="empty">{{ 'No packs reported.' if bolero.ok else 'Nothing yet.' }}</td></tr>{% endfor %}</tbody>
   </table></div></div>
 
-<div class="panel" style="margin-top:16px"><div class="panel-head"><h2>Explorer</h2><span class="muted" style="font-size:12px">read only · nothing here changes the system</span></div>
+<div class="panel mt"><div class="panel-head"><h2>Explorer</h2><span class="muted sm">Read only. Nothing here changes the system.</span></div>
   <div class="panel-body">
-    <form method="get" action="/admin/bolero" class="row wrap" style="margin-bottom:10px"><span class="mono muted">http://{{ bolero.settings.host or '…' }}/rest/</span><input name="path" value="{{ path }}" style="max-width:280px" placeholder="nodeStatus"><button class="btn">Fetch</button>
+    <form method="get" action="/admin/bolero" class="row wrap mb-s"><span class="mono muted">http://{{ bolero.settings.host or 'antenna' }}/rest/</span><input name="path" value="{{ path }}" class="mid" placeholder="nodeStatus"><button class="btn">Fetch</button>
       {% for p in ['nodeStatus', 'bp', 'audioPorts', 'nodeConfig', 'chargers', 'charger', 'chargerStatus'] %}<a class="btn sm ghost" href="/admin/bolero?path={{ p }}">{{ p }}</a>{% endfor %}</form>
-    {% if err %}<p class="red" style="margin:0 0 10px">{{ err }}</p>{% endif %}
-    {% if text %}<div class="code" style="max-height:60vh">{{ text }}</div>{% elif not err %}<p class="help">Pick a resource to see the antenna's raw answer. Useful for finding the charger resource on this firmware.</p>{% endif %}
+    {% if err %}<p class="red mb-s">{{ err }}</p>{% endif %}
+    {% if text %}<div class="code tall">{{ text }}</div>{% elif not err %}<p class="help">Pick a resource to see the antenna's raw answer. Useful for finding the charger resource on this firmware.</p>{% endif %}
   </div></div>
 {% endif %}
 {% endblock %}

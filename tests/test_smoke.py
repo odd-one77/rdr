@@ -235,4 +235,4 @@ def test_mirror_greeting_and_tech_name(client):
     assert d["greeting"]["title"] == "Welcome to RDR"
     assert "{tech}" in d["greeting"]["prompt"]
     assert d["state"]["tech_name"] == "RDR Tech"
-    assert "Save mirror screen" in client.get("/admin/settings").text
+    assert 'action="/admin/settings/mirror"' in client.get("/admin/settings").text

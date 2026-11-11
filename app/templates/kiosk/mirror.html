@@ -4,9 +4,9 @@
 <script src="/static/vendor/hls.min.js?v={{ version }}"></script>
 <div class="mirror">
   <div class="mirror-head">
-    <div class="row" style="gap:24px">
+    <div class="row logos">
       <img class="riedel" src="/static/img/riedel.png" alt="Riedel">
-      <span id="logoSep" style="width:1px;height:48px;background:var(--border){% if not event.logo_path %};display:none{% endif %}"></span><img class="event-logo" id="eventLogo" src="{{ event.logo_path or '' }}" alt="" {% if not event.logo_path %}style="display:none"{% endif %}>
+      <span class="sep" id="logoSep" {% if not event.logo_path %}style="display:none"{% endif %}></span><img class="event-logo" id="eventLogo" src="{{ event.logo_path or '' }}" alt="" {% if not event.logo_path %}style="display:none"{% endif %}>
     </div>
     <div class="title"><div class="ev live" id="evName">{{ event.name }}</div><div class="show live" id="evShow">{{ event.show_name or mirror_site.name }}</div></div>
   </div>
@@ -22,6 +22,8 @@
 (function(){
   const SITE = {{ mirror_site.id }};
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const clock = () => { document.getElementById('mclock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+  setInterval(clock, 1000); clock();
   const main = document.getElementById('main');
   let lastJson = '', greeting = {title: 'Welcome to RDR', sayings: [], prompt: 'Please give your name and role to {tech}'}, techName = null, sayingIdx = -1, idleShown = false, currentSaying = null;
   const asSaying = x => (typeof x === 'string' ? { text: x, credit: '' } : x);
@@ -92,7 +94,7 @@
       begin(mode); faceplate = (s.result.personInfo || {}).faceplate || '';
       const groups = group(s.result.items, s.result.personInfo);
       swap(`
-        <div class="who ${fresh ? 'anim' : ''}">${esc(s.result.person || 'Items processed')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
+        <div class="who ${fresh ? 'anim' : ''}">${esc(s.result.person || 'Devices processed')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
         <ul class="items">${groups.map(g => item(g)).join('')}</ul>
         <div class="result ${kind} ${fresh ? 'anim' : ''}" style="animation-delay:${groups.length * 60 + 80}ms">${kind === 'out' ? (Math.random() < 0.5 ? 'Have a great show!' : 'Have a great day!') : 'All checked in, thank you'}</div>`, mode);
       return;
@@ -109,7 +111,7 @@
     begin(mode); faceplate = p.faceplate || '';
     const held = group(s.holdings, p), now = group(s.basket, p, true);
     swap(`
-      <div class="who ${fresh ? 'anim' : ''}">${p.name ? 'Hi! ' + esc(p.name) : 'Processing items'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'One moment please'))}${p.bolero_id ? ' ' + chip(p.bolero_id) : ''}${p.radio ? ` <span class="bolero radio">${esc(p.radio)}</span>` : ''}${p.collector ? `<br>Collected by ${esc(p.collector)}` : ''}</small></div>
+      <div class="who ${fresh ? 'anim' : ''}">${p.name ? 'Hi! ' + esc(p.name) : 'Processing devices'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'One moment please'))}${p.bolero_id ? ' ' + chip(p.bolero_id) : ''}${p.radio ? ` <span class="bolero radio">${esc(p.radio)}</span>` : ''}${p.collector ? `<br>Collected by ${esc(p.collector)}` : ''}</small></div>
       ${held.length ? heading('Already with you') + `<ul class="items">${held.map(g => item(g, true)).join('')}</ul>` : ''}
       ${now.length ? heading('Being processed') + `<ul class="items">${now.map(g => item(g)).join('')}</ul>` : ''}`, mode);
   }
@@ -149,7 +151,7 @@
       area.innerHTML = `<div class="video${animate ? ' anim' : ''}" style="--pgm-aspect: 16 / 9"><span class="pgm">PGM</span><iframe src="${feed.embed}" allow="autoplay; encrypted-media" allowfullscreen frameborder="0"></iframe></div>`;
       return;
     }
-    area.innerHTML = `<div class="video${animate ? ' anim' : ''}" id="video"><span class="pgm">PGM</span><video id="pgm" muted autoplay playsinline loop></video><div class="status" id="pgmStatus">Connecting to programme feed…</div></div>`;
+    area.innerHTML = `<div class="video${animate ? ' anim' : ''}" id="video"><span class="pgm">PGM</span><video id="pgm" muted autoplay playsinline loop></video><div class="status" id="pgmStatus">Connecting to PGM feed</div></div>`;
     const videoEl = document.getElementById('pgm'), statusEl = document.getElementById('pgmStatus'), box = document.getElementById('video');
     videoEl.addEventListener('loadedmetadata', () => {
       if (videoEl.videoWidth && videoEl.videoHeight) {
@@ -171,13 +173,13 @@
           if (window.Hls && Hls.isSupported()) {
             hls = new Hls({lowLatencyMode: true, liveSyncDurationCount: 2, liveMaxLatencyDurationCount: 4, maxBufferLength: 4, backBufferLength: 0});
             hls.loadSource(src); hls.attachMedia(videoEl);
-            hls.on(Hls.Events.ERROR, (e, data) => { if (data.fatal) { attached = false; hls.destroy(); hls = null; statusEl.textContent = 'Feed interrupted, reconnecting…'; statusEl.classList.remove('hidden'); } });
+            hls.on(Hls.Events.ERROR, (e, data) => { if (data.fatal) { attached = false; hls.destroy(); hls = null; statusEl.textContent = 'Feed interrupted. Reconnecting.'; statusEl.classList.remove('hidden'); } });
           } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
             videoEl.src = src;
           } else { statusEl.textContent = 'This browser cannot play HLS'; return; }
           videoEl.play().catch(() => {});
           statusEl.classList.add('hidden');
-        } else if (!st.ready) { statusEl.textContent = 'Starting programme feed…'; statusEl.classList.remove('hidden'); }
+        } else if (!st.ready) { statusEl.textContent = 'Starting PGM feed'; statusEl.classList.remove('hidden'); }
       } catch (e) { /* server away; try again */ }
     }
     pingTimer = setInterval(pingStream, 4000); pingStream();

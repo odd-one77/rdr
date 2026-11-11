@@ -1,23 +1,25 @@
 {% extends "admin/base_admin.html" %}
 {% block title %}Import{% endblock %}
 {% block admin %}
-<div class="page-head"><h1>Import</h1></div>
-<p class="help" style="margin-bottom:16px">Two sources: the easyjob paperwork for devices and the allocation sheet for people. Columns are matched automatically and can be adjusted on the next screen. Existing records are updated, never duplicated; look-alikes are flagged for you to decide.</p>
-<div class="grid cols-2">
+<div class="page-head"><div><h1>Import</h1><div class="sub">Devices come from the easyjob paperwork, people from the allocation sheet. Existing records are updated, never duplicated.</div></div></div>
+<div class="grid cols-2 top">
   {% for key, k in kinds.items() %}
   <form class="panel" method="post" action="/admin/import/{{ key }}" enctype="multipart/form-data">
     <div class="panel-head"><h2>{{ k.title }}</h2></div>
     <div class="panel-body">
       <p class="help">{{ k.blurb }}</p>
       <div class="field"><input type="file" name="file" accept=".xlsx,.xlsm,.csv,.tsv,.txt{% if key == 'devices' %},.pdf{% endif %}" required></div>
-      <button class="btn primary block">Upload & map columns</button>
     </div>
+    <div class="panel-foot"><span class="note">Nothing is saved until you confirm.</span><button class="btn primary">Upload</button></div>
   </form>
   {% endfor %}
 </div>
-<div class="panel" style="margin-top:16px"><div class="panel-head"><h2>How matching works</h2></div><div class="panel-body help">
-  <p><b>Allocation</b> rows match a person on the unique ID when present, otherwise on name + phone. A matching name with a different phone (or vice versa) is flagged as a possible duplicate, and you choose: update the existing person, create a new one, or skip. Rows without a name keep their position or role name as a placeholder, with the Bolero ID and faceplate colour; a name repeated with another ID becomes a second entry.</p>
-  <p><b>Devices</b> match on SI number. From a delivery note PDF the description picks the type: BL-BPK → Bolero Beltpack, PRO-D1 / PRO-D2 / AIR-D1 / MAX-E1 / Covert → that headset, HC Headset Cord → Radio Headset Adapter, Hytera / Motorola → Radio, RSM → RSM. Panels, antennas, power, batteries, chargers, cables and cases are listed as ignored. Status and current holder are never changed by an import.</p>
-  <p>A person's <b>Bolero ID</b> comes in with the allocation. A pack labelled or reserved for them is linked to that ID, and any Bolero pack scanned out to them is shown under it until it comes back.</p>
-</div></div>
+<div class="panel mt"><div class="panel-head"><h2>How matching works</h2></div>
+  <div class="panel-body"><dl class="kv">
+    <dt>People</dt><dd>Matched on the unique ID when there is one, otherwise on name and phone. A matching name with a different phone, or the other way round, is flagged as a possible duplicate. You choose: update, create new, or skip.</dd>
+    <dt>Rows without a name</dt><dd>Kept under their position or role name, with the Bolero ID and faceplate colour. A name repeated with another ID becomes a second entry.</dd>
+    <dt>Devices</dt><dd>Matched on SI number. An import never changes a device's status or who holds it.</dd>
+    <dt>Types from a delivery note</dt><dd>Read from the description: BL-BPK is a Bolero Beltpack. PRO-D1, PRO-D2, AIR-D1, MAX-E1 and Covert are headsets. HC Headset Cord is a Radio Headset Adapter. Hytera and Motorola are radios. Panels, antennas, power, batteries, chargers, cables and cases are listed as ignored.</dd>
+    <dt>Bolero ID</dt><dd>Comes in with the allocation. A pack labelled or reserved for a person is linked to that ID, and a pack scanned out to them shows under it until it comes back.</dd>
+  </dl></div></div>
 {% endblock %}

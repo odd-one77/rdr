@@ -1,6 +1,6 @@
-# RDR — Radio Distribution Room
+# RDR: Radio Distribution Room
 
-Sign-out / sign-in and warehousing for comms kit at live events: Bolero
+Sign-out / sign-in and warehousing for comms devices at live events: Bolero
 beltpacks, radios, RSMs, headsets, earpieces and anything else with an SI
 barcode. Runs on a Windows 11 box, stores everything locally in SQLite, and is
 used from browsers on the LAN (kiosk PC, customer-facing mirror screen, phones).
@@ -21,9 +21,9 @@ used from browsers on the LAN (kiosk PC, customer-facing mirror screen, phones).
 
 Windows Firewall asks once whether to allow Python on the network; say yes so
 phones and the mirror screen can reach it. Other machines on the LAN use
-`http://<pc-ip>:8080`; the address is shown in Admin → Settings.
+`http://<pc-ip>:8080`; the address is shown in Admin under Settings, on the Server tab.
 
-Upgrading: Admin → Settings → **Update & restart** downloads the newest
+Upgrading: in Admin open Settings, Updates tab, and press **Update and restart**. It downloads the newest
 release and swaps the app code in place. The repo is private, so paste a
 GitHub fine-grained token (Contents: read) under *Update source* once.
 Re-running a newer setup exe over the top also works and keeps `data/`.
@@ -32,7 +32,7 @@ Re-running a newer setup exe over the top also works and keeps `data/`.
 
 Install Python 3.11+ and Git, `git clone` the repo and double-click
 `RDR.bat`: it creates `.venv`, installs requirements and starts the server.
-In this mode *Update & restart* uses `git pull`.
+In this mode *Update and restart* uses `git pull`.
 
 | URL | What |
 |-----|------|
@@ -44,14 +44,14 @@ In this mode *Update & restart* uses `git pull`.
 
 ## Everyday use
 
-- **Sign out**: type the person's name (or phone / ID), pick them, scan items,
-  press *Sign OUT*. Items already out to someone else are flagged; you decide
+- **Sign out**: type the person's name (or phone / ID), pick them, scan devices,
+  press *Sign out*. Devices already out to someone else are flagged; you decide
   to reassign or leave them.
-- **Sign in**: scan items, press *Sign IN*. No person needed. Scanning an item
+- **Sign in**: scan devices, press *Sign in*. No person needed. Scanning a device
   that is already in stock is ignored but the scan is still timestamped.
-- **Swap**: on the person's held item press *Swap*, scan the replacement, pick
-  a reason. The returned item is marked damaged / lost / OK.
-- **Lost / damaged**: the `!` button on a held item.
+- **Swap**: on the person's held device press *Swap*, scan the replacement, pick
+  a reason. The returned device is marked damaged / lost / OK.
+- **Lost / damaged**: the `!` button on a held device.
 - **Bolero IDs** are planned on the person (people sheet or person page); some
   people have one, radio-only people don't. Nothing is matched until the first
   Bolero pack is scanned out to them: the pack is then linked to their ID (or,
@@ -66,8 +66,8 @@ In this mode *Update & restart* uses `git pull`.
   other people?" under their assigned devices. A red strip shows who is
   collecting; search and add each person they collect for. Each person's
   reserved devices join the list, and anything scanned goes to whichever name
-  is selected on the strip (items show "for Priya"). One Sign OUT issues every
-  person's items, with the collector noted in the history. The strip counts what
+  is selected on the strip (devices show "for Priya"). One Sign out issues every
+  person's devices, with the collector noted in the history. The strip counts what
   went to whom; Exit (or Escape) ends it.
 - **Edit details** on the kiosk person card fixes a name, role, phone or
   Bolero ID without leaving the counter. In Admin, People and Device types
@@ -85,11 +85,11 @@ In this mode *Update & restart* uses `git pull`.
   so two tabs in one browser feed their own mirrors; a mirror falls back to
   the splash if its kiosk has been silent for 15 minutes.
 - **Reserved devices**: a particular serial number held for a particular
-  person, for the rare case. Admin → Reserved devices.
+  person, for the rare case. Set them in Admin under Reserved devices.
 - **Unknown barcode**: the kiosk offers to create the device on the spot.
 
 A USB barcode scanner works as a keyboard: the scan box always has focus and
-Enter adds the item. Typing part of an SI (the last four digits, say) lists
+Enter adds the device. Typing part of an SI (the last four digits, say) lists
 matching devices with full SI, type, label and status; arrow keys and Enter
 pick one. F2 jumps to the name search, F3 recalls the previous person, F4
 returns to the scan box.
@@ -97,7 +97,7 @@ returns to the scan box.
 ## Phones
 
 Phones always get the phone view and desktops always get the kiosk; the
-server decides from the browser. Admin → Settings → **HTTPS for phones** → Turn on. RDR then also listens on
+server decides from the browser. In Admin open Settings, Phones tab, and turn on **HTTPS for phones**. RDR then also listens on
 `https://<pc-ip>:8443`. On each phone open `http://<pc-ip>:8080/trust`, install
 the certificate as described there, then use the https address and `/m`. The
 camera reads Code 128/39, EAN, QR and Data Matrix labels. Without HTTPS the
@@ -111,10 +111,10 @@ Settings, one of fifty well-known film lines with its credit underneath. The
 line changes each time the screen returns from a transaction. Below it the
 screen asks for name and role, naming the tech on that site's kiosk. During a transaction it greets the person and lists what they
 are getting by type ("2 × Pro-D2 Headset", "Bolero Beltpack · Bolero 61"),
-never serial numbers; those stay on the technician's side. Give a site a feed address under Event & sites and the mirror
+never serial numbers; those stay on the technician's side. Give a site a feed address under Event and sites and the mirror
 shows it next to the transaction: an RTSP address is relayed to HLS by the
 bundled ffmpeg, a capture card such as a Blackmagic DeckLink is taken as
-`dshow:<device name>` (Settings → "List capture devices" shows the names;
+`dshow:<device name>` ("List capture devices" on the Settings Mirror screen tab shows the names;
 `dshow:Blackmagic WDM Capture?video_size=1920x1080&framerate=25` sets a
 format), a YouTube link is embedded (handy for testing the layout), and direct
 `.m3u8` or `.mp4` links play as they are. Tick "Re-encode" in Settings
@@ -126,7 +126,7 @@ Every change is committed to SQLite with full disk sync before the kiosk gets
 its answer. The database is snapshotted to `data/backups/` at start-up, at
 shutdown, before updates, resets and restores, and every 10 minutes while data
 changes; the last 72 plus one per day for 30 days are kept and can be
-downloaded or restored from Admin → Backup & restore. An integrity check runs
+downloaded or restored from Backup and restore in Admin. An integrity check runs
 at every start.
 
 Admin logins expire after 20 idle minutes and are dropped whenever a tech picks
@@ -160,13 +160,13 @@ update may change it.
 
 ## Backup and moving machines
 
-Admin → Backup & restore exports one zip with the database, logo and server
-settings. On the other machine install RDR, go to Backup & restore, upload the
+Backup and restore in Admin exports one zip with the database, logo and server
+settings. On the other machine install RDR, go to Backup and restore, upload the
 zip, check the summary, type RESTORE. The server restarts on the restored data.
 
 ## Imports
 
-Admin → Import has two sources. **easyjob import** takes the delivery note
+Import in Admin has two sources. **easyjob import** takes the delivery note
 PDF or the easyjob export (`.xlsx` / `.csv`) for devices; **Allocation**
 takes the comms allocation sheet for people. From the delivery note PDF, every barcode (`@si…`) becomes a device and the
 description picks the type (BL-BPK → Bolero Beltpack, PRO-D1 / PRO-D2 /
@@ -197,14 +197,14 @@ band on the Bolero chip beside the person's name on the kiosk and mirror.
 2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
 3. GitHub Actions (`.github/workflows/release.yml`) runs the tests, builds
    `RDR-Setup-0.2.0.exe` and `rdr-app-0.2.0.zip` on a Windows runner and
-   publishes the release. Installed copies pick it up via *Update & restart*.
+   publishes the release. Installed copies pick it up via *Update and restart*.
 
 To build locally on Windows: `powershell -File installer\build_windows.ps1`
 (needs Inno Setup 6 for the exe; without it you still get `dist\RDR`).
 
 ## Reset
 
-Admin → Settings → **Reset database** wipes everything for a brand new setup
+In Admin open Settings, Data tab. **Reset database** wipes everything for a brand new setup
 (optionally keeping the admin password).
 
 ## Development
@@ -250,10 +250,10 @@ devices, per-event archives, multi-event history.
 |---|---|---|
 | ![Dashboard](docs/screenshots/06-admin-dashboard.png) | ![Reports](docs/screenshots/13-admin-reports.png) | ![Types](docs/screenshots/18-admin-types.png) |
 
-| Event & sites | Devices | Person |
+| Event and sites | Devices | Person |
 |---|---|---|
 | ![Event](docs/screenshots/15-admin-event.png) | ![Devices](docs/screenshots/07-admin-devices.png) | ![Person](docs/screenshots/08-admin-person.png) |
 
-| Backup & restore | Import: map columns | Import: review | Settings |
+| Backup and restore | Import: map columns | Import: review | Settings |
 |---|---|---|---|
 | ![Backup](docs/screenshots/14-admin-backup.png) | ![Map](docs/screenshots/09-admin-import-map.png) | ![Review](docs/screenshots/10-admin-import-review.png) | ![Settings](docs/screenshots/11-admin-settings.png) |
