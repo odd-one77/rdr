@@ -83,7 +83,7 @@
       begin(mode); faceplate = (s.result.personInfo || {}).faceplate || '';
       const groups = group(s.result.items, s.result.personInfo);
       swap(`
-        <div class="who ${fresh ? 'anim' : ''}">${esc(s.result.person || 'Returned devices')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
+        <div class="who ${fresh ? 'anim' : ''}">${esc(s.result.person || 'Items processed')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
         <ul class="items">${groups.map(g => item(g)).join('')}</ul>
         <div class="result ${kind} ${fresh ? 'anim' : ''}" style="animation-delay:${groups.length * 60 + 80}ms">${kind === 'out' ? 'Please look after your devices' : 'All checked in'}</div>`, mode);
       return;
@@ -100,7 +100,7 @@
     begin(mode); faceplate = p.faceplate || '';
     const held = group(s.holdings, p), now = group(s.basket, p, true);
     swap(`
-      <div class="who ${fresh ? 'anim' : ''}">${p.name ? 'Hi! ' + esc(p.name) : 'Returning devices'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'Devices are being checked in'))}${p.bolero_id ? ' ' + chip(p.bolero_id) : ''}${p.radio ? ` <span class="bolero radio">${esc(p.radio)}</span>` : ''}${p.collector ? `<br>Collected by ${esc(p.collector)}` : ''}</small></div>
+      <div class="who ${fresh ? 'anim' : ''}">${p.name ? 'Hi! ' + esc(p.name) : 'Processing items'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'One moment please'))}${p.bolero_id ? ' ' + chip(p.bolero_id) : ''}${p.radio ? ` <span class="bolero radio">${esc(p.radio)}</span>` : ''}${p.collector ? `<br>Collected by ${esc(p.collector)}` : ''}</small></div>
       ${held.length ? heading('Already with you') + `<ul class="items">${held.map(g => item(g, true)).join('')}</ul>` : ''}
       ${now.length ? heading('Being processed') + `<ul class="items">${now.map(g => item(g)).join('')}</ul>` : ''}`, mode);
   }
