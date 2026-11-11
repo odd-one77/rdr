@@ -194,6 +194,22 @@
   }
   $('#btnPrev').onclick = () => { if (state.lastPerson) selectPerson(state.lastPerson.id); };
 
+  // "Bolero · Pro-D1 headset" -> [{text, type, pack, matches(device)}], matched against the device types list.
+  function allocationItems(p) {
+    if (!p || !p.allocation) return [];
+    const norm = x => String(x || '').toLowerCase().replace(/headset|beltpack|bp|pack/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+    return p.allocation.split(/[·,/;+]| and /).map(x => x.trim()).filter(Boolean).map(text => {
+      const key = norm(text), isPackText = /bolero|beltpack|\bbp\b|\bpack\b/i.test(text);
+      let type = null;
+      if (key) type = TYPES.find(t => norm(t.name) === key) || TYPES.find(t => { const k = norm(t.name); return k && (k.includes(key) || key.includes(k)); }) || null;
+      if (!type && isPackText) type = TYPES.find(t => /bolero/i.test(t.name) && !/headset/i.test(t.name)) || null;
+      if (!type && /headset/i.test(text)) type = TYPES.find(t => /headset/i.test(t.name) && !/adapter/i.test(t.name)) || null;
+      const pack = !!(isPackText || (type && isPack({ type_name: type.name })));
+      const matches = d => type ? d.type_id === type.id || d.type_name === type.name : (key ? norm(d.type_name).includes(key) : false);
+      return { text, type, pack, matches };
+    });
+  }
+
   function renderPerson() {
     const panel = $('#personPanel');
     const p = state.person;
@@ -218,16 +234,19 @@
     const myId = idOf(p.bolero_id);
     const reservedPack = pre.find(d => isPack(d) && (!d.linked_id || idOf(d.linked_id) === myId));
     const plannedRow = p.bolero_id && !hasPack ? `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">Bolero Beltpack <span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : ''}>ID ${esc(myId)}</span></div><div class="type">${reservedPack ? `linked to reserved ${esc(reservedPack.label || reservedPack.si)} · <span class="si">${esc(reservedPack.si)}</span>, scan it to issue` : 'no pack linked yet, scan one to this person'}</div></span></li>` : '';
+    // Everything else on the allocation line (headset, radio, …) that the person does not hold yet.
+    const allocRows = allocationItems(p).filter(a => !(a.pack && (hasPack || p.bolero_id)) && !hold.some(d => a.matches(d))).map(a =>
+      `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">${esc(a.type ? a.type.name : a.text)}</div><div class="type">${a.type ? 'from allocation, scan one to this person' : `from allocation: ${esc(a.text)}`}</div></span></li>`).join('');
     panel.innerHTML = `
       <div class="person-card">
         <div class="row"><div class="name grow">${esc(p.name)}</div>${chips(p, hold)}<button class="btn sm ghost" id="btnEditPerson" title="Edit details">Edit</button><button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
         ${line1 ? `<div class="meta">${line1}</div>` : ''}${line2 ? `<div class="meta">${line2}</div>` : ''}
         ${p.allocation ? `<div class="meta alloc">Allocation: <b>${esc(p.allocation)}</b></div>` : ''}
-        ${p.bolero_id ? `<div class="meta pack-live" id="packLive" data-number="${esc(idOf(p.bolero_id))}"></div>` : ''}
+        <div class="meta pack-live" id="packLive" data-number="${p.bolero_id ? esc(idOf(p.bolero_id)) : ''}"></div>
         ${state.collector ? `<div class="meta collector">Devices go to <b>${esc(p.name)}</b>, collected by <b>${esc(state.collector.name)}</b></div>` : ''}
       </div>
       <div class="section-title"><h3>Assigned <span class="mono">${hold.length}</span></h3>${hold.length ? '<button class="btn sm ghost" data-return-all>Return all</button>' : ''}</div>
-      <ul class="dev-list">${plannedRow}${byType.map(d => devRow(d, `<button class="btn sm" data-swap="${d.id}" title="Swap for another item">Swap</button><button class="btn sm ghost" data-flag="${d.id}" title="Mark lost or damaged">!</button><button class="btn sm ghost" data-add="${d.id}" title="Add to list">+</button>`)).join('') || (plannedRow ? '' : '<li class="empty">Nothing assigned.</li>')}</ul>
+      <ul class="dev-list">${plannedRow}${allocRows}${byType.map(d => devRow(d, `<button class="btn sm" data-swap="${d.id}" title="Swap for another item">Swap</button><button class="btn sm ghost" data-flag="${d.id}" title="Mark lost or damaged">!</button><button class="btn sm ghost" data-add="${d.id}" title="Add to list">+</button>`)).join('') || (plannedRow || allocRows ? '' : '<li class="empty">Nothing assigned.</li>')}</ul>
       ${pre.length ? `<div class="section-title"><h3>Reserved devices <span class="mono">${pre.length}</span></h3><button class="btn sm ghost" data-add-all>Add all</button></div>
       <ul class="dev-list">${pre.map(d => devRow(d, `<button class="btn sm" data-add="${d.id}">+ Add</button>`)).join('')}</ul>` : ''}
       ${state.collector ? '' : `<div class="collect-cta"><button class="btn block" id="btnForSomeone">${esc(p.name.split(' ')[0])} is picking up for other people…</button><div class="dim">Their own devices stay with them; the next people you pick receive the devices.</div></div>`}`;
@@ -530,17 +549,26 @@
     const el = $('#packLive');
     if (!el) return;
     const n = el.dataset.number;
+    if (!n) {
+      try { const i = await api('/api/bolero/pack/0'); el.innerHTML = i.configured ? '<span class="dim">No Bolero ID on this person, nothing to flash</span>' : ''; if (!i.configured) el.remove(); } catch (e) { el.remove(); }
+      return;
+    }
     try {
       const i = await api(`/api/bolero/pack/${encodeURIComponent(n)}`);
       if (!i.configured) { el.remove(); return; }
       let txt;
       if (!i.ok) txt = `<span class="dim">Bolero link: ${esc(i.error)}</span>`;
-      else if (!i.known) txt = `<span class="dim">Bolero ${esc(n)} is not registered on the system</span>`;
+      else if (!i.known) txt = `<span class="amber">No Bolero ${esc(n)} on the system</span>`;
       else if (i.charger) txt = `Bolero ${esc(n)} is in <b>${esc(i.charger.name)}, bay ${esc(String(i.charger.bay))}</b>${i.battery != null ? ` · ${i.battery}%` : ''}`;
       else if (i.online) txt = `Bolero ${esc(n)} is <b class="green">on</b>${i.battery != null ? ` · ${i.battery}%` : ''}${i.antenna ? ` · ${esc(String(i.antenna))}` : ''}${i.can_identify ? ` <button class="btn sm" id="btnFlash">Flash it</button>` : ''}`;
       else if (i.online === false) txt = `Bolero ${esc(n)} is <b>off</b>${i.charging ? ' (charging)' : ''}${!i.charger_data ? ' · bay unknown' : ''}`;
       else txt = `<span class="dim">Bolero ${esc(n)}: no status yet</span>`;
       el.innerHTML = txt;
+      // First look at a newly selected person: flash their pack straight away so the tech can find it.
+      if (i.ok && i.known && i.online && i.can_identify && !i.charger && el.dataset.flashed !== '1') {
+        el.dataset.flashed = '1';
+        try { const r = await post(`/api/bolero/pack/${encodeURIComponent(n)}/identify`, {}); toast('ok', `Flashing Bolero ${n}`, `for ${r.seconds} seconds`); } catch (e) { toast('err', 'Could not flash', e.message); }
+      }
       const fb = $('#btnFlash'); if (fb) fb.onclick = async () => { fb.disabled = true; try { const r = await post(`/api/bolero/pack/${encodeURIComponent(n)}/identify`, {}); toast('ok', `Flashing Bolero ${n}`, `for ${r.seconds} seconds`); } catch (e) { toast('err', 'Could not flash', e.message); } setTimeout(() => { fb.disabled = false; }, 3000); };
     } catch (e) { /* link away */ }
     packLiveTimer = setTimeout(refreshPackLive, 4000);
