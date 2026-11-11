@@ -85,7 +85,7 @@
       swap(`
         <div class="who ${fresh ? 'anim' : ''}">${esc(s.result.person || 'Items processed')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
         <ul class="items">${groups.map(g => item(g)).join('')}</ul>
-        <div class="result ${kind} ${fresh ? 'anim' : ''}" style="animation-delay:${groups.length * 60 + 80}ms">${kind === 'out' ? 'Please look after your devices' : 'All checked in'}</div>`, mode);
+        <div class="result ${kind} ${fresh ? 'anim' : ''}" style="animation-delay:${groups.length * 60 + 80}ms">${kind === 'out' ? (Math.random() < 0.5 ? 'Have a great show!' : 'Have a great day!') : 'All checked in, thank you'}</div>`, mode);
       return;
     }
     if (!s.person && !(s.basket && s.basket.length)) {
