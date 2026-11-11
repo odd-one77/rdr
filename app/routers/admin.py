@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from ..auth import (
-    ADMIN_COOKIE, admin_password_set, admin_token, check_admin_password, current_tech, is_admin, set_admin_password,
+    ADMIN_COOKIE, admin_password_set, admin_token, check_admin_password, is_admin, live_tech, set_admin_password,
 )
 from ..config import DATA_DIR, IMPORT_DIR, UPLOAD_DIR, load_config, save_config
 from ..db import ACTION_LABELS, get_db, get_setting, now_iso, reset_db, set_setting
@@ -33,6 +33,11 @@ def _redirect(path: str, msg: str | None = None, err: str | None = None) -> Redi
     if frag:
         path += f"#{frag}"
     return RedirectResponse(path, status_code=303)
+
+
+def _tech(db, request: Request) -> dict | None:
+    """Who to credit an admin edit to: the tech session, if its tech and site still exist."""
+    return live_tech(db, request, active=False)
 
 
 def require_admin(request: Request) -> None:
@@ -334,7 +339,7 @@ def device_create(request: Request, si: str = Form(...), type_id: int = Form(...
     with get_db() as db:
         if inventory.device_by_si(db, si):
             return _redirect("/admin/devices/new", err=f"SI {inventory.norm_si(si)} already exists")
-        d = inventory.quick_create_device(db, si, type_id, label, current_tech(request), int(site_id) if site_id else None, notes, linked_id=linked_id)
+        d = inventory.quick_create_device(db, si, type_id, label, _tech(db, request), int(site_id) if site_id else None, notes, linked_id=linked_id)
     return _redirect(f"/admin/devices/{d['id']}", msg="Device created")
 
 
@@ -352,7 +357,7 @@ def device_bulk(request: Request, type_id: int = Form(...), site_id: str = Form(
             if inventory.device_by_si(db, si):
                 skipped += 1
                 continue
-            inventory.quick_create_device(db, si, type_id, label, current_tech(request), int(site_id) if site_id else None)
+            inventory.quick_create_device(db, si, type_id, label, _tech(db, request), int(site_id) if site_id else None)
             created += 1
     return _redirect("/admin/devices", msg=f"Created {created} devices, skipped {skipped} existing")
 
@@ -370,8 +375,8 @@ def device_page(request: Request, device_id: int):
 
 @router.post("/devices/{device_id}", dependencies=[Depends(require_admin)])
 def device_save(request: Request, device_id: int, action: str = Form("save"), si: str = Form(""), type_id: int = Form(0), label: str = Form(""), site_id: str = Form(""), notes: str = Form(""), status: str = Form(""), reason: str = Form(""), assign_person_id: str = Form(""), linked_id: str = Form("")):
-    tech = current_tech(request)
     with get_db() as db:
+        tech = _tech(db, request)
         if action == "delete":
             db.execute("DELETE FROM devices WHERE id = ?", (device_id,))
             return _redirect("/admin/devices", msg="Device deleted")
@@ -418,14 +423,14 @@ def assignment_add(request: Request, si: str = Form(...), person_id: int = Form(
             return _redirect("/admin/assignments", err=f"Unknown device {inventory.norm_si(si)}")
         if inventory.person_by_id(db, person_id) is None:
             return _redirect("/admin/assignments", err="Unknown person")
-        inventory.set_assignment(db, d["id"], person_id, current_tech(request), note)
+        inventory.set_assignment(db, d["id"], person_id, _tech(db, request), note)
     return _redirect("/admin/assignments", msg=f"{d['si']} reserved")
 
 
 @router.post("/assignments/{device_id}/delete", dependencies=[Depends(require_admin)])
 def assignment_delete(request: Request, device_id: int):
     with get_db() as db:
-        inventory.clear_assignment(db, device_id, current_tech(request))
+        inventory.clear_assignment(db, device_id, _tech(db, request))
     return _redirect("/admin/assignments", msg="Removed")
 
 
@@ -612,7 +617,7 @@ async def import_commit(request: Request, token: str):
         return _redirect("/admin/import", msg="Import discarded")
     decisions = {k[4:]: str(v) for k, v in form.multi_items() if k.startswith("dec_")}
     with get_db() as db:
-        result = importer.commit(db, staged, decisions, current_tech(request))
+        result = importer.commit(db, staged, decisions, _tech(db, request))
     parts = [f"{v} {k.replace('_', ' ')}" for k, v in result.items()]
     target = {"people": "/admin/people", "devices": "/admin/devices"}[staged["kind"]]
     return _redirect(target, msg="Import done: " + ", ".join(parts))

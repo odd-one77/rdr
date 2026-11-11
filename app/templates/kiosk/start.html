@@ -8,7 +8,7 @@
     <h1>{{ event.name }}</h1>
     {% if event.show_name %}<div class="muted">{{ event.show_name }}</div>{% endif %}
   </div>
-  <form class="panel card" method="post" action="/start" id="startForm">
+  <form class="panel card" method="post" action="/start" id="startForm" autocomplete="off">
     <div class="panel-head"><h2>Who is on the counter?</h2><a class="btn sm ghost" href="/admin/login">Admin</a></div>
     <div class="panel-body stack lg">
       <div>
@@ -36,22 +36,32 @@
 </div>
 <script>
 (function(){
-  const pick = (gridId, inputId) => {
-    const grid = document.getElementById(gridId);
-    grid.addEventListener('click', e => {
-      const c = e.target.closest('.choice'); if (!c) return;
-      grid.querySelectorAll('.choice').forEach(x => x.classList.remove('on'));
-      c.classList.add('on');
-      document.getElementById(inputId).value = c.dataset.value;
-      if (inputId === 'tech_id' && c.dataset.site) {
-        const s = document.querySelector(`#sites .choice[data-value="${c.dataset.site}"]`);
-        if (s && !document.getElementById('site_id').value) s.click();
-      }
-      document.getElementById('go').disabled = !(document.getElementById('tech_id').value && document.getElementById('site_id').value);
-    });
-    if (grid.children.length === 1) grid.children[0].click();
+  const form = document.getElementById('startForm'), go = document.getElementById('go');
+  const grids = { tech_id: document.getElementById('techs'), site_id: document.getElementById('sites') };
+  const choose = c => {
+    const name = c.dataset.name;
+    grids[name].querySelectorAll('.choice').forEach(x => x.classList.toggle('on', x === c));
+    document.getElementById(name).value = c.dataset.value;
   };
-  pick('techs', 'tech_id'); pick('sites', 'site_id');
+  // The highlighted choices are the truth: a browser may restore old field values on Back or reload.
+  const sync = () => {
+    for (const name in grids) { const on = grids[name].querySelector('.choice.on'); document.getElementById(name).value = on ? on.dataset.value : ''; }
+    go.disabled = !(form.tech_id.value && form.site_id.value);
+  };
+  grids.tech_id.addEventListener('click', e => {
+    const c = e.target.closest('.choice'); if (!c) return;
+    choose(c);
+    // Picking a tech always picks their default site; they can still change it below.
+    const s = c.dataset.site && grids.site_id.querySelector(`.choice[data-value="${c.dataset.site}"]`);
+    if (s) choose(s);
+    sync();
+  });
+  grids.site_id.addEventListener('click', e => { const c = e.target.closest('.choice'); if (c) { choose(c); sync(); } });
+  form.addEventListener('submit', e => { sync(); if (go.disabled) e.preventDefault(); });
+  window.addEventListener('pageshow', sync);
+  if (grids.site_id.children.length === 1) choose(grids.site_id.children[0]);
+  if (grids.tech_id.children.length === 1) grids.tech_id.children[0].click();
+  sync();
 })();
 </script>
 {% endblock %}

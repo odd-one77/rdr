@@ -568,3 +568,54 @@ def test_away_from_desk(client):
     assert "Be right back" in client.get("/admin").text
     client.post("/admin/away/clear/1")
     assert client.get("/api/away", headers=h).json()["away"] is None
+
+
+def test_stale_tech_session_goes_back_to_start(client):
+    """A cookie that names a deleted tech or site must never open the kiosk or reach the API."""
+    import re
+    from fastapi.testclient import TestClient
+    from app.auth import tech_token
+    from app.db import get_db
+    from app.main import app
+
+    client.post("/admin/login", data={"password": "test1234"})
+    client.post("/admin/sites", data={"name": "Stale Site"})
+    with get_db() as db:
+        site = db.execute("SELECT id FROM sites WHERE name = 'Stale Site'").fetchone()["id"]
+    client.post("/admin/techs", data={"username": "stale", "display_name": "Stale Tech", "site_id": str(site)})
+    with get_db() as db:
+        tech = db.execute("SELECT id FROM techs WHERE username = 'stale'").fetchone()["id"]
+
+    # the start screen carries each tech's default site for the picker
+    assert re.search(rf'data-value="{tech}" data-site="{site}"', client.get("/start").text)
+
+    kiosk = TestClient(app, follow_redirects=False)
+    kiosk.post("/start", data={"tech_id": tech, "site_id": site})
+    h = {"X-RDR-Site": str(site)}
+    assert kiosk.get("/").status_code == 200 and kiosk.get("/api/config", headers=h).status_code == 200
+
+    # tech switched off: the kiosk page and the API both send the browser back to the start screen
+    client.post(f"/admin/techs/{tech}", data={"username": "stale", "display_name": "Stale Tech", "site_id": str(site)})
+    r = kiosk.get("/")
+    assert r.status_code == 303 and r.headers["location"] == "/start" and "rdr_tech" not in kiosk.cookies
+    kiosk.post("/start", data={"tech_id": 1, "site_id": site})
+
+    # site deleted under a running kiosk
+    client.post(f"/admin/sites/{site}", data={"action": "delete"})
+    assert kiosk.get("/api/people/search?q=a", headers=h).status_code == 401
+    assert kiosk.get("/api/config").status_code == 401
+    r = kiosk.get("/")
+    assert r.status_code == 303 and r.headers["location"] == "/start"
+    phone = TestClient(app, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148"})
+    phone.post("/start", data={"tech_id": tech, "site_id": 1})        # switched-off tech cannot start
+    assert phone.get("/m").headers["location"] == "/start?next=/m"
+
+    # an admin edit made with a stale session still saves (it is just not credited to a tech)
+    stale = TestClient(app, follow_redirects=False)
+    stale.post("/start", data={"tech_id": 1, "site_id": 1})
+    stale.cookies.set("rdr_tech", tech_token(tech, 99999))
+    stale.post("/admin/login", data={"password": "test1234"})
+    r = stale.post("/admin/devices/new", data={"si": "SI99STALE1", "type_id": 1})
+    assert r.status_code == 303 and "msg=Device" in r.headers["location"]
+    client.post(f"/admin/techs/{tech}", data={"action": "delete"})
+    client.post("/start", data={"tech_id": 1, "site_id": 1})

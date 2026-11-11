@@ -4,11 +4,12 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const TYPES = window.RDR.types; const TECH = window.RDR.tech;
+  if (!TECH) { location.replace('/start?next=/m'); return; }   // no tech and site picked: nothing here can work
   const state = { person: null, holdings: [], assignments: [], basket: [] };
 
   async function api(path, opts = {}) {
-    const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json', 'X-RDR-Site': String(window.RDR.tech.site_id) }, cache: 'no-store' }, opts));
-    if (r.status === 401) { location.href = '/start'; throw new Error('Session expired'); }
+    const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json', 'X-RDR-Site': String(TECH.site_id) }, cache: 'no-store' }, opts));
+    if (r.status === 401) { location.href = '/start?next=/m'; throw new Error('Session expired'); }
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.detail || data.error || `Request failed (${r.status})`);
     return data;

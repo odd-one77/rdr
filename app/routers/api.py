@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from ..auth import current_tech, is_admin
+from ..auth import is_admin, live_tech
 from ..db import get_db, get_setting, now_iso
 from ..services import away, bolero, inventory, liveconfig, quotes, streams
 
@@ -15,17 +15,16 @@ router = APIRouter(prefix="/api")
 
 
 def require_tech(request: Request) -> dict:
-    tech = current_tech(request)
-    if tech is None:
-        raise HTTPException(status_code=401, detail="Pick a tech and site first")
     # Each kiosk tab pins the site it was opened with, so two tabs in one browser
     # (two counters tested on one PC, or a tech who switched site in another tab)
     # keep pushing to their own mirror.
     pinned = request.headers.get("x-rdr-site")
-    if pinned and pinned.isdigit():
-        with get_db() as db:
-            if db.execute("SELECT 1 FROM sites WHERE id = ? AND active = 1", (int(pinned),)).fetchone():
-                tech = dict(tech, site_id=int(pinned))
+    with get_db() as db:
+        # A session whose tech or site has gone (deleted, switched off, reset, restore)
+        # is no session: the kiosk answers a 401 by going back to the start screen.
+        tech = live_tech(db, request, site_id=int(pinned) if pinned and pinned.isdigit() else None)
+    if tech is None:
+        raise HTTPException(status_code=401, detail="Pick a tech and site first")
     return tech
 
 
@@ -208,16 +207,16 @@ def swap(body: SwapIn, tech: dict = Depends(require_tech)):
 
 @router.get("/summary")
 def summary(request: Request, scope: str = "site"):
-    tech = current_tech(request)
     with get_db() as db:
+        tech = live_tech(db, request)
         site_id = tech["site_id"] if (tech and scope == "site") else None
         return {"site": inventory.summary(db, site_id), "all": inventory.summary(db, None)}
 
 
 @router.get("/recent")
 def recent(request: Request, limit: int = 25, scope: str = "site"):
-    tech = current_tech(request)
     with get_db() as db:
+        tech = live_tech(db, request)
         site_id = tech["site_id"] if (tech and scope == "site") else None
         rows = inventory.transactions(db, limit=min(limit, 200), site_id=site_id)
         return {"transactions": [dict(r) for r in rows]}

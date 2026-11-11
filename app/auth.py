@@ -117,3 +117,25 @@ def current_tech(request: Request) -> Optional[dict]:
     if "tech_id" not in data or "site_id" not in data:
         return None
     return {"tech_id": int(data["tech_id"]), "site_id": int(data["site_id"])}
+
+
+def live_tech(db: sqlite3.Connection, request: Request, active: bool = True, site_id: Optional[int] = None) -> Optional[dict]:
+    """The tech session, checked against the database.
+
+    The cookie lasts 30 days and outlives the rows it names: a tech or site deleted or
+    switched off in Admin, a reset, a restored backup. Anything that shows the kiosk or
+    writes a transaction asks here, so a stale session is treated as no session.
+    With active=False the tech and site only have to exist (enough to credit an admin edit).
+    site_id is the site a kiosk tab was opened with; it stands in for the cookie's site.
+    """
+    sess = current_tech(request)
+    if sess is None:
+        return None
+    if site_id is not None:
+        sess = dict(sess, site_id=site_id)
+    on = " AND active = 1" if active else ""
+    if not db.execute(f"SELECT 1 FROM techs WHERE id = ?{on}", (sess["tech_id"],)).fetchone():
+        return None
+    if not db.execute(f"SELECT 1 FROM sites WHERE id = ?{on}", (sess["site_id"],)).fetchone():
+        return None
+    return sess

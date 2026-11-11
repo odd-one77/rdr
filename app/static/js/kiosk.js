@@ -4,6 +4,7 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const TECH = window.RDR.tech;
+  if (!TECH) { location.replace('/start'); return; }   // no tech and site picked: nothing here can work
   const TYPES = window.RDR.types;
   const idOf = v => String(v || '').replace(/^bolero\s*/i, '');
   const isPack = d => /bolero/i.test(d.type_name || d.type || '') && !/antenna/i.test(d.type_name || d.type || '');

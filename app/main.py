@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import __version__
-from .auth import current_tech, is_admin
+from .auth import is_admin, live_tech
 from .config import APP_DIR, UPLOAD_DIR, ensure_dirs, load_config
 from .db import ACTION_LABELS, get_db, init_db
 
@@ -57,9 +57,9 @@ def base_context(request: Request) -> dict:
         event = db.execute("SELECT * FROM event WHERE id = 1").fetchone()
         sites = db.execute("SELECT * FROM sites WHERE active = 1 ORDER BY sort_order, name").fetchall()
         tech = None
-        sess = current_tech(request)
+        sess = live_tech(db, request)
         if sess:
-            t = db.execute("SELECT * FROM techs WHERE id = ? AND active = 1", (sess["tech_id"],)).fetchone()
+            t = db.execute("SELECT * FROM techs WHERE id = ?", (sess["tech_id"],)).fetchone()
             s = db.execute("SELECT * FROM sites WHERE id = ?", (sess["site_id"],)).fetchone()
             if t and s:
                 tech = {"id": t["id"], "username": t["username"], "display_name": t["display_name"], "role": t["role"],

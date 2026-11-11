@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from ..auth import ADMIN_COOKIE, TECH_COOKIE, tech_token
+from ..auth import ADMIN_COOKIE, TECH_COOKIE, live_tech, tech_token
 from ..db import get_db
 from ..main import render
 from ..config import load_config
@@ -14,15 +14,20 @@ from ..services import certs, inventory
 router = APIRouter()
 
 
+def _to_start(target: str = "/start") -> RedirectResponse:
+    """Back to the start screen, dropping a session that no longer matches a tech and site."""
+    resp = RedirectResponse(target, status_code=303)
+    resp.delete_cookie(TECH_COOKIE)
+    return resp
+
+
 @router.get("/", response_class=HTMLResponse)
 def kiosk_home(request: Request):
-    from ..auth import current_tech
-
     if is_mobile(request):
         return RedirectResponse("/m", status_code=303)
-    if current_tech(request) is None:
-        return RedirectResponse("/start", status_code=303)
     with get_db() as db:
+        if live_tech(db, request) is None:
+            return _to_start()
         types = db.execute("SELECT * FROM device_types WHERE active = 1 ORDER BY sort_order, name").fetchall()
     return render(request, "kiosk/kiosk.html", types=[dict(t) for t in types])
 
@@ -87,13 +92,11 @@ def _https_url() -> str | None:
 @router.get("/m", response_class=HTMLResponse)
 def phone(request: Request):
     """Phone-sized kiosk with camera scanning (camera needs the https address)."""
-    from ..auth import current_tech
-
     if not is_mobile(request):
         return RedirectResponse("/", status_code=303)
-    if current_tech(request) is None:
-        return RedirectResponse("/start?next=/m", status_code=303)
     with get_db() as db:
+        if live_tech(db, request) is None:
+            return _to_start("/start?next=/m")
         types = db.execute("SELECT * FROM device_types WHERE active = 1 ORDER BY sort_order, name").fetchall()
     secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https" or request.url.hostname in ("localhost", "127.0.0.1")
     return render(request, "kiosk/phone.html", types=[dict(t) for t in types], secure=secure,
