@@ -1,7 +1,10 @@
-"""Riedel Bolero antenna link (standalone / AES67 systems).
+"""Riedel Bolero link: standalone (AES67) and Artist-connected systems.
 
 The antennas serve the same undocumented REST interface their own web page uses,
-at http://<antenna>/rest/<resource>. Reads use the built-in read-only account
+at http://<antenna>/rest/<resource>. In an Artist-connected system the antennas are
+configured from the frame, but they still answer on their own addresses, so the same
+reads and Identify calls apply; several addresses can be listed (one per antenna, or
+the frame's Bolero address) and the answers are merged. Reads use the built-in read-only account
 the Riedel page itself uses; writes (Identify) need the admin password. This is
 not a Riedel-supported interface and a firmware update may change it, so every
 read is tolerant of unknown field names and the raw answers can be inspected
@@ -10,8 +13,11 @@ from Admin > Settings > Bolero.
 What RDR uses it for:
   * status of the pack carrying a person's Bolero ID: online / offline, battery, antenna
   * where a docked pack is: charger and bay (reported only with the Charger Monitoring
-    licence; a docked pack is powered off, so it cannot be flashed)
-  * Identify: flash a powered-on pack for a few seconds so the tech can find it
+    licence on networked chargers)
+  * Identify: flash a pack for a few seconds so the tech can find it. A powered-on pack is
+    addressed through the antenna; a pack docked in a networked, licensed charger is
+    addressed through the charger and bay. Only a pack that is switched off and not in
+    such a charger cannot flash.
 """
 from __future__ import annotations
 
@@ -31,7 +37,7 @@ POLL_SECONDS = 3
 IDENTIFY_SECONDS = 10
 CHARGER_RESOURCES = ("chargers", "charger", "chargerStatus", "chargerList")   # tried in turn until one answers
 _lock = threading.Lock()
-_state: dict[str, Any] = {"ok": False, "error": "not configured", "packs": {}, "chargers": [], "raw": {}, "updated": 0.0, "charger_resource": None}
+_state: dict[str, Any] = {"ok": False, "error": "not configured", "packs": {}, "chargers": [], "raw": {}, "updated": 0.0, "charger_resource": None, "locate_form": {}}
 _thread: Optional[threading.Thread] = None
 _stop = threading.Event()
 _identify_timers: dict[str, threading.Timer] = {}
@@ -39,20 +45,30 @@ _identify_timers: dict[str, threading.Timer] = {}
 
 # -- config -------------------------------------------------------------------
 
+def hosts(raw: str) -> list[str]:
+    return [h.strip() for h in re.split(r"[,\s;]+", raw or "") if h.strip()]
+
+
 def settings() -> dict:
     cfg = load_config()
     return {
         "enabled": bool(cfg.get("bolero_enabled")),
         "host": (cfg.get("bolero_host") or "").strip(),
+        "hosts": hosts(cfg.get("bolero_host") or ""),
+        "mode": cfg.get("bolero_mode") or "standalone",
         "has_password": bool(cfg.get("bolero_admin_password")),
         "charger_resource": cfg.get("bolero_charger_resource") or "",
     }
 
 
-def configure(host: str, enabled: bool, admin_password: Optional[str], clear_password: bool = False, charger_resource: str = "") -> None:
+def configure(host: str, enabled: bool, admin_password: Optional[str], clear_password: bool = False, charger_resource: str = "", mode: str = "standalone") -> None:
     cfg = load_config()
-    cfg["bolero_host"] = host.strip()
-    cfg["bolero_enabled"] = bool(enabled and host.strip())
+    for h in hosts(host):
+        if not _is_private(h):
+            raise ValueError(f"{h}: addresses must be on the show network (10.x, 172.16-31.x, 192.168.x)")
+    cfg["bolero_host"] = ", ".join(hosts(host))
+    cfg["bolero_mode"] = "artist" if mode == "artist" else "standalone"
+    cfg["bolero_enabled"] = bool(enabled and hosts(host))
     cfg["bolero_charger_resource"] = charger_resource.strip().strip("/")
     if clear_password:
         cfg.pop("bolero_admin_password", None)
@@ -97,9 +113,9 @@ def _request(host: str, resource: str, method: str = "GET", body: Optional[dict]
         return raw.decode("utf-8", "replace")
 
 
-def read(resource: str) -> Any:
+def read(resource: str, host: Optional[str] = None) -> Any:
     """GET any /rest resource with the read-only account (used by the explorer and the poller)."""
-    host = settings()["host"]
+    host = host or (settings()["hosts"] or [""])[0]
     if not host:
         raise ValueError("No antenna address configured")
     return _request(host, resource)
@@ -192,6 +208,7 @@ def parse_chargers(payload: Any) -> list[dict]:
     out = []
     for i, rec in enumerate(_items(payload)):
         name = str(_get(rec, "name", "label", "id", "serial", default=f"Charger {i + 1}"))
+        cid = _get(rec, "id", "index", "chargerId", default=i)
         bays_raw = _get(rec, "bays", "slots", "ports", default=None)
         bays = []
         for j, b in enumerate(_items(bays_raw) if bays_raw is not None else []):
@@ -200,48 +217,80 @@ def parse_chargers(payload: Any) -> list[dict]:
                 number = _get(number, "number", "id", default=None)
             state = _get(b, "state", "status", "charging", default="")
             bays.append({"bay": _get(b, "bay", "slot", "index", "id", default=j + 1), "number": (str(number) if number not in (None, "", 0) else ""), "state": str(state)})
-        out.append({"name": name, "bays": bays})
+        out.append({"id": cid, "name": name, "bays": bays})
     return out
 
 
 # -- poller -------------------------------------------------------------------------
 
+def _poll_host(host: str, charger_resource: str, raw: dict) -> tuple[dict[str, dict], list[dict], Optional[str]]:
+    bp = _request(host, "bp")
+    node_status = _request(host, "nodeStatus")
+    try:
+        audio_ports = _request(host, "audioPorts")
+    except Exception:  # noqa: BLE001 - optional
+        audio_ports = None
+    raw[host] = {"bp": bp, "nodeStatus": node_status, "audioPorts": audio_ports}
+    packs = parse_packs(bp, node_status, audio_ports)
+    chargers: list[dict] = []
+    found: Optional[str] = None
+    for res in ([charger_resource] if charger_resource else list(CHARGER_RESOURCES)):
+        try:
+            payload = _request(host, res)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                continue
+            raise
+        raw[host]["chargers"] = payload
+        chargers = parse_chargers(payload)
+        found = res
+        break
+    return packs, chargers, found
+
+
+def _merge_packs(into: dict[str, dict], more: dict[str, dict]) -> None:
+    for n, p in more.items():
+        cur = into.get(n)
+        if cur is None:
+            into[n] = p
+            continue
+        for k, v in p.items():
+            if cur.get(k) in (None, "", False) and v not in (None, ""):
+                cur[k] = v
+        if p.get("online"):
+            cur["online"] = True
+
+
 def _poll_once() -> None:
     st = settings()
-    if not st["enabled"] or not st["host"]:
+    if not st["enabled"] or not st["hosts"]:
         with _lock:
             _state.update(ok=False, error="not configured", packs={}, chargers=[])
         return
-    host = st["host"]
     raw: dict[str, Any] = {}
-    try:
-        raw["bp"] = _request(host, "bp")
-        raw["nodeStatus"] = _request(host, "nodeStatus")
-        try:
-            raw["audioPorts"] = _request(host, "audioPorts")
-        except Exception:  # noqa: BLE001 - optional
-            raw["audioPorts"] = None
-        packs = parse_packs(raw["bp"], raw["nodeStatus"], raw["audioPorts"])
-        chargers: list[dict] = []
+    packs: dict[str, dict] = {}
+    chargers: list[dict] = []
+    errors: list[str] = []
+    with _lock:
         resource = st["charger_resource"] or _state.get("charger_resource")
-        candidates = [resource] if resource else list(CHARGER_RESOURCES)
-        for res in candidates:
-            try:
-                payload = _request(host, res)
-            except urllib.error.HTTPError as e:
-                if e.code == 404:
-                    continue
-                raise
-            raw["chargers"] = payload
-            chargers = parse_chargers(payload)
-            with _lock:
-                _state["charger_resource"] = res
-            break
-        with _lock:
-            _state.update(ok=True, error="", packs=packs, chargers=chargers, raw=raw, updated=time.time())
-    except Exception as e:  # noqa: BLE001
-        with _lock:
-            _state.update(ok=False, error=f"{type(e).__name__}: {e}", updated=time.time(), raw=raw)
+    found: Optional[str] = None
+    for host in st["hosts"]:
+        try:
+            p, c, f = _poll_host(host, resource, raw)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{host}: {type(e).__name__}: {e}")
+            continue
+        _merge_packs(packs, p)
+        seen = {x["name"] for x in chargers}
+        chargers += [x for x in c if x["name"] not in seen]
+        found = found or f
+    with _lock:
+        if found:
+            _state["charger_resource"] = found
+        if packs or not errors:
+            _state.update(ok=True, error="; ".join(errors), packs=packs, chargers=chargers, raw=raw, updated=time.time())
+        else:
+            _state.update(ok=False, error="; ".join(errors), updated=time.time(), raw=raw)
 
 
 def _loop() -> None:
@@ -305,44 +354,79 @@ def pack_info(number: str) -> dict:
     for c in chargers:
         for b in c["bays"]:
             if b["number"] and b["number"].lstrip("0") == number:
-                info["charger"] = {"name": c["name"], "bay": b["bay"], "state": b["state"]}
+                info["charger"] = {"id": c.get("id"), "name": c["name"], "bay": b["bay"], "state": b["state"]}
     info["charger_data"] = has_charger_data
     return info
 
 
+def _locate_forms(info: dict, bp_id, on: bool) -> list[tuple[str, dict]]:
+    """Candidate (resource, body) pairs for Identify, most likely first. The exact shapes are not
+    published; the first that the antenna accepts is remembered per pack kind (docked / on air)."""
+    act = 1 if on else 0
+    forms: list[tuple[str, dict]] = []
+    ch = info.get("charger")
+    if ch:
+        with _lock:
+            res = _state.get("charger_resource") or "chargers"
+        cid, bay = ch.get("id"), ch.get("bay")
+        forms += [
+            (f"{res}/{cid}/locate", {"active": act, "bays": [{"id": bay}]}),
+            (f"{res}/{cid}/bays/{bay}/locate", {"active": act}),
+            (f"{res}/{cid}/bay/{bay}/locate", {"active": act}),
+            (f"{res}/locate", {"active": act, "chargers": [{"id": cid, "bays": [{"id": bay}]}]}),
+        ]
+    forms += [
+        (f"bp/{bp_id}/locate", {"active": act}),
+        ("locate", {"active": act, "nodes": [{"id": bp_id}]}),
+        (f"bp/{bp_id}", {"locate": act}),
+    ]
+    return forms
+
+
 def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> dict:
-    """Flash a powered-on pack. Identify is a toggle on the antenna, so RDR turns it off again after `seconds`."""
+    """Flash a pack: through the antenna when it is on, through the charger when it is docked.
+    Identify is a toggle, so RDR turns it off again after `seconds`."""
     cfg = load_config()
-    host, pw = (cfg.get("bolero_host") or "").strip(), cfg.get("bolero_admin_password") or ""
-    if not host or not pw:
-        raise ValueError("Set the antenna address and admin password in Settings > Bolero first")
+    host_list, pw = hosts(cfg.get("bolero_host") or ""), cfg.get("bolero_admin_password") or ""
+    if not host_list or not pw:
+        raise ValueError("Set the antenna address and admin password on the Bolero link page first")
     info = pack_info(number)
     if not info["known"]:
-        raise ValueError(f"Bolero {number} is not registered on this system")
-    if info["online"] is False:
-        raise ValueError(f"Bolero {number} is off" + (f" (in {info['charger']['name']}, bay {info['charger']['bay']})" if info["charger"] else "") + ", so it cannot flash")
-    bp_id = info.get("id")
+        raise ValueError(f"No Bolero {number} on the system")
     with _lock:
         bp_id = _state["packs"].get(info["number"], {}).get("id")
+        remembered = dict(_state.get("locate_form") or {})
+    kind = "docked" if info.get("charger") else "air"
+    forms = _locate_forms(info, bp_id, on)
+    if kind in remembered and remembered[kind] in [f[0] for f in forms]:
+        forms.sort(key=lambda f: f[0] != remembered[kind])
     auth = ("admin", pw)
-    body = {"active": 1 if on else 0}
     last_err: Optional[Exception] = None
-    # Beltpack Identify: the resource shape is not public; try the per-pack form, then the antenna-style form.
-    for resource, payload in ((f"bp/{bp_id}/locate", body), ("locate", {"active": 1 if on else 0, "nodes": [{"id": bp_id}]}), (f"bp/{bp_id}", {"locate": 1 if on else 0})):
-        try:
-            _request(host, resource, method="POST", body=payload, auth=auth)
-            last_err = None
-            break
-        except urllib.error.HTTPError as e:
-            last_err = e
-            if e.code in (401, 403):
-                raise ValueError("The antenna refused the admin password") from e
-            continue
-        except Exception as e:  # noqa: BLE001
-            last_err = e
+    used = None
+    for host in host_list:
+        for resource, payload in forms:
+            try:
+                _request(host, resource, method="POST", body=payload, auth=auth)
+                used = resource
+                last_err = None
+                break
+            except urllib.error.HTTPError as e:
+                last_err = e
+                if e.code in (401, 403):
+                    raise ValueError("The antenna refused the admin password") from e
+                continue
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                break
+        if used:
             break
     if last_err is not None:
-        raise ValueError(f"Identify failed: {last_err}")
+        where = f" (in {info['charger']['name']}, bay {info['charger']['bay']})" if info.get("charger") else ""
+        if info.get("online") is False and not info.get("charger"):
+            raise ValueError(f"Bolero {number} is off and not in a networked charger, so it cannot flash")
+        raise ValueError(f"Identify failed for Bolero {number}{where}: {last_err}")
+    with _lock:
+        _state.setdefault("locate_form", {})[kind] = used
     key = info["number"]
     if on:
         t = _identify_timers.pop(key, None)
@@ -353,7 +437,7 @@ def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> d
             timer.daemon = True
             timer.start()
             _identify_timers[key] = timer
-    return {"ok": True, "number": key, "on": on, "seconds": seconds if on else 0}
+    return {"ok": True, "number": key, "on": on, "seconds": seconds if on else 0, "via": "charger" if kind == "docked" else "antenna", "resource": used}
 
 
 def _safe_off(number: str) -> None:

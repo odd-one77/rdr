@@ -11,7 +11,7 @@ SAMPLE_BP = [{"id": 0, "number": 1, "name": "EP"}, {"id": 60, "number": 61, "nam
 SAMPLE_STATUS = [{"bpId": 0, "online": True, "battery": 88}, {"bpId": 60, "status": "online", "battery": {"level": 42}},
                  {"bpId": 64, "connected": False, "battery": 100, "charging": True}]
 SAMPLE_PORTS = [{"type": 1, "bpId": 60, "nodeName": "ANT-STAGE"}, {"type": 2, "bpId": 0}]
-SAMPLE_CHARGERS = {"items": [{"name": "Charger A", "bays": [{"bay": 1, "bpNumber": 65, "state": "charging"}, {"bay": 2, "bpNumber": None}]}]}
+SAMPLE_CHARGERS = {"items": [{"id": 7, "name": "Charger A", "bays": [{"bay": 1, "bpNumber": 65, "state": "charging"}, {"bay": 2, "bpNumber": None}]}]}
 
 
 class FakeAntenna(BaseHTTPRequestHandler):
@@ -40,7 +40,8 @@ class FakeAntenna(BaseHTTPRequestHandler):
         if creds != "admin:secret":
             self.send_response(401); self.end_headers(); return
         path = self.path.split("/rest/", 1)[-1]
-        if not path.startswith("bp/") or not path.endswith("/locate"):
+        ok = (path.startswith("bp/") and path.endswith("/locate")) or path == "chargers/7/bays/1/locate"
+        if not ok:
             self.send_response(404); self.end_headers(); return
         FakeAntenna.posts.append((path, body))
         self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(b"{}")
@@ -76,10 +77,11 @@ def test_poll_pack_info_and_identify(antenna, monkeypatch):
     alex = bolero.pack_info("61")
     assert alex["known"] and alex["online"] is True and alex["battery"] == 42 and alex["antenna"] == "ANT-STAGE" and alex["charger"] is None
     jamal = bolero.pack_info("65")
-    assert jamal["online"] is False and jamal["charger"] == {"name": "Charger A", "bay": 1, "state": "charging"}
-    # a docked (off) pack cannot be flashed; the message says where it is
-    with pytest.raises(ValueError, match="Charger A, bay 1"):
-        bolero.identify("65")
+    assert jamal["online"] is False and jamal["charger"] == {"id": 7, "name": "Charger A", "bay": 1, "state": "charging"}
+    # a docked pack flashes through its charger bay (the fake only accepts the bays/<n>/locate form)
+    r = bolero.identify("65", seconds=0)
+    assert r["via"] == "charger" and FakeAntenna.posts[-1] == ("chargers/7/bays/1/locate", {"active": 1})
+    assert bolero.status()["locate_form"]["docked"] == "chargers/7/bays/1/locate"
     # a powered-on pack flashes, and the auto-off is scheduled
     r = bolero.identify("61", seconds=0)
     assert r["ok"] and FakeAntenna.posts[-1] == ("bp/60/locate", {"active": 1})
@@ -106,3 +108,12 @@ def test_admin_bolero_page(antenna, monkeypatch, client):
     assert 'Alex' in r.text and 'nodeStatus' in r.text
     assert c.get("/admin/bolero?path=../x").status_code == 200
     assert "Bolero antenna link" not in c.get("/admin/settings").text
+
+
+def test_several_hosts_merge(antenna, monkeypatch):
+    cfg = {"bolero_host": f"{antenna}, 127.0.0.1:1", "bolero_enabled": True, "bolero_admin_password": "secret", "bolero_charger_resource": "", "bolero_mode": "artist"}
+    monkeypatch.setattr(bolero, "load_config", lambda: dict(cfg))
+    st = bolero.poll_now()
+    assert st["ok"] and len(st["packs"]) == 3 and "127.0.0.1:1" in st["error"]   # one antenna down, the other carries the system
+    assert bolero.settings()["hosts"] == [antenna, "127.0.0.1:1"] and bolero.settings()["mode"] == "artist"
+    assert bolero.identify("61", seconds=0)["ok"]

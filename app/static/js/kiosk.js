@@ -600,17 +600,17 @@
       let txt;
       if (!i.ok) txt = `<span class="dim">Bolero link: ${esc(i.error)}</span>`;
       else if (!i.known) txt = `<span class="amber">No Bolero ${esc(n)} on the system</span>`;
-      else if (i.charger) txt = `Bolero ${esc(n)} is in <b>${esc(i.charger.name)}, bay ${esc(String(i.charger.bay))}</b>${i.battery != null ? ` · ${i.battery}%` : ''}`;
+      else if (i.charger) txt = `Bolero ${esc(n)} is in <b>${esc(i.charger.name)}, bay ${esc(String(i.charger.bay))}</b>${i.battery != null ? ` · ${i.battery}%` : ''}${i.can_identify ? ` <button class="btn sm" id="btnFlash">Flash it</button>` : ''}`;
       else if (i.online) txt = `Bolero ${esc(n)} is <b class="green">on</b>${i.battery != null ? ` · ${i.battery}%` : ''}${i.antenna ? ` · ${esc(String(i.antenna))}` : ''}${i.can_identify ? ` <button class="btn sm" id="btnFlash">Flash it</button>` : ''}`;
-      else if (i.online === false) txt = `Bolero ${esc(n)} is <b>off</b>${i.charging ? ' (charging)' : ''}${!i.charger_data ? ' · bay unknown' : ''}`;
+      else if (i.online === false) txt = `Bolero ${esc(n)} is <b>off</b>${i.charging ? ' (charging)' : ''}${!i.charger_data ? ' · not seen in a networked charger' : ' · not in a charger'}`;
       else txt = `<span class="dim">Bolero ${esc(n)}: no status yet</span>`;
       el.innerHTML = txt;
       // First look at a newly selected person: flash their pack straight away so the tech can find it.
-      if (i.ok && i.known && i.online && i.can_identify && !i.charger && el.dataset.flashed !== '1') {
+      if (i.ok && i.known && (i.online || i.charger) && i.can_identify && el.dataset.flashed !== '1') {
         el.dataset.flashed = '1';
-        try { const r = await post(`/api/bolero/pack/${encodeURIComponent(n)}/identify`, {}); toast('ok', `Flashing Bolero ${n}`, `for ${r.seconds} seconds`); } catch (e) { toast('err', 'Could not flash', e.message); }
+        try { const r = await post(`/api/bolero/pack/${encodeURIComponent(n)}/identify`, {}); toast('ok', `Flashing Bolero ${n}`, `${r.via === 'charger' ? `in ${i.charger.name}, bay ${i.charger.bay}` : 'on air'} for ${r.seconds} seconds`); } catch (e) { toast('err', 'Could not flash', e.message); }
       }
-      const fb = $('#btnFlash'); if (fb) fb.onclick = async () => { fb.disabled = true; try { const r = await post(`/api/bolero/pack/${encodeURIComponent(n)}/identify`, {}); toast('ok', `Flashing Bolero ${n}`, `for ${r.seconds} seconds`); } catch (e) { toast('err', 'Could not flash', e.message); } setTimeout(() => { fb.disabled = false; }, 3000); };
+      const fb = $('#btnFlash'); if (fb) fb.onclick = async () => { fb.disabled = true; try { const r = await post(`/api/bolero/pack/${encodeURIComponent(n)}/identify`, {}); toast('ok', `Flashing Bolero ${n}`, `${r.via === 'charger' ? 'in the charger' : 'on air'} for ${r.seconds} seconds`); } catch (e) { toast('err', 'Could not flash', e.message); } setTimeout(() => { fb.disabled = false; }, 3000); };
     } catch (e) { /* link away */ }
     packLiveTimer = setTimeout(refreshPackLive, 4000);
   }

@@ -730,7 +730,7 @@ def settings_demo():
 # -- Bolero link (own page) ----------------------------------------------------
 
 @router.get("/bolero", dependencies=[Depends(require_admin)])
-def bolero_page(request: Request, path: str = ""):
+def bolero_page(request: Request, path: str = "", host: str = ""):
     """Settings for the antenna link, live status, and a read-only explorer of the antenna's /rest resources."""
     import json as _json
     path = path.strip().lstrip("/")[:80]
@@ -740,17 +740,17 @@ def bolero_page(request: Request, path: str = ""):
             err = "Resource names are letters, digits, / - _ ."
         else:
             try:
-                data = bolero.read(path)
+                data = bolero.read(path, host.strip() or None)
                 text = _json.dumps(data, indent=2)[:200_000] if not isinstance(data, str) else data[:200_000]
             except Exception as e:  # noqa: BLE001
                 err = f"{type(e).__name__}: {e}"
-    return render(request, "admin/bolero.html", bolero=bolero.status(), path=path, text=text, err=err, active="bolero")
+    return render(request, "admin/bolero.html", bolero=bolero.status(), path=path, host=host, text=text, err=err, active="bolero")
 
 
 @router.post("/bolero/settings", dependencies=[Depends(require_admin)])
-def bolero_save(bolero_host: str = Form(""), bolero_enabled: str = Form(""), bolero_admin_password: str = Form(""), clear_password: str = Form(""), bolero_charger_resource: str = Form("")):
+def bolero_save(bolero_host: str = Form(""), bolero_enabled: str = Form(""), bolero_admin_password: str = Form(""), clear_password: str = Form(""), bolero_charger_resource: str = Form(""), bolero_mode: str = Form("standalone")):
     try:
-        bolero.configure(bolero_host, bool(bolero_enabled), bolero_admin_password.strip() or None, clear_password=bool(clear_password), charger_resource=bolero_charger_resource)
+        bolero.configure(bolero_host, bool(bolero_enabled), bolero_admin_password.strip() or None, clear_password=bool(clear_password), charger_resource=bolero_charger_resource, mode=bolero_mode)
     except ValueError as e:
         return _redirect("/admin/bolero", err=str(e))
     if bolero_enabled and bolero_host.strip():

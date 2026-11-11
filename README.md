@@ -134,15 +134,18 @@ their name on the start screen, so a kiosk never carries an admin session.
 
 ## Bolero antenna link (optional)
 
-The Bolero link page (admin sidebar, under System) takes the address of one antenna of a Bolero
-standalone system. RDR then reads pack status through the antennas' own web
+The Bolero link page (admin sidebar, under System) takes the addresses of the
+antennas of a Bolero system, standalone (AES67) or Artist-connected; with several
+addresses the answers are merged. RDR then reads pack status through the antennas' own web
 interface (the same undocumented REST interface the Riedel page uses, read-only
 account): whether the pack carrying a person's Bolero ID is on, its battery and
 antenna, and, when the system has the Charger Monitoring licence, which charger
 bay a docked pack sits in. The kiosk shows this under the person's details, so
-the tech can find the pack. With the admin password saved, a **Flash it** button
-runs Identify on a powered-on pack for ten seconds. A docked pack is powered off
-and cannot flash, so for those the kiosk shows the charger and bay instead. The
+the tech can find the pack. With the admin password saved, selecting the person flashes their pack for ten
+seconds (a **Flash it** button repeats it): through the antenna when the pack
+is on, through the charger bay when it is docked in a networked charger with
+the Charger Monitoring licence. Only a pack that is switched off and not in
+such a charger cannot flash. The
 exact charger resource differs by firmware; the explorer on the same page shows
 the raw answers so it can be found and set on site. Unofficial interface: a firmware
 update may change it.

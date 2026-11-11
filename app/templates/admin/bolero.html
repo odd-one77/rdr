@@ -1,14 +1,15 @@
 {% extends "admin/base_admin.html" %}
 {% block title %}Bolero link{% endblock %}
 {% block admin %}
-<div class="page-head"><div><h1>Bolero link</h1><div class="sub">Reads pack status from a Bolero standalone system through the antennas' own web interface, so the kiosk can say where a person's pack is and flash it. Unofficial interface; a firmware update may change it.</div></div>
+<div class="page-head"><div><h1>Bolero link</h1><div class="sub">Reads pack status from a Bolero standalone system through the antennas' own web interface, so the kiosk can say where a person's pack is and flash it, on air or in a networked charger. Works with standalone and Artist-connected systems. Unofficial interface; a firmware update may change it.</div></div>
   <div class="row">{% if bolero.settings.enabled %}{% if bolero.ok %}<span class="badge in">connected · {{ bolero.packs | length }} packs</span>{% else %}<span class="badge damaged">no answer</span>{% endif %}<form method="post" action="/admin/bolero/poll"><button class="btn ghost">Poll now</button></form>{% else %}<span class="badge neutral">off</span>{% endif %}</div></div>
 
 <div class="grid cols-2" style="align-items:start">
   <div class="panel"><div class="panel-head"><h2>Connection</h2></div>
     <div class="panel-body">
       <form method="post" action="/admin/bolero/settings">
-        <div class="field"><label>Antenna address</label><input name="bolero_host" value="{{ bolero.settings.host }}" placeholder="192.168.1.20"><div class="help">Any antenna of the system, on the show network. The DECT master lists every pack.</div></div>
+        <div class="field"><label>System</label><select name="bolero_mode"><option value="standalone" {{ 'selected' if bolero.settings.mode != 'artist' }}>Standalone (AES67)</option><option value="artist" {{ 'selected' if bolero.settings.mode == 'artist' }}>Artist-connected</option></select></div>
+        <div class="field"><label>Antenna addresses</label><input name="bolero_host" value="{{ bolero.settings.host }}" placeholder="192.168.1.20, 192.168.1.21"><div class="help">One or more, comma separated, on the show network. Standalone: the DECT master lists every pack. Artist-connected: list each antenna (or the one the frame reports as master); answers are merged.</div></div>
         <div class="grid cols-2">
           <div class="field"><label>Admin password</label><input type="password" name="bolero_admin_password" placeholder="{{ 'saved · leave blank to keep' if bolero.settings.has_password else 'needed only to flash packs' }}" autocomplete="new-password"></div>
           <div class="field"><label>Charger resource</label><input name="bolero_charger_resource" value="{{ bolero.settings.charger_resource }}" placeholder="auto"><div class="help">Leave on auto unless the explorer shows a different name.</div></div>
@@ -22,8 +23,8 @@
     <div class="panel-body">
       <dl class="kv">
         <dt>Pack status</dt><dd>Under the selected person: whether the pack with their Bolero ID is on, its battery and antenna.</dd>
-        <dt>Flash</dt><dd>Selecting a person flashes their pack for ten seconds when it is on. Needs the admin password. A pack in a charger is powered off and cannot flash.</dd>
-        <dt>Charger bay</dt><dd>With Riedel's Charger Monitoring licence the kiosk shows which charger and bay a docked pack is in. {% if bolero.ok %}{% if bolero.charger_resource %}Reading from <span class="mono">/rest/{{ bolero.charger_resource }}</span>: {{ bolero.chargers | length }} charger(s).{% else %}No charger data found on this system yet: look for it with the explorer below and enter the resource name.{% endif %}{% endif %}</dd>
+        <dt>Flash</dt><dd>Selecting a person flashes their pack for ten seconds: through the antenna when it is on, through the charger bay when it is docked in a networked, licensed charger. Needs the admin password. Only a pack that is off and not in such a charger cannot flash.</dd>
+        <dt>Charger bay</dt><dd>With Riedel's Charger Monitoring licence on networked chargers the kiosk shows which charger and bay a docked pack is in. {% if bolero.ok %}{% if bolero.charger_resource %}Reading from <span class="mono">/rest/{{ bolero.charger_resource }}</span>: {{ bolero.chargers | length }} charger(s).{% else %}No charger data found on this system yet: look for it with the explorer below and enter the resource name.{% endif %}{% endif %}</dd>
         <dt>No match</dt><dd>The kiosk says so when the person's ID is not on the system, or when they have no Bolero ID.</dd>
       </dl>
     </div></div>
@@ -39,8 +40,8 @@
 
 <div class="panel" style="margin-top:16px"><div class="panel-head"><h2>Explorer</h2><span class="muted" style="font-size:12px">read only · nothing here changes the system</span></div>
   <div class="panel-body">
-    <form method="get" action="/admin/bolero" class="row wrap" style="margin-bottom:10px"><span class="mono muted">http://{{ bolero.settings.host or '…' }}/rest/</span><input name="path" value="{{ path }}" style="max-width:280px" placeholder="nodeStatus"><button class="btn">Fetch</button>
-      {% for p in ['nodeStatus', 'bp', 'audioPorts', 'nodeConfig', 'chargers', 'charger', 'chargerStatus'] %}<a class="btn sm ghost" href="/admin/bolero?path={{ p }}">{{ p }}</a>{% endfor %}</form>
+    <form method="get" action="/admin/bolero" class="row wrap" style="margin-bottom:10px"><span class="mono muted">http://</span>{% if bolero.settings.hosts | length > 1 %}<select name="host" style="max-width:180px">{% for h in bolero.settings.hosts %}<option {{ 'selected' if h == host }}>{{ h }}</option>{% endfor %}</select>{% else %}<span class="mono muted">{{ bolero.settings.host or '…' }}</span>{% endif %}<span class="mono muted">/rest/</span><input name="path" value="{{ path }}" style="max-width:280px" placeholder="nodeStatus"><button class="btn">Fetch</button>
+      {% for p in ['nodeStatus', 'bp', 'audioPorts', 'nodeConfig', 'chargers', 'charger', 'chargerStatus'] %}<a class="btn sm ghost" href="/admin/bolero?path={{ p }}{% if host %}&host={{ host }}{% endif %}">{{ p }}</a>{% endfor %}</form>
     {% if err %}<p class="red" style="margin:0 0 10px">{{ err }}</p>{% endif %}
     {% if text %}<div class="code" style="max-height:60vh">{{ text }}</div>{% elif not err %}<p class="help">Pick a resource to see the antenna's raw answer. Useful for finding the charger resource on this firmware.</p>{% endif %}
   </div></div>
