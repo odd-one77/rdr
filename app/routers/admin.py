@@ -632,9 +632,8 @@ def settings_page(request: Request, fetch: int = 0):
     https = {"on": bool(cfg.get("https")), "port": cfg.get("https_port", 8443), "cert": certs.status(),
              "listening": _port_open(int(cfg.get("https_port", 8443))) if cfg.get("https") else None, "log": _tail(DATA_DIR / "https.log")}
     devices_out = streams.list_capture_devices() if request.query_params.get("devices") else None
-    bolero_status = bolero.status()
     return render(request, "admin/settings.html", info=info, update_log=updater.last_output(), lan=lan_addresses(), mirror=mirror,
-                  https=https, streams=streams.status(), capture_devices=devices_out, bolero=bolero_status, active="settings")
+                  https=https, streams=streams.status(), capture_devices=devices_out, active="settings")
 
 
 @router.post("/settings/password", dependencies=[Depends(require_admin)])
@@ -728,36 +727,49 @@ def settings_demo():
     return _redirect("/admin", msg=f"Demo data loaded ({n} devices)")
 
 
-# -- Bolero antenna link ---------------------------------------------------------
+# -- Bolero link (own page) ----------------------------------------------------
 
-@router.post("/settings/bolero", dependencies=[Depends(require_admin)])
-def settings_bolero(bolero_host: str = Form(""), bolero_enabled: str = Form(""), bolero_admin_password: str = Form(""), clear_password: str = Form(""), bolero_charger_resource: str = Form("")):
+@router.get("/bolero", dependencies=[Depends(require_admin)])
+def bolero_page(request: Request, path: str = ""):
+    """Settings for the antenna link, live status, and a read-only explorer of the antenna's /rest resources."""
+    import json as _json
+    path = path.strip().lstrip("/")[:80]
+    text, err = "", ""
+    if path:
+        if not re_ok(path):
+            err = "Resource names are letters, digits, / - _ ."
+        else:
+            try:
+                data = bolero.read(path)
+                text = _json.dumps(data, indent=2)[:200_000] if not isinstance(data, str) else data[:200_000]
+            except Exception as e:  # noqa: BLE001
+                err = f"{type(e).__name__}: {e}"
+    return render(request, "admin/bolero.html", bolero=bolero.status(), path=path, text=text, err=err, active="bolero")
+
+
+@router.post("/bolero/settings", dependencies=[Depends(require_admin)])
+def bolero_save(bolero_host: str = Form(""), bolero_enabled: str = Form(""), bolero_admin_password: str = Form(""), clear_password: str = Form(""), bolero_charger_resource: str = Form("")):
     try:
         bolero.configure(bolero_host, bool(bolero_enabled), bolero_admin_password.strip() or None, clear_password=bool(clear_password), charger_resource=bolero_charger_resource)
     except ValueError as e:
-        return _redirect("/admin/settings", err=str(e))
+        return _redirect("/admin/bolero", err=str(e))
     if bolero_enabled and bolero_host.strip():
         st = bolero.poll_now()
         if not st["ok"]:
-            return _redirect("/admin/settings", err=f"Saved, but the antenna did not answer: {st['error']}")
-        return _redirect("/admin/settings", msg=f"Bolero link up: {len(st['packs'])} packs" + (f", charger data from /rest/{st['charger_resource']}" if st.get("charger_resource") else ", no charger data (needs the Charger Monitoring licence)"))
-    return _redirect("/admin/settings", msg="Bolero link saved")
+            return _redirect("/admin/bolero", err=f"Saved, but the antenna did not answer: {st['error']}")
+        return _redirect("/admin/bolero", msg=f"Bolero link up: {len(st['packs'])} packs" + (f", charger data from /rest/{st['charger_resource']}" if st.get("charger_resource") else ", no charger data (needs the Charger Monitoring licence)"))
+    return _redirect("/admin/bolero", msg="Bolero link saved")
+
+
+@router.post("/bolero/poll", dependencies=[Depends(require_admin)])
+def bolero_poll():
+    st = bolero.poll_now()
+    return _redirect("/admin/bolero", msg=f"Polled: {len(st['packs'])} packs" if st["ok"] else None, err=None if st["ok"] else st["error"])
 
 
 @router.get("/bolero/rest", dependencies=[Depends(require_admin)])
-def bolero_explore(request: Request, path: str = "nodeStatus"):
-    """Read-only explorer for the antenna's /rest resources (to find the charger resource on site)."""
-    import json as _json
-    path = path.strip().lstrip("/")[:80]
-    if not re_ok(path):
-        raise HTTPException(400, "Resource names are letters, digits, / - _ .")
-    try:
-        data = bolero.read(path)
-        text = _json.dumps(data, indent=2)[:200_000] if not isinstance(data, str) else data[:200_000]
-        err = ""
-    except Exception as e:  # noqa: BLE001
-        text, err = "", f"{type(e).__name__}: {e}"
-    return render(request, "admin/bolero_explore.html", path=path, text=text, err=err, status=bolero.status(), raw=bolero.raw(), active="settings")
+def bolero_explore(path: str = "nodeStatus"):
+    return RedirectResponse(f"/admin/bolero?path={path}", status_code=303)
 
 
 def re_ok(path: str) -> bool:

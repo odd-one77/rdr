@@ -90,3 +90,19 @@ def test_poll_pack_info_and_identify(antenna, monkeypatch):
     with pytest.raises(ValueError, match="refused the admin password"):
         bolero.identify("61", seconds=0)
     assert bolero.pack_info("99")["known"] is False
+
+
+def test_admin_bolero_page(antenna, monkeypatch, client):
+    cfg = {"bolero_host": antenna, "bolero_enabled": True, "bolero_admin_password": "secret", "bolero_charger_resource": ""}
+    monkeypatch.setattr(bolero, "load_config", lambda: dict(cfg))
+    c = client
+    c.post("/start", data={"tech_id": 1, "site_id": 1})
+    page = c.get("/admin/login").text
+    c.post("/admin/login", data={"password": "test1234", "confirm": "test1234"} if "Set the admin password" in page else {"password": "test1234"})
+    bolero.poll_now()
+    r = c.get("/admin/bolero")
+    assert r.status_code == 200 and "Packs seen" in r.text and "Charger A" in r.text and "ANT-STAGE" in r.text
+    r = c.get("/admin/bolero?path=bp")
+    assert 'Alex' in r.text and 'nodeStatus' in r.text
+    assert c.get("/admin/bolero?path=../x").status_code == 200
+    assert "Bolero antenna link" not in c.get("/admin/settings").text

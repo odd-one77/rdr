@@ -61,20 +61,6 @@
         <p class="help" style="margin-top:12px">PGM feed: set each site's feed under Event & sites (RTSP, <span class="mono">dshow:</span> capture card, YouTube or direct link). <a href="/admin/settings?devices=1">List capture devices</a>. ffmpeg: {% if streams.ffmpeg %}<span class="green mono">{{ streams.ffmpeg }}</span>{% else %}<span class="amber">not found. Put ffmpeg.exe in the tools folder next to the app.</span>{% endif %}{% for sid, st in streams.streams.items() %}<br>Site {{ sid }}: {{ 'running' if st.running else 'stopped' }}{% if st.error %} · <span class="red">{{ st.error }}</span>{% endif %}{% endfor %}</p>
         {% if capture_devices is not none %}<div class="code" style="margin-top:10px">{{ capture_devices }}</div>{% endif %}
       </div></div>
-    <div class="panel"><div class="panel-head"><h2>Bolero antenna link</h2>{% if bolero.settings.enabled %}{% if bolero.ok %}<span class="badge in">connected · {{ bolero.packs | length }} packs</span>{% else %}<span class="badge damaged">no answer</span>{% endif %}{% else %}<span class="badge neutral">off</span>{% endif %}</div>
-      <div class="panel-body">
-        <p class="help">Reads pack status from a Bolero standalone system through the antennas' own web interface: online, battery, which antenna, and (with the Charger Monitoring licence) which charger bay a docked pack is in. With the admin password the kiosk can flash a powered-on pack. Unofficial interface; a firmware update may change it.</p>
-        <form method="post" action="/admin/settings/bolero">
-          <div class="grid cols-3">
-            <div class="field"><label>Antenna address</label><input name="bolero_host" value="{{ bolero.settings.host }}" placeholder="192.168.1.20"></div>
-            <div class="field"><label>Admin password (for Identify)</label><input type="password" name="bolero_admin_password" placeholder="{{ 'saved — leave blank to keep' if bolero.settings.has_password else 'optional' }}" autocomplete="new-password"></div>
-            <div class="field"><label>Charger resource (optional)</label><input name="bolero_charger_resource" value="{{ bolero.settings.charger_resource }}" placeholder="auto"></div>
-          </div>
-          <div class="row wrap"><label class="check"><input type="checkbox" name="bolero_enabled" value="1" {{ 'checked' if bolero.settings.enabled }}> Link enabled</label>{% if bolero.settings.has_password %}<label class="check"><input type="checkbox" name="clear_password" value="1"> Remove saved password</label>{% endif %}<button class="btn">Save & test</button><a class="btn ghost" href="/admin/bolero/rest?path=nodeStatus">Explore</a></div>
-        </form>
-        {% if bolero.settings.enabled and not bolero.ok %}<p class="red" style="margin-top:8px">{{ bolero.error }}</p>{% endif %}
-        {% if bolero.ok %}<p class="help" style="margin-top:8px">Charger data: {% if bolero.charger_resource %}from <span class="mono">/rest/{{ bolero.charger_resource }}</span>, {{ bolero.chargers | length }} charger(s){% else %}none found. Use Explore to look for the chargers resource on this firmware, then enter it above.{% endif %}</p>{% endif %}
-      </div></div>
     <div class="panel"><div class="panel-head"><h2>HTTPS for phones</h2>{% if https.on %}<span class="badge in">on · port {{ https.port }}</span>{% else %}<span class="badge neutral">off</span>{% endif %}</div>
       <div class="panel-body">
         <p class="help">Phone browsers only allow the camera on a secure address. Turning this on adds an https server with a local certificate; phones install it once from <span class="mono">/trust</span>.</p>

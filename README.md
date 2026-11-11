@@ -62,11 +62,13 @@ In this mode *Update & restart* uses `git pull`.
   and the damaged pack takes the spare's old ID. Beside each name the kiosk
   and mirror show a Bolero chip, a Radio chip, both, or nothing, depending on
   what the person has.
-- **Collecting for others**: select the collector and press the button under
-  their assigned devices. A red strip shows who is collecting; search each
-  person they collect for, scan, sign out, and repeat. The strip counts what
-  went to whom; Exit (or Escape) ends it. The history notes the collector on
-  every device.
+- **Collecting for others**: select the collector and press "Picking up for
+  other people?" under their assigned devices. A red strip shows who is
+  collecting; search and add each person they collect for. Each person's
+  reserved devices join the list, and anything scanned goes to whichever name
+  is selected on the strip (items show "for Priya"). One Sign OUT issues every
+  person's items, with the collector noted in the history. The strip counts what
+  went to whom; Exit (or Escape) ends it.
 - **Edit details** on the kiosk person card fixes a name, role, phone or
   Bolero ID without leaving the counter. In Admin, People and Device types
   have a **Direct edit** toggle that turns the table into editable cells
@@ -132,7 +134,7 @@ their name on the start screen, so a kiosk never carries an admin session.
 
 ## Bolero antenna link (optional)
 
-Settings → Bolero antenna link takes the address of one antenna of a Bolero
+The Bolero link page (admin sidebar, under System) takes the address of one antenna of a Bolero
 standalone system. RDR then reads pack status through the antennas' own web
 interface (the same undocumented REST interface the Riedel page uses, read-only
 account): whether the pack carrying a person's Bolero ID is on, its battery and
@@ -141,8 +143,8 @@ bay a docked pack sits in. The kiosk shows this under the person's details, so
 the tech can find the pack. With the admin password saved, a **Flash it** button
 runs Identify on a powered-on pack for ten seconds. A docked pack is powered off
 and cannot flash, so for those the kiosk shows the charger and bay instead. The
-exact charger resource differs by firmware; the Explore page lists the raw
-answers so it can be found and set on site. Unofficial interface: a firmware
+exact charger resource differs by firmware; the explorer on the same page shows
+the raw answers so it can be found and set on site. Unofficial interface: a firmware
 update may change it.
 
 ## Backup and moving machines
