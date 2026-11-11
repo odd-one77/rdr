@@ -134,9 +134,8 @@ their name on the start screen, so a kiosk never carries an admin session.
 
 ## Bolero antenna link (optional)
 
-The Bolero link page (admin sidebar, under System) takes the addresses of the
-antennas of a Bolero system, standalone (AES67) or Artist-connected; with several
-addresses the answers are merged. RDR then reads pack status through the antennas' own web
+The Bolero link page (admin sidebar, under System) takes the address of the core
+(DECT master) antenna of a Bolero system, standalone (AES67) or Artist-connected. RDR then reads pack status through the antennas' own web
 interface (the same undocumented REST interface the Riedel page uses, read-only
 account): whether the pack carrying a person's Bolero ID is on, its battery and
 antenna, and, when the system has the Charger Monitoring licence, which charger

@@ -9,7 +9,7 @@
     <div class="panel-body">
       <form method="post" action="/admin/bolero/settings">
         <div class="field"><label>System</label><select name="bolero_mode"><option value="standalone" {{ 'selected' if bolero.settings.mode != 'artist' }}>Standalone (AES67)</option><option value="artist" {{ 'selected' if bolero.settings.mode == 'artist' }}>Artist-connected</option></select></div>
-        <div class="field"><label>Antenna addresses</label><input name="bolero_host" value="{{ bolero.settings.host }}" placeholder="192.168.1.20, 192.168.1.21"><div class="help">One or more, comma separated, on the show network. Standalone: the DECT master lists every pack. Artist-connected: list each antenna (or the one the frame reports as master); answers are merged.</div></div>
+        <div class="field"><label>Core antenna address</label><input name="bolero_host" value="{{ bolero.settings.host }}" placeholder="192.168.1.20"><div class="help">The core (DECT master) antenna of the system, on the show network. It reports every pack and charger in either mode.</div></div>
         <div class="grid cols-2">
           <div class="field"><label>Admin password</label><input type="password" name="bolero_admin_password" placeholder="{{ 'saved · leave blank to keep' if bolero.settings.has_password else 'needed only to flash packs' }}" autocomplete="new-password"></div>
           <div class="field"><label>Charger resource</label><input name="bolero_charger_resource" value="{{ bolero.settings.charger_resource }}" placeholder="auto"><div class="help">Leave on auto unless the explorer shows a different name.</div></div>
@@ -40,8 +40,8 @@
 
 <div class="panel" style="margin-top:16px"><div class="panel-head"><h2>Explorer</h2><span class="muted" style="font-size:12px">read only · nothing here changes the system</span></div>
   <div class="panel-body">
-    <form method="get" action="/admin/bolero" class="row wrap" style="margin-bottom:10px"><span class="mono muted">http://</span>{% if bolero.settings.hosts | length > 1 %}<select name="host" style="max-width:180px">{% for h in bolero.settings.hosts %}<option {{ 'selected' if h == host }}>{{ h }}</option>{% endfor %}</select>{% else %}<span class="mono muted">{{ bolero.settings.host or '…' }}</span>{% endif %}<span class="mono muted">/rest/</span><input name="path" value="{{ path }}" style="max-width:280px" placeholder="nodeStatus"><button class="btn">Fetch</button>
-      {% for p in ['nodeStatus', 'bp', 'audioPorts', 'nodeConfig', 'chargers', 'charger', 'chargerStatus'] %}<a class="btn sm ghost" href="/admin/bolero?path={{ p }}{% if host %}&host={{ host }}{% endif %}">{{ p }}</a>{% endfor %}</form>
+    <form method="get" action="/admin/bolero" class="row wrap" style="margin-bottom:10px"><span class="mono muted">http://{{ bolero.settings.host or '…' }}/rest/</span><input name="path" value="{{ path }}" style="max-width:280px" placeholder="nodeStatus"><button class="btn">Fetch</button>
+      {% for p in ['nodeStatus', 'bp', 'audioPorts', 'nodeConfig', 'chargers', 'charger', 'chargerStatus'] %}<a class="btn sm ghost" href="/admin/bolero?path={{ p }}">{{ p }}</a>{% endfor %}</form>
     {% if err %}<p class="red" style="margin:0 0 10px">{{ err }}</p>{% endif %}
     {% if text %}<div class="code" style="max-height:60vh">{{ text }}</div>{% elif not err %}<p class="help">Pick a resource to see the antenna's raw answer. Useful for finding the charger resource on this firmware.</p>{% endif %}
   </div></div>

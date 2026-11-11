@@ -1,10 +1,10 @@
 """Riedel Bolero link: standalone (AES67) and Artist-connected systems.
 
 The antennas serve the same undocumented REST interface their own web page uses,
-at http://<antenna>/rest/<resource>. In an Artist-connected system the antennas are
-configured from the frame, but they still answer on their own addresses, so the same
-reads and Identify calls apply; several addresses can be listed (one per antenna, or
-the frame's Bolero address) and the answers are merged. Reads use the built-in read-only account
+at http://<antenna>/rest/<resource>. Only the core (DECT master) antenna is needed, in
+standalone and Artist-connected mode alike: it reports every pack and charger. The
+code tolerates a comma-separated list of addresses (answers merged) but the page asks
+for one. Reads use the built-in read-only account
 the Riedel page itself uses; writes (Identify) need the admin password. This is
 not a Riedel-supported interface and a firmware update may change it, so every
 read is tolerant of unknown field names and the raw answers can be inspected
