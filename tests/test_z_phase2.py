@@ -502,3 +502,46 @@ def test_delivery_note_pdf_import(client):
     d = client.get("/api/devices/lookup?si=@si90000001").json()           # a scanner that sends the '@' still matches
     assert d["found"] and d["device"]["type_name"] == "Bolero Beltpack"
     assert not client.get("/api/devices/lookup?si=SI90000003").json()["found"]
+
+
+def test_easyjob_export_descriptions_become_types(client):
+    """An easyjob export lists the article description, not a type: beltpacks and headsets must still land
+    in the right types and panels must be ignored, exactly like the PDF."""
+    from app.services import importer
+    client.post("/admin/login", data={"password": "test1234"})
+    csv = ("Inventory No,Article,Qty\n"
+           "@si77000001,\"Riedel BL-BPK-1006-19 Bolero Beltpack, DECT\",1\n"
+           "@si77000002,\"Riedel PRO-D1 (XLR4F) Intercom Headset, medium weight, single ear, dynamic\",1\n"
+           "@si77000003,\"Riedel RSP-2318 Smartpanel, 2 headset connectors\",1\n"
+           "@si77000004,\"Riedel 1200 Series Panel\",1\n"
+           "@si77000005,Hytera PD685 Radio,1\n")
+    loc = client.post("/admin/import/devices", files={"file": ("export.csv", csv.encode(), "text/csv")}).headers["location"]
+    token = loc.rsplit("/", 1)[1]
+    m = importer.load_staged(token)["mapping"]
+    assert m["si"] == 0 and m["type"] == 1
+    client.post(loc, data={f"map_{k}": ("" if v is None else str(v)) for k, v in m.items()})
+    plan = importer.load_staged(token)["plan"]
+    assert plan["counts"] == {"create": 3, "update": 0, "conflict": 0, "skip": 0, "error": 2}
+    assert {it["data"]["type"] for it in plan["items"] if it["action"] == "create"} == {"Bolero Beltpack", "Pro-D1 Headset", "Radio"}
+    assert all("Ignored" in it["message"] for it in plan["items"] if it["action"] == "error")
+    client.post(f"/admin/import/s/{token}/commit", data={"action": "commit"})
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    d = client.get("/api/devices/lookup?si=si77000001").json()["device"]
+    assert d["type_name"] == "Bolero Beltpack" and "BL-BPK" in d["notes"]
+    assert not client.get("/api/devices/lookup?si=si77000003").json()["found"]
+
+
+def test_delivery_note_wrapped_lines():
+    from app.services import importer
+    text = """20 1008090 Riedel BL-BPK-1006-19 Bolero Beltpack, DECT, with very long description that
+wraps to the next line 4
+Barcode:
+@si99000014, @si99000013
+@si99000006, @si99000015
+17 1000118 Riedel PRO-D1 (XLR4F) Intercom Headset 1
+Barcode: @si99000002
+"""
+    rows = importer.parse_delivery_text(text)
+    packs = [r for r in rows if r[1] == "Bolero Beltpack"]
+    assert [r[0] for r in packs] == ["SI99000014", "SI99000013", "SI99000006", "SI99000015"] and packs[0][5] == "4"
+    assert [r[0] for r in rows if r[1] == "Pro-D1 Headset"] == ["SI99000002"]

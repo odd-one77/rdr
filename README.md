@@ -143,9 +143,11 @@ PDF or the easyjob export (`.xlsx` / `.csv`) for devices; **Allocation**
 takes the comms allocation sheet for people. From the delivery note PDF, every barcode (`@si…`) becomes a device and the
 description picks the type (BL-BPK → Bolero Beltpack, PRO-D1 / PRO-D2 /
 AIR-D1 / MAX-E1 / Covert → that headset, HC Headset Cord → Radio Headset
-Adapter, Hytera / Motorola → Radio, RSM → RSM). Panels, antennas, chargers,
+Adapter, Hytera / Motorola → Radio, RSM → RSM). The same rules apply to an export sheet whose
+"Article" column carries the description. Panels, antennas, chargers,
 batteries, covers, power, cables and cases are listed as ignored on the
-review screen. Scanners that send the leading `@` still match. Columns are mapped on screen, so the
+review screen, never created as device types. Scanners that send the
+leading `@` still match. Columns are mapped on screen, so the
 layout of the sheet does not matter; a title row above the headings is
 handled (pick the header row on the mapping screen if the guess is wrong).
 Re-importing updates existing records; look-alike people are flagged with

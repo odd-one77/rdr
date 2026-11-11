@@ -108,8 +108,8 @@ DESCRIPTION_RULES: list[tuple[tuple[str, ...], str]] = [
 
 # accessories and infrastructure that mention a tracked product in their description but are not one
 IGNORE_WORDS = ("cover", "charger", "bl-chg", "battery", "bl-bat", "antenna", "bl-ant", "power supply", "bl-eps", "power cable",
-                "adapter cable", "expansion card", "smartpanel", "panel microphone", "converter", "switch,", "zarges", "clamp",
-                "magic arm", "speaker station", "beltclip", "mount", "case,", "flight case")
+                "adapter cable", "expansion card", "panel", "converter", "switch,", "zarges", "clamp", "magic arm",
+                "speaker station", "beltclip", "mount", "case,", "flight case", "licence", "license", "software", "rack")
 
 
 def classify_description(desc: str) -> str:
@@ -122,17 +122,18 @@ def classify_description(desc: str) -> str:
     return ""
 
 
-_POS_LINE = re.compile(r"^(\d{1,4})\s+(\d{5,9})\s+(.+?)\s+(\d{1,4})\s*$")
+_POS_LINE = re.compile(r"^(\d{1,4})\s+(\d{5,9})\s+(.+?)(?:\s+(\d{1,4}))?\s*$")
 _BARCODE_TOKEN = re.compile(r"@?si\s*(\d{5,})|\b(\d{5,9})\b", re.I)
 
 
 def parse_delivery_text(text: str) -> list[list[str]]:
     """easyjob delivery note text -> one row per barcode: [SI, Type, Label, Art.No., Description, Qty, Pos].
-    Items with no barcode are returned once with an empty SI so they show as skipped."""
+    Items with no barcode are returned once with an empty SI so they show as skipped. Long descriptions
+    may wrap onto the next line and the quantity may sit at the end of the last wrapped line."""
     rows: list[list[str]] = []
     pos = art = desc = qty = None
     codes: list[str] = []
-    reading_codes = False
+    mode = "none"          # none | desc | codes
 
     def flush():
         if pos is None:
@@ -140,32 +141,39 @@ def parse_delivery_text(text: str) -> list[list[str]]:
         tname = classify_description(desc)
         if codes:
             for c in codes:
-                rows.append([c, tname, "", art, desc, qty, pos])
+                rows.append([c, tname, "", art, desc, qty or "", pos])
         else:
-            rows.append(["", tname, "", art, desc, qty, pos])
+            rows.append(["", tname, "", art, desc, qty or "", pos])
 
     for raw in text.splitlines():
         line = raw.strip()
-        if not line or line.startswith("Pos.") or re.match(r"^\S+\s*\|\s*Page \d+ of \d+$", line):
+        if not line or line.lower().startswith("pos.") or re.match(r"^\S+\s*\|\s*Page \d+ of \d+$", line):
             continue
         m = _POS_LINE.match(line)
-        if m:
+        if m and not (mode == "codes" and _BARCODE_TOKEN.search(line) and not re.search(r"[A-Za-z]{3,}", line)):
             flush()
             pos, art, desc, qty = m.group(1), m.group(2), m.group(3).strip(), m.group(4)
-            codes, reading_codes = [], False
+            codes, mode = [], "desc"
             continue
         if line.lower().startswith("barcode"):
-            reading_codes = True
+            mode = "codes"
             line = line.split(":", 1)[1] if ":" in line else ""
             if not line.strip():
-                continue                        # the codes follow on the next line(s)
-        if reading_codes and pos is not None:
-            found = [(a or b) for a, b in _BARCODE_TOKEN.findall(line)]
-            if found:
-                for a, b in _BARCODE_TOKEN.findall(line):
+                continue
+        if mode == "codes" and pos is not None:
+            hits = _BARCODE_TOKEN.findall(line)
+            if hits and not re.search(r"[A-Za-z]{4,}", re.sub(r"@?si", "", line, flags=re.I)):
+                for a, b in hits:
                     codes.append(("SI" + a) if a else b)
                 continue
-            reading_codes = False   # a line without codes ends the barcode block
+            mode = "none"          # text again: the barcode block has ended
+        if mode == "desc" and pos is not None:
+            # a wrapped description line; a trailing number is the quantity
+            mq = re.match(r"^(.*?)(?:\s+(\d{1,4}))?$", line)
+            desc = (desc + " " + mq.group(1).strip()).strip()
+            if mq.group(2):
+                qty = mq.group(2)
+            continue
     flush()
     return rows
 
@@ -541,8 +549,21 @@ def _analyze_devices(db, rows, mapping) -> list[dict]:
         }
         item = {"row": i, "data": data, "action": "create", "existing_id": None, "candidates": [], "message": ""}
         desc = _val(row, mapping, "notes")
+        if data["type"] and data["type"].lower() not in types:
+            # export sheets carry the article description where a type should be: resolve it the same way as a PDF
+            resolved = classify_description(data["type"]) or classify_description(desc)
+            if not resolved:
+                item.update(action="error", message=f"Ignored: not a beltpack, headset or radio ({data['type'][:60]})")
+                plan.append(item); continue
+            if not data["notes"]:
+                data["notes"] = data["type"]
+            data["type"] = resolved
         if not data["type"] and desc and classify_description(desc) == "":
             item.update(action="error", message=f"Ignored: not a beltpack, headset or radio ({desc[:60]})")
+        elif not data["type"] and desc:
+            data["type"] = classify_description(desc)
+        if item["action"] == "error":
+            pass
         elif not data["si"]:
             item.update(action="error", message="No SI number" + (f" ({data['type']} x {_val(row, mapping, 'qty') or '?'})" if data["type"] else ""))
         elif not data["type"]:

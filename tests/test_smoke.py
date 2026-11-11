@@ -174,20 +174,23 @@ def test_import_people_with_conflict(client):
     assert client.get("/api/people/search?q=tom").json()["results"][0]["dept"] == "Lighting"
 
 
-def test_import_devices_new_type(client):
+def test_import_devices_descriptions(client):
     content = _xlsx(["Inventory No", "Article", "Name"], [
-        ["SI-BOL-1001", "Bolero Beltpack", "Bolero 61 (renamed)"],   # update label
-        ["SI-RAD-2001", "Radio", "Radio 01"],                        # create
-        ["SI-NEW-9001", "Bolero NSA-002A Antenna", "Antenna A"],     # new type
-        ["SI-RAD-2001", "Radio", "dup"],                             # dup in file
+        ["SI-BOL-1001", "Bolero Beltpack", "Bolero 61 (renamed)"],       # existing type name -> update label
+        ["SI-RAD-2001", "Hytera PD685 Radio handset", "Radio 01"],       # description -> Radio
+        ["SI-NEW-9001", "Riedel BL-ANT-1010 Bolero Antenna", "Antenna A"],   # accessory -> ignored
+        ["SI-NEW-9002", "Riedel RSP-2318 Smartpanel", "Panel"],          # panel -> ignored
+        ["SI-RAD-2001", "Radio", "dup"],                                 # dup in file
     ])
     loc = _follow(client, client.post("/admin/import/devices", files={"file": ("easyjob.xlsx", content, "application/octet-stream")}))
     token = loc.rsplit("/", 1)[1]
     loc2 = _follow(client, client.post(loc, data={"map_si": "0", "map_type": "1", "map_label": "2"}))
-    assert "New device type" in client.get(loc2).text
+    page = client.get(loc2).text
+    assert "Ignored: not a beltpack, headset or radio" in page
     _follow(client, client.post(f"/admin/import/s/{token}/commit", data={"action": "commit"}))
-    d = client.get("/api/devices/lookup?si=SI-NEW-9001").json()["device"]
-    assert d["type_name"] == "Bolero NSA-002A Antenna"
+    assert not client.get("/api/devices/lookup?si=SI-NEW-9001").json()["found"]
+    assert not client.get("/api/devices/lookup?si=SI-NEW-9002").json()["found"]
+    assert client.get("/api/devices/lookup?si=SI-RAD-2001").json()["device"]["type_name"] == "Radio"
     assert client.get("/api/devices/lookup?si=SI-BOL-1001").json()["device"]["label"] == "Bolero 61 (renamed)"
     # status untouched by import
     assert client.get("/api/devices/lookup?si=SI-BOL-1001").json()["device"]["status"] == "in"
@@ -206,7 +209,7 @@ def test_admin_pages_render(client):
 
 def test_summary_per_site(client):
     s = client.get("/api/summary").json()
-    assert s["all"]["totals"]["total"] >= 6
+    assert s["all"]["totals"]["total"] >= 5
     assert s["site"]["totals"]["total"] == s["all"]["totals"]["total"]  # all shared stock
 
 
