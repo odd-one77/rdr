@@ -99,7 +99,9 @@
     pushTimer = setTimeout(() => {
       const brief = d => ({ si: d.si, label: d.label, type: d.type_name || d.type, linked_id: d.linked_id || '' });
       post('/api/kiosk/state', { state: {
-        person: state.person ? { name: state.person.name, dept: state.person.dept, role: state.person.role, bolero_id: state.person.bolero_id, faceplate: state.person.faceplate || '', radio: (state.holdings.find(d => /radio/i.test(d.type_name)) || {}).label || '', collector: state.collector ? state.collector.name : '' } : null,
+        person: state.person ? { name: state.person.name, dept: state.person.dept, role: state.person.role, bolero_id: state.person.bolero_id, faceplate: state.person.faceplate || '', radio: (state.holdings.find(d => /radio/i.test(d.type_name)) || {}).label || '' } : null,
+        // Someone collecting for others: the mirror stays on the collector and lists each person's devices under their name.
+        collect: state.collector ? { name: state.collector.name, people: state.recipients.map(r => ({ name: r.name, bolero_id: r.bolero_id || '', faceplate: r.faceplate || '', items: state.basket.filter(x => x.for && x.for.id === r.id).map(brief) })) } : null,
         holdings: state.holdings.map(brief),
         basket: state.basket.map(brief),
         result: state.result,
@@ -153,7 +155,7 @@
       state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.result = null;
       searchEl.value = '';
       if (state.collector && !state.recipients.some(r => r.id === id)) {
-        state.recipients.push({ id, name: d.person.name });
+        state.recipients.push({ id, name: d.person.name, bolero_id: d.person.bolero_id || '', faceplate: d.person.faceplate || '' });
         const added = d.assignments.filter(a => !state.basket.some(b => b.id === a.id));
         added.forEach(a => addToBasket(a, true));
         toast('ok', `Added ${d.person.name.split(' ')[0]}`, added.length ? `${added.length} reserved device${added.length > 1 ? 's' : ''} in the list. Scan anything else for them.` : 'Nothing reserved. Scan their devices.', 3000);
@@ -450,9 +452,15 @@
     results.forEach(r => (grouped[r.outcome] = grouped[r.outcome] || []).push(r.label || r.si));
     Object.entries(grouped).forEach(([o, items]) => { const [k, t] = NICE[o] || ['warn', o]; toast(k, `${t} · ${items.length}`, items.join(', '), 5000); });
   }
-  function setResult(kind, results, personName) {
+  function setResult(kind, results, personName, groups) {
     const ok = results.filter(r => OK_OUTCOMES.includes(r.outcome));
-    state.result = ok.length ? { kind, person: personName || null, personInfo: state.person && !(personName || '').includes(',') ? { bolero_id: state.person.bolero_id, faceplate: state.person.faceplate || '' } : null, items: ok.map(r => ({ si: r.si, label: r.label, type: r.type, linked_id: r.linked_id || '' })), ts: Date.now() } : null;
+    const brief = r => ({ si: r.si, label: r.label, type: r.type, linked_id: r.linked_id || '' });
+    state.result = ok.length ? { kind, person: personName || null, personInfo: state.person && !(personName || '').includes(',') ? { bolero_id: state.person.bolero_id, faceplate: state.person.faceplate || '' } : null, items: ok.map(brief), ts: Date.now() } : null;
+    // Collected for others: the summary is addressed to the collector, with each person's devices under their name.
+    if (state.result && groups) {
+      state.result.collector = state.collector ? state.collector.name : '';
+      state.result.groups = groups.map(g => ({ name: g.name, bolero_id: g.bolero_id, faceplate: g.faceplate, items: g.results.filter(r => OK_OUTCOMES.includes(r.outcome)).map(brief) })).filter(g => g.items.length);
+    }
     if (state.result) setTimeout(() => { if (state.result && Date.now() - state.result.ts >= 11500) { state.result = null; pushState(); } }, 12000);
   }
   async function refreshPerson() {
@@ -490,7 +498,8 @@
       const conflicts = results.filter(r => r.outcome === 'conflict');
       announce(results.filter(r => r.outcome !== 'conflict'));
       const names = list.map(g => g.person.name);
-      setResult('out', results, names.length > 1 ? names.map(n => n.split(' ')[0]).join(', ') : names[0]);
+      const groups = state.collector ? list.map(g => { const r = state.recipients.find(x => x.id === g.person.id) || {}; return { name: g.person.name, bolero_id: r.bolero_id || '', faceplate: r.faceplate || '', results: results.filter(x => x.for.id === g.person.id) }; }) : null;
+      setResult('out', results, names.length > 1 ? names.map(n => n.split(' ')[0]).join(', ') : names[0], groups);
       refreshSummary(); refreshFeed();
       if (state.collector) list.forEach(g => {
         const n = results.filter(r => r.for.id === g.person.id && ['issued', 'reassigned', 'reissued'].includes(r.outcome)).length;

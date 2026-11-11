@@ -399,6 +399,11 @@ td.actions { white-space: nowrap; text-align: right; }
 .mirror .who { font-size: 44px; font-weight: 700; line-height: 1.05; }
 .mirror .who small { display: block; font-size: 18px; color: var(--muted); font-weight: 400; margin-top: 6px; }
 .mirror .heading { margin-top: var(--s4); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.mirror .people { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--s4) var(--s5); margin-top: var(--s4); align-items: start; }
+.mirror .for { display: flex; align-items: baseline; gap: var(--s2); font-size: 20px; font-weight: 600; min-width: 0; }
+.mirror .for span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mirror .for small { flex: none; font-size: 12px; font-weight: 400; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.mirror .people .items { grid-template-columns: 1fr; }
 .mirror .items { list-style: none; margin: var(--s2) 0 0; padding: 0; display: grid; gap: var(--s2); }
 .mirror .items li { display: flex; align-items: center; gap: var(--s4); padding: 14px 18px; background: var(--panel-2); border: 1px solid var(--border); border-left: 3px solid var(--red); border-radius: var(--radius); font-size: 20px; font-weight: 600; min-width: 0; }
 .mirror .items li > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 10px; }

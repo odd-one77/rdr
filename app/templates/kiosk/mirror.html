@@ -67,6 +67,13 @@
   const chip = id => `<span class="bolero${faceplate ? ' faced' : ''}"${faceplate ? ` style="--face:#${esc(faceplate)}"` : ''}>Bolero ${esc(String(id).replace(/^bolero\s*/i, ''))}</span>`;
   const item = (g, small) => { const isNew = fresh || !lastKeys.has(g.key); seenKeys.add(g.key); return `<li class="${isNew ? 'anim' : ''}${small ? ' small' : ''}"${isNew ? ` style="animation-delay:${(stagger++) * 60}ms"` : ''}><span>${g.n > 1 ? `<span class="count">${g.n} ×</span> ` : ''}${esc(g.type)}${g.id ? ' ' + chip(g.id) : ''}</span></li>`; };
   const heading = t => `<div class="heading">${t}</div>`;
+  // Someone collecting for others: one block per person, their devices under their name.
+  const people = (list, incoming) => `<div class="people">${list.map(g => {
+    faceplate = g.faceplate || '';
+    const gs = group(g.items, g, incoming); gs.forEach(x => { x.key = g.name + '|' + x.key; });
+    const k = 'for|' + g.name, isNew = fresh || !lastKeys.has(k); seenKeys.add(k);
+    return `<section><div class="for${isNew ? ' anim' : ''}"><small>For</small><span>${esc(g.name)}</span>${gs.length ? '' : '<small>No devices yet</small>'}</div>${gs.length ? `<ul class="items">${gs.map(x => item(x, true)).join('')}</ul>` : ''}</section>`;
+  }).join('')}</div>`;
   // Swap screens with a short fade/slide instead of a hard cut.
   let swapping = null;
   function swap(html, mode) {
@@ -91,12 +98,30 @@
     if (s.result && s.result.items && s.result.items.length) {
       const kind = s.result.kind;
       const mode = 'result:' + (s.result.ts || '');
-      begin(mode); faceplate = (s.result.personInfo || {}).faceplate || '';
+      begin(mode);
+      if (kind === 'out' && s.result.groups && s.result.groups.length) {   // collected for others: addressed to the collector
+        const per = s.result.groups, n = per.length, total = per.reduce((a, g) => a + g.items.length, 0);
+        swap(`
+          <div class="who ${fresh ? 'anim' : ''}">${esc(s.result.collector || 'Devices processed')}<small>${n === 1 ? 'Signed out to you for ' + esc(per[0].name) : `Signed out to you for ${n} people`}</small></div>
+          ${people(per)}
+          <div class="result out ${fresh ? 'anim' : ''}" style="animation-delay:${total * 60 + 80}ms">${Math.random() < 0.5 ? 'Have a great show!' : 'Have a great day!'}</div>`, mode);
+        return;
+      }
+      faceplate = (s.result.personInfo || {}).faceplate || '';
       const groups = group(s.result.items, s.result.personInfo);
       swap(`
         <div class="who ${fresh ? 'anim' : ''}">${esc(s.result.person || 'Devices processed')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
         <ul class="items">${groups.map(g => item(g)).join('')}</ul>
         <div class="result ${kind} ${fresh ? 'anim' : ''}" style="animation-delay:${groups.length * 60 + 80}ms">${kind === 'out' ? (Math.random() < 0.5 ? 'Have a great show!' : 'Have a great day!') : 'All checked in, thank you'}</div>`, mode);
+      return;
+    }
+    if (s.collect && s.collect.name) {   // stay on the collector while the tech works through each person
+      const c = s.collect, per = c.people || [], n = per.length, mode = 'collect:' + c.name;
+      idleShown = false;
+      begin(mode);
+      swap(`
+        <div class="who ${fresh ? 'anim' : ''}">Hi! ${esc(c.name)}<small>${n === 1 ? 'Picking up for ' + esc(per[0].name) : n ? `Picking up for ${n} people` : 'Picking up for other people'}</small></div>
+        ${n ? people(per, true) : ''}`, mode);
       return;
     }
     if (!s.person && !(s.basket && s.basket.length)) {
@@ -111,7 +136,7 @@
     begin(mode); faceplate = p.faceplate || '';
     const held = group(s.holdings, p), now = group(s.basket, p, true);
     swap(`
-      <div class="who ${fresh ? 'anim' : ''}">${p.name ? 'Hi! ' + esc(p.name) : 'Processing devices'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'One moment please'))}${p.bolero_id ? ' ' + chip(p.bolero_id) : ''}${p.radio ? ` <span class="bolero radio">${esc(p.radio)}</span>` : ''}${p.collector ? `<br>Collected by ${esc(p.collector)}` : ''}</small></div>
+      <div class="who ${fresh ? 'anim' : ''}">${p.name ? 'Hi! ' + esc(p.name) : 'Processing devices'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'One moment please'))}${p.bolero_id ? ' ' + chip(p.bolero_id) : ''}${p.radio ? ` <span class="bolero radio">${esc(p.radio)}</span>` : ''}</small></div>
       ${held.length ? heading('Already with you') + `<ul class="items">${held.map(g => item(g, true)).join('')}</ul>` : ''}
       ${now.length ? heading('Being processed') + `<ul class="items">${now.map(g => item(g)).join('')}</ul>` : ''}`, mode);
   }
