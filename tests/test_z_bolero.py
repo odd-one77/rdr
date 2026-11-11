@@ -82,15 +82,17 @@ def test_poll_pack_info_and_identify(antenna, monkeypatch):
     r = bolero.identify("65", seconds=0)
     assert r["via"] == "charger" and FakeAntenna.posts[-1] == ("chargers/7/bays/1/locate", {"active": 1})
     assert bolero.status()["locate_form"]["docked"] == "chargers/7/bays/1/locate"
-    # a powered-on pack flashes, and the auto-off is scheduled
-    r = bolero.identify("61", seconds=0)
-    assert r["ok"] and FakeAntenna.posts[-1] == ("bp/60/locate", {"active": 1})
-    bolero.identify("61", on=False)
-    assert FakeAntenna.posts[-1] == ("bp/60/locate", {"active": 0})
+    bolero.identify("65", on=False)
+    assert FakeAntenna.posts[-1] == ("chargers/7/bays/1/locate", {"active": 0})
+    # a pack that is not in a charger is never flashed, even when it is on air
+    n = len(FakeAntenna.posts)
+    with pytest.raises(ValueError, match="not in a charger"):
+        bolero.identify("61", seconds=0)
+    assert len(FakeAntenna.posts) == n
     # wrong password
     cfg["bolero_admin_password"] = "nope"
     with pytest.raises(ValueError, match="refused the admin password"):
-        bolero.identify("61", seconds=0)
+        bolero.identify("65", seconds=0)
     assert bolero.pack_info("99")["known"] is False
 
 
@@ -116,4 +118,4 @@ def test_several_hosts_merge(antenna, monkeypatch):
     st = bolero.poll_now()
     assert st["ok"] and len(st["packs"]) == 3 and "127.0.0.1:1" in st["error"]   # one antenna down, the other carries the system
     assert bolero.settings()["hosts"] == [antenna, "127.0.0.1:1"] and bolero.settings()["mode"] == "artist"
-    assert bolero.identify("61", seconds=0)["ok"]
+    assert bolero.identify("65", seconds=0)["ok"]

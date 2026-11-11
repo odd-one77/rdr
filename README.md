@@ -142,10 +142,9 @@ account): whether the pack carrying a person's Bolero ID is on, its battery and
 antenna, and, when the system has the Charger Monitoring licence, which charger
 bay a docked pack sits in. The kiosk shows this under the person's details, so
 the tech can find the pack. With the admin password saved, selecting the person flashes their pack for ten
-seconds (a **Flash it** button repeats it): through the antenna when the pack
-is on, through the charger bay when it is docked in a networked charger with
-the Charger Monitoring licence. Only a pack that is switched off and not in
-such a charger cannot flash. The
+seconds through its charger bay (a **Flash it** button repeats it), when the
+pack is docked in a networked charger with the Charger Monitoring licence. A
+pack that is not in a charger is never flashed. The
 exact charger resource differs by firmware; the explorer on the same page shows
 the raw answers so it can be found and set on site. Unofficial interface: a firmware
 update may change it.

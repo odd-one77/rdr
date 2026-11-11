@@ -1,7 +1,7 @@
 {% extends "admin/base_admin.html" %}
 {% block title %}Bolero link{% endblock %}
 {% block admin %}
-<div class="page-head"><div><h1>Bolero link</h1><div class="sub">Reads pack status from a Bolero standalone system through the antennas' own web interface, so the kiosk can say where a person's pack is and flash it, on air or in a networked charger. Works with standalone and Artist-connected systems. Unofficial interface; a firmware update may change it.</div></div>
+<div class="page-head"><div><h1>Bolero link</h1><div class="sub">Reads pack status from a Bolero standalone system through the antennas' own web interface, so the kiosk can say where a person's pack is and flash it in its charger bay. Works with standalone and Artist-connected systems. Unofficial interface; a firmware update may change it.</div></div>
   <div class="row">{% if bolero.settings.enabled %}{% if bolero.ok %}<span class="badge in">connected · {{ bolero.packs | length }} packs</span>{% else %}<span class="badge damaged">no answer</span>{% endif %}<form method="post" action="/admin/bolero/poll"><button class="btn ghost">Poll now</button></form>{% else %}<span class="badge neutral">off</span>{% endif %}</div></div>
 
 <div class="grid cols-2" style="align-items:start">
@@ -23,7 +23,7 @@
     <div class="panel-body">
       <dl class="kv">
         <dt>Pack status</dt><dd>Under the selected person: whether the pack with their Bolero ID is on, its battery and antenna.</dd>
-        <dt>Flash</dt><dd>Selecting a person flashes their pack for ten seconds: through the antenna when it is on, through the charger bay when it is docked in a networked, licensed charger. Needs the admin password. Only a pack that is off and not in such a charger cannot flash.</dd>
+        <dt>Flash</dt><dd>Selecting a person flashes their pack for ten seconds through its charger bay, when it is docked in a networked, licensed charger. Needs the admin password. A pack that is not in a charger is never flashed.</dd>
         <dt>Charger bay</dt><dd>With Riedel's Charger Monitoring licence on networked chargers the kiosk shows which charger and bay a docked pack is in. {% if bolero.ok %}{% if bolero.charger_resource %}Reading from <span class="mono">/rest/{{ bolero.charger_resource }}</span>: {{ bolero.chargers | length }} charger(s).{% else %}No charger data found on this system yet: look for it with the explorer below and enter the resource name.{% endif %}{% endif %}</dd>
         <dt>No match</dt><dd>The kiosk says so when the person's ID is not on the system, or when they have no Bolero ID.</dd>
       </dl>

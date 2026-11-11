@@ -14,10 +14,9 @@ What RDR uses it for:
   * status of the pack carrying a person's Bolero ID: online / offline, battery, antenna
   * where a docked pack is: charger and bay (reported only with the Charger Monitoring
     licence on networked chargers)
-  * Identify: flash a pack for a few seconds so the tech can find it. A powered-on pack is
-    addressed through the antenna; a pack docked in a networked, licensed charger is
-    addressed through the charger and bay. Only a pack that is switched off and not in
-    such a charger cannot flash.
+  * Identify: flash a pack docked in a networked, licensed charger (through the charger
+    and bay) for a few seconds so the tech can find it. A pack that is not in a charger is
+    never flashed: it may be on someone's belt during the show.
 """
 from __future__ import annotations
 
@@ -360,32 +359,25 @@ def pack_info(number: str) -> dict:
 
 
 def _locate_forms(info: dict, bp_id, on: bool) -> list[tuple[str, dict]]:
-    """Candidate (resource, body) pairs for Identify, most likely first. The exact shapes are not
-    published; the first that the antenna accepts is remembered per pack kind (docked / on air)."""
+    """Candidate (resource, body) pairs for Identify on a docked pack, most likely first. The exact
+    shapes are not published; the first that the system accepts is remembered."""
     act = 1 if on else 0
-    forms: list[tuple[str, dict]] = []
-    ch = info.get("charger")
-    if ch:
-        with _lock:
-            res = _state.get("charger_resource") or "chargers"
-        cid, bay = ch.get("id"), ch.get("bay")
-        forms += [
-            (f"{res}/{cid}/locate", {"active": act, "bays": [{"id": bay}]}),
-            (f"{res}/{cid}/bays/{bay}/locate", {"active": act}),
-            (f"{res}/{cid}/bay/{bay}/locate", {"active": act}),
-            (f"{res}/locate", {"active": act, "chargers": [{"id": cid, "bays": [{"id": bay}]}]}),
-        ]
-    forms += [
-        (f"bp/{bp_id}/locate", {"active": act}),
-        ("locate", {"active": act, "nodes": [{"id": bp_id}]}),
-        (f"bp/{bp_id}", {"locate": act}),
+    ch = info["charger"]
+    with _lock:
+        res = _state.get("charger_resource") or "chargers"
+    cid, bay = ch.get("id"), ch.get("bay")
+    return [
+        (f"{res}/{cid}/locate", {"active": act, "bays": [{"id": bay}]}),
+        (f"{res}/{cid}/bays/{bay}/locate", {"active": act}),
+        (f"{res}/{cid}/bay/{bay}/locate", {"active": act}),
+        (f"{res}/locate", {"active": act, "chargers": [{"id": cid, "bays": [{"id": bay}]}]}),
+        (f"{res}/{cid}/bays/{bay}", {"locate": act}),
     ]
-    return forms
 
 
 def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> dict:
-    """Flash a pack: through the antenna when it is on, through the charger when it is docked.
-    Identify is a toggle, so RDR turns it off again after `seconds`."""
+    """Flash a pack docked in a networked charger, through its bay. A pack that is not in a charger
+    is never flashed. Identify is a toggle, so RDR turns it off again after `seconds`."""
     cfg = load_config()
     host_list, pw = hosts(cfg.get("bolero_host") or ""), cfg.get("bolero_admin_password") or ""
     if not host_list or not pw:
@@ -393,10 +385,14 @@ def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> d
     info = pack_info(number)
     if not info["known"]:
         raise ValueError(f"No Bolero {number} on the system")
+    if not info.get("charger"):
+        if not info.get("charger_data"):
+            raise ValueError(f"Bolero {number} is not seen in a networked charger (no charger data from the system), so it is not flashed")
+        raise ValueError(f"Bolero {number} is not in a charger, so it is not flashed")
     with _lock:
         bp_id = _state["packs"].get(info["number"], {}).get("id")
         remembered = dict(_state.get("locate_form") or {})
-    kind = "docked" if info.get("charger") else "air"
+    kind = "docked"
     forms = _locate_forms(info, bp_id, on)
     if kind in remembered and remembered[kind] in [f[0] for f in forms]:
         forms.sort(key=lambda f: f[0] != remembered[kind])
@@ -421,10 +417,7 @@ def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> d
         if used:
             break
     if last_err is not None:
-        where = f" (in {info['charger']['name']}, bay {info['charger']['bay']})" if info.get("charger") else ""
-        if info.get("online") is False and not info.get("charger"):
-            raise ValueError(f"Bolero {number} is off and not in a networked charger, so it cannot flash")
-        raise ValueError(f"Identify failed for Bolero {number}{where}: {last_err}")
+        raise ValueError(f"Identify failed for Bolero {number} (in {info['charger']['name']}, bay {info['charger']['bay']}): {last_err}")
     with _lock:
         _state.setdefault("locate_form", {})[kind] = used
     key = info["number"]
@@ -437,7 +430,7 @@ def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> d
             timer.daemon = True
             timer.start()
             _identify_timers[key] = timer
-    return {"ok": True, "number": key, "on": on, "seconds": seconds if on else 0, "via": "charger" if kind == "docked" else "antenna", "resource": used}
+    return {"ok": True, "number": key, "on": on, "seconds": seconds if on else 0, "via": "charger", "charger": info["charger"], "resource": used}
 
 
 def _safe_off(number: str) -> None:
