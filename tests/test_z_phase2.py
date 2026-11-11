@@ -21,7 +21,7 @@ def prepared(client):
 
 def test_reports_pages_and_csv(client):
     r = client.get("/admin/reports")
-    assert r.status_code == 200 and "End of event" in r.text
+    assert r.status_code == 200 and "Outstanding" in r.text and "Night 3" in r.text
     assert "Bolero ID" in client.get("/admin/reports?format=csv&report=endofevent").text
     r = client.get("/admin/reports?format=csv&report=stock")
     assert r.headers["content-type"].startswith("text/csv") and "Shared in" in r.text

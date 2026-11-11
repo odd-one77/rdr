@@ -89,9 +89,12 @@ async def _lifespan(app: FastAPI):
     if not ok:
         print(f"!! Database integrity check failed: {detail}. Restore a snapshot from data/backups via Admin > Backup.", flush=True)
     snapshots.start()
+    from .services import bolero
+    bolero.start()
     yield
     from .services.streams import stop_all
     stop_all()
+    bolero.stop()
     snapshots.stop()
 
 

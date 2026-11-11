@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import current_tech, is_admin
 from ..db import get_db, get_setting, now_iso
-from ..services import inventory, liveconfig, quotes, streams
+from ..services import bolero, inventory, liveconfig, quotes, streams
 
 router = APIRouter(prefix="/api")
 
@@ -221,6 +221,19 @@ def recent(request: Request, limit: int = 25, scope: str = "site"):
         site_id = tech["site_id"] if (tech and scope == "site") else None
         rows = inventory.transactions(db, limit=min(limit, 200), site_id=site_id)
         return {"transactions": [dict(r) for r in rows]}
+
+
+@router.get("/bolero/pack/{number}")
+def bolero_pack(number: str, tech: dict = Depends(require_tech)):
+    return bolero.pack_info(number)
+
+
+@router.post("/bolero/pack/{number}/identify")
+def bolero_identify(number: str, tech: dict = Depends(require_tech)):
+    try:
+        return bolero.identify(number)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.get("/config")

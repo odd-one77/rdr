@@ -1,0 +1,17 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Bolero explorer{% endblock %}
+{% block admin %}
+<div class="page-head"><div><h1>Bolero explorer</h1><div class="sub">Read-only view of the antenna's /rest resources. Use it to find the charger resource on this firmware; nothing here changes the system.</div></div><a class="btn ghost" href="/admin/settings">Back to settings</a></div>
+<form method="get" action="/admin/bolero/rest" class="row" style="margin-bottom:12px"><span class="mono muted">http://{{ status.settings.host or '…' }}/rest/</span><input name="path" value="{{ path }}" style="max-width:320px"><button class="btn">Fetch</button>
+  {% for p in ['nodeStatus', 'bp', 'audioPorts', 'nodeConfig', 'chargers', 'charger', 'chargerStatus'] %}<a class="btn sm ghost" href="/admin/bolero/rest?path={{ p }}">{{ p }}</a>{% endfor %}</form>
+{% if err %}<p class="red" style="margin:0 0 12px">{{ err }}</p>{% endif %}
+<div class="grid cols-2" style="align-items:start">
+  <div class="panel"><div class="panel-head"><h2>/rest/{{ path }}</h2></div><div class="code" style="max-height:70vh">{{ text or '(empty)' }}</div></div>
+  <div class="panel"><div class="panel-head"><h2>What RDR made of the last poll</h2></div>
+    <div class="table-wrap"><table><tr><th>Pack</th><th>Name</th><th>Online</th><th class="num">Battery</th><th>Antenna</th></tr>
+    {% for n, p in status.packs.items() %}<tr><td class="mono">{{ n }}</td><td>{{ p.name }}</td><td>{{ 'yes' if p.online else ('no' if p.online is false else '?') }}</td><td class="num">{{ p.battery if p.battery is not none else '' }}</td><td>{{ p.antenna or '' }}</td></tr>{% endfor %}
+    {% if not status.packs %}<tr><td colspan="5" class="muted">No packs parsed yet.</td></tr>{% endif %}</table></div>
+    <div class="panel-body"><b>Chargers</b>{% for c in status.chargers %}<div class="mono" style="font-size:12px">{{ c.name }}: {% for b in c.bays %}bay {{ b.bay }}={{ b.number or '—' }} {% endfor %}</div>{% else %}<div class="muted">none (resource not found, or no Charger Monitoring licence)</div>{% endfor %}</div>
+  </div>
+</div>
+{% endblock %}

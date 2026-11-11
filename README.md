@@ -130,6 +130,21 @@ at every start.
 Admin logins expire after 20 idle minutes and are dropped whenever a tech picks
 their name on the start screen, so a kiosk never carries an admin session.
 
+## Bolero antenna link (optional)
+
+Settings → Bolero antenna link takes the address of one antenna of a Bolero
+standalone system. RDR then reads pack status through the antennas' own web
+interface (the same undocumented REST interface the Riedel page uses, read-only
+account): whether the pack carrying a person's Bolero ID is on, its battery and
+antenna, and, when the system has the Charger Monitoring licence, which charger
+bay a docked pack sits in. The kiosk shows this under the person's details, so
+the tech can find the pack. With the admin password saved, a **Flash it** button
+runs Identify on a powered-on pack for ten seconds. A docked pack is powered off
+and cannot flash, so for those the kiosk shows the charger and bay instead. The
+exact charger resource differs by firmware; the Explore page lists the raw
+answers so it can be found and set on site. Unofficial interface: a firmware
+update may change it.
+
 ## Backup and moving machines
 
 Admin → Backup & restore exports one zip with the database, logo and server

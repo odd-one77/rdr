@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import datetime
 import shutil
 from pathlib import Path
 from urllib.parse import quote
@@ -16,7 +17,7 @@ from ..auth import (
 from ..config import DATA_DIR, IMPORT_DIR, UPLOAD_DIR, load_config, save_config
 from ..db import ACTION_LABELS, get_db, get_setting, now_iso, reset_db, set_setting
 from ..main import lan_addresses, render
-from ..services import backup, certs, importer, inventory, quotes, reports, snapshots, streams, updater
+from ..services import backup, bolero, certs, importer, inventory, quotes, reports, snapshots, streams, updater
 
 router = APIRouter(prefix="/admin")
 
@@ -631,8 +632,9 @@ def settings_page(request: Request, fetch: int = 0):
     https = {"on": bool(cfg.get("https")), "port": cfg.get("https_port", 8443), "cert": certs.status(),
              "listening": _port_open(int(cfg.get("https_port", 8443))) if cfg.get("https") else None, "log": _tail(DATA_DIR / "https.log")}
     devices_out = streams.list_capture_devices() if request.query_params.get("devices") else None
+    bolero_status = bolero.status()
     return render(request, "admin/settings.html", info=info, update_log=updater.last_output(), lan=lan_addresses(), mirror=mirror,
-                  https=https, streams=streams.status(), capture_devices=devices_out, active="settings")
+                  https=https, streams=streams.status(), capture_devices=devices_out, bolero=bolero_status, active="settings")
 
 
 @router.post("/settings/password", dependencies=[Depends(require_admin)])
@@ -726,6 +728,43 @@ def settings_demo():
     return _redirect("/admin", msg=f"Demo data loaded ({n} devices)")
 
 
+# -- Bolero antenna link ---------------------------------------------------------
+
+@router.post("/settings/bolero", dependencies=[Depends(require_admin)])
+def settings_bolero(bolero_host: str = Form(""), bolero_enabled: str = Form(""), bolero_admin_password: str = Form(""), clear_password: str = Form(""), bolero_charger_resource: str = Form("")):
+    try:
+        bolero.configure(bolero_host, bool(bolero_enabled), bolero_admin_password.strip() or None, clear_password=bool(clear_password), charger_resource=bolero_charger_resource)
+    except ValueError as e:
+        return _redirect("/admin/settings", err=str(e))
+    if bolero_enabled and bolero_host.strip():
+        st = bolero.poll_now()
+        if not st["ok"]:
+            return _redirect("/admin/settings", err=f"Saved, but the antenna did not answer: {st['error']}")
+        return _redirect("/admin/settings", msg=f"Bolero link up: {len(st['packs'])} packs" + (f", charger data from /rest/{st['charger_resource']}" if st.get("charger_resource") else ", no charger data (needs the Charger Monitoring licence)"))
+    return _redirect("/admin/settings", msg="Bolero link saved")
+
+
+@router.get("/bolero/rest", dependencies=[Depends(require_admin)])
+def bolero_explore(request: Request, path: str = "nodeStatus"):
+    """Read-only explorer for the antenna's /rest resources (to find the charger resource on site)."""
+    import json as _json
+    path = path.strip().lstrip("/")[:80]
+    if not re_ok(path):
+        raise HTTPException(400, "Resource names are letters, digits, / - _ .")
+    try:
+        data = bolero.read(path)
+        text = _json.dumps(data, indent=2)[:200_000] if not isinstance(data, str) else data[:200_000]
+        err = ""
+    except Exception as e:  # noqa: BLE001
+        text, err = "", f"{type(e).__name__}: {e}"
+    return render(request, "admin/bolero_explore.html", path=path, text=text, err=err, status=bolero.status(), raw=bolero.raw(), active="settings")
+
+
+def re_ok(path: str) -> bool:
+    import re
+    return bool(re.fullmatch(r"[A-Za-z0-9_./-]+", path))
+
+
 # -- HTTPS --------------------------------------------------------------------
 
 def _port_open(port: int) -> bool:
@@ -792,11 +831,8 @@ def reports_page(request: Request, format: str = "html", report: str = "outstand
                 name = "rdr-outstanding.csv"
             buf.seek(0)
             return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{name}"'})
-        ctx = {
-            "end_of_event": reports.end_of_event(db),
-            "stock": reports.stock_by_site(db), "outstanding": reports.outstanding(db),
-            "depts": reports.dept_summary(db), "activity": reports.activity_by_site(db),
-        }
+        ctx = {"end_of_event": reports.end_of_event(db), "outstanding": reports.outstanding(db),
+               "now": datetime.now().strftime("%d %b %Y %H:%M")}
     return render(request, "admin/reports.html", active="reports", **ctx)
 
 

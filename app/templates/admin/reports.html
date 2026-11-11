@@ -1,46 +1,26 @@
 {% extends "admin/base_admin.html" %}
-{% block title %}Reports{% endblock %}
+{% block title %}Outstanding{% endblock %}
 {% block admin %}
-<div class="page-head"><div><h1>Reports</h1><div class="sub">Live figures. The end-of-event list is what you chase people with.</div></div>
-  <div class="row"><a class="btn primary" href="/admin/reports?format=csv&report=endofevent">End of event CSV</a><a class="btn" href="/admin/reports?format=csv&report=stock">Stock CSV</a><button class="btn ghost" onclick="print()">Print</button></div></div>
+<div class="page-head"><div><h1>Outstanding · end of event</h1><div class="sub">Who still has what, with their contact details and when they were last at a counter. Stock figures live on the dashboard.</div></div>
+  <div class="row"><a class="btn primary" href="/admin/reports?format=csv&report=endofevent">CSV</a><button class="btn ghost" onclick="print()">Print</button></div></div>
 
-<div class="panel" style="margin-bottom:16px"><div class="panel-head"><h2>End of event · who still has what</h2><span class="muted" style="font-size:12px">{{ end_of_event | length }} people · {{ outstanding | length }} devices not in stock</span></div>
+<div class="print-head">
+  <div><b>{{ event.name or 'RDR' }}</b>{% if event.show_name %} · {{ event.show_name }}{% endif %}</div>
+  <div>Outstanding devices · {{ end_of_event | length }} people · {{ outstanding | length }} devices · printed {{ now }}</div>
+</div>
+
+<div class="panel report"><div class="panel-head"><h2>{{ event.name or 'RDR' }}{% if event.show_name %} · {{ event.show_name }}{% endif %}</h2><span class="muted" style="font-size:12px">{{ end_of_event | length }} people · {{ outstanding | length }} devices not in stock</span></div>
   <div class="table-wrap" style="max-height:none"><table>
-    <tr><th>Person</th><th>Contact</th><th>Last seen</th><th>Device</th><th>Status</th><th>Signed out</th><th>Where / by</th></tr>
-    {% for p in end_of_event %}{% for d in p['items'] %}
-    <tr>{% if loop.first %}<td rowspan="{{ p['items'] | length }}" style="vertical-align:top"><a href="/admin/people/{{ p.person_id }}"><b>{{ p.name }}</b></a><div class="muted" style="font-size:12px">{{ [p.dept, p.role] | select | join(' · ') }}{% if p.bolero_id %} · Bolero {{ p.bolero_id }}{% endif %}</div></td>
+    <thead><tr><th>Person</th><th>Contact</th><th>Last seen</th><th>Device</th><th>Status</th><th>Signed out</th><th>Where / by</th></tr></thead>
+    <tbody>{% for p in end_of_event %}{% for d in p['items'] %}
+    <tr>{% if loop.first %}<td rowspan="{{ p['items'] | length }}" style="vertical-align:top"><a href="/admin/people/{{ p.person_id }}"><b>{{ p.name }}</b></a><div class="muted sm">{{ [p.dept, p.role] | select | join(' · ') }}{% if p.bolero_id %} · Bolero {{ p.bolero_id }}{% endif %}</div></td>
       <td rowspan="{{ p['items'] | length }}" class="mono" style="vertical-align:top">{{ p.phone }}</td>
       <td rowspan="{{ p['items'] | length }}" class="mono muted" style="vertical-align:top">{{ p.last_seen or '' }}</td>{% endif %}
-      <td><a href="/admin/devices/{{ d.device_id }}">{{ d.label or d.si }}</a> <span class="si">{{ d.si }}</span><div class="muted" style="font-size:12px">{{ d.type_name }}</div></td>
+      <td><a href="/admin/devices/{{ d.device_id }}">{{ d.label or d.si }}</a> <span class="si">{{ d.si }}</span><div class="muted sm">{{ d.type_name }}</div></td>
       <td><span class="badge {{ d.status }}">{{ d.status }}</span></td>
       <td class="mono muted">{{ d.issued_at or '' }}</td>
       <td class="muted">{{ [d.issued_site, d.issued_by] | select | join(' · ') }}</td></tr>
     {% endfor %}{% endfor %}
-    {% if not end_of_event %}<tr><td colspan="7" class="muted">Everyone has returned their devices.</td></tr>{% endif %}
+    {% if not end_of_event %}<tr><td colspan="7" class="muted">Everyone has returned their devices.</td></tr>{% endif %}</tbody>
   </table></div></div>
-
-<div class="grid cols-2" style="align-items:start">
-  {% for block in stock %}
-  <div class="panel">
-    <div class="panel-head"><h2>{{ block.site.name }}</h2><span class="muted" style="font-size:12px">{{ 'own stock + shared' if block.site.stock_mode == 'specific' else 'shared stock' }}</span></div>
-    <div class="table-wrap"><table>
-      <tr><th>Type</th>{% if block.site.stock_mode == 'specific' %}<th class="num">Own in / total</th>{% endif %}<th class="num">Shared in / total</th><th class="num">Out</th><th class="num">Issued here</th><th class="num">Lost / dmg</th></tr>
-      {% for t in block.types %}<tr><td>{{ t.type_name }}</td>{% if block.site.stock_mode == 'specific' %}<td class="num"><span class="green">{{ t.own_in }}</span> / {{ t.own_total }}</td>{% endif %}<td class="num"><span class="green">{{ t.shared_in }}</span> / {{ t.shared_total }}</td><td class="num red">{{ t.n_out or '' }}</td><td class="num">{{ t.issued_here or '' }}</td><td class="num amber">{{ t.n_bad or '' }}</td></tr>{% endfor %}
-      {% if not block.types %}<tr><td colspan="6" class="muted">No devices.</td></tr>{% endif %}
-    </table></div>
-  </div>
-  {% endfor %}
-</div>
-
-<div class="grid cols-2" style="margin-top:16px;align-items:start">
-  <div class="panel"><div class="panel-head"><h2>Out by department</h2></div>
-    <div class="table-wrap"><table><tr><th>Department</th><th class="num">People</th><th class="num">Items</th><th>Types</th></tr>
-    {% for r in depts %}<tr><td>{{ r.dept }}</td><td class="num">{{ r.people }}</td><td class="num">{{ r.items }}</td><td class="muted">{{ r.types }}</td></tr>{% endfor %}
-    {% if not depts %}<tr><td colspan="4" class="muted">Nothing out.</td></tr>{% endif %}</table></div></div>
-  <div class="panel"><div class="panel-head"><h2>Activity by site and tech</h2></div>
-    <div class="table-wrap"><table><tr><th>Site</th><th>Tech</th><th class="num">Out</th><th class="num">In</th><th class="num">Flagged</th><th>First</th><th>Last</th></tr>
-    {% for r in activity %}<tr><td>{{ r.site or '—' }}</td><td>{{ r.tech or '—' }}</td><td class="num">{{ r.outs }}</td><td class="num">{{ r.ins }}</td><td class="num">{{ r.flagged or '' }}</td><td class="mono muted">{{ r.first_ts[11:16] if r.first_ts }}</td><td class="mono muted">{{ r.last_ts[11:16] if r.last_ts }}</td></tr>{% endfor %}
-    {% if not activity %}<tr><td colspan="7" class="muted">No activity yet.</td></tr>{% endif %}</table></div></div>
-</div>
-
 {% endblock %}

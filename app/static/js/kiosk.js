@@ -223,6 +223,7 @@
         <div class="row"><div class="name grow">${esc(p.name)}</div>${chips(p, hold)}<button class="btn sm ghost" id="btnEditPerson" title="Edit details">Edit</button><button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
         ${line1 ? `<div class="meta">${line1}</div>` : ''}${line2 ? `<div class="meta">${line2}</div>` : ''}
         ${p.allocation ? `<div class="meta alloc">Allocation: <b>${esc(p.allocation)}</b></div>` : ''}
+        ${p.bolero_id ? `<div class="meta pack-live" id="packLive" data-number="${esc(idOf(p.bolero_id))}"></div>` : ''}
         ${state.collector ? `<div class="meta collector">Devices go to <b>${esc(p.name)}</b>, collected by <b>${esc(state.collector.name)}</b></div>` : ''}
       </div>
       <div class="section-title"><h3>Assigned <span class="mono">${hold.length}</span></h3>${hold.length ? '<button class="btn sm ghost" data-return-all>Return all</button>' : ''}</div>
@@ -232,6 +233,7 @@
       ${state.collector ? '' : `<div class="collect-cta"><button class="btn block" id="btnForSomeone">${esc(p.name.split(' ')[0])} is picking up for other people…</button><div class="dim">Their own devices stay with them; the next people you pick receive the devices.</div></div>`}`;
     $('#btnClearPerson').onclick = clearPerson;
     $('#btnEditPerson').onclick = () => openEditPerson(p);
+    refreshPackLive();
     const fs = $('#btnForSomeone'); if (fs) fs.onclick = () => startCollecting(p);
     if (state.collector) searchEl.placeholder = 'Next person they are collecting for';
     panel.querySelectorAll('[data-add]').forEach(b => b.onclick = () => addById(+b.dataset.add));
@@ -520,6 +522,29 @@
     const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
     if (!typing && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) scanEl.focus();
   });
+
+  // ---- Bolero link: where is this person's pack, and can we flash it --------------
+  let packLiveTimer = null;
+  async function refreshPackLive() {
+    clearTimeout(packLiveTimer);
+    const el = $('#packLive');
+    if (!el) return;
+    const n = el.dataset.number;
+    try {
+      const i = await api(`/api/bolero/pack/${encodeURIComponent(n)}`);
+      if (!i.configured) { el.remove(); return; }
+      let txt;
+      if (!i.ok) txt = `<span class="dim">Bolero link: ${esc(i.error)}</span>`;
+      else if (!i.known) txt = `<span class="dim">Bolero ${esc(n)} is not registered on the system</span>`;
+      else if (i.charger) txt = `Bolero ${esc(n)} is in <b>${esc(i.charger.name)}, bay ${esc(String(i.charger.bay))}</b>${i.battery != null ? ` · ${i.battery}%` : ''}`;
+      else if (i.online) txt = `Bolero ${esc(n)} is <b class="green">on</b>${i.battery != null ? ` · ${i.battery}%` : ''}${i.antenna ? ` · ${esc(String(i.antenna))}` : ''}${i.can_identify ? ` <button class="btn sm" id="btnFlash">Flash it</button>` : ''}`;
+      else if (i.online === false) txt = `Bolero ${esc(n)} is <b>off</b>${i.charging ? ' (charging)' : ''}${!i.charger_data ? ' · bay unknown' : ''}`;
+      else txt = `<span class="dim">Bolero ${esc(n)}: no status yet</span>`;
+      el.innerHTML = txt;
+      const fb = $('#btnFlash'); if (fb) fb.onclick = async () => { fb.disabled = true; try { const r = await post(`/api/bolero/pack/${encodeURIComponent(n)}/identify`, {}); toast('ok', `Flashing Bolero ${n}`, `for ${r.seconds} seconds`); } catch (e) { toast('err', 'Could not flash', e.message); } setTimeout(() => { fb.disabled = false; }, 3000); };
+    } catch (e) { /* link away */ }
+    packLiveTimer = setTimeout(refreshPackLive, 4000);
+  }
 
   // ---- menu drawer -----------------------------------------------------------
   const drawer = $('#drawer'), drawerBack = $('#drawerBack');
