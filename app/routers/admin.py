@@ -17,7 +17,7 @@ from ..auth import (
 from ..config import DATA_DIR, IMPORT_DIR, UPLOAD_DIR, load_config, save_config
 from ..db import ACTION_LABELS, get_db, get_setting, now_iso, reset_db, set_setting
 from ..main import lan_addresses, render
-from ..services import backup, bolero, certs, importer, inventory, quotes, reports, snapshots, streams, updater
+from ..services import away, backup, bolero, certs, importer, inventory, quotes, reports, snapshots, streams, updater
 
 router = APIRouter(prefix="/admin")
 
@@ -77,13 +77,14 @@ def dashboard(request: Request):
         sites = db.execute("SELECT * FROM sites WHERE active = 1 ORDER BY sort_order, name").fetchall()
         per_site = [(dict(s), inventory.summary(db, s["id"])) for s in sites]
         recent = inventory.transactions(db, limit=20)
+        aways = away.all_sites(db)
         counts = {
             "people": db.execute("SELECT COUNT(*) FROM people").fetchone()[0],
             "devices": db.execute("SELECT COUNT(*) FROM devices").fetchone()[0],
             "bolero": db.execute("SELECT COUNT(*) FROM people WHERE bolero_id <> ''").fetchone()[0],
             "holders": db.execute("SELECT COUNT(DISTINCT holder_id) FROM devices WHERE holder_id IS NOT NULL").fetchone()[0],
         }
-    return render(request, "admin/dashboard.html", overall=overall, per_site=per_site, recent=recent, counts=counts, active="dashboard")
+    return render(request, "admin/dashboard.html", overall=overall, per_site=per_site, recent=recent, counts=counts, active="dashboard", aways=aways)
 
 
 # -- event / sites / techs ----------------------------------------------------
@@ -725,6 +726,13 @@ def settings_demo():
     with get_db() as db:
         n = load_demo(db)
     return _redirect("/admin", msg=f"Demo data loaded ({n} devices)")
+
+
+@router.post("/away/clear/{site_id}", dependencies=[Depends(require_admin)])
+def away_clear(site_id: int):
+    with get_db() as db:
+        away.clear(db, site_id)
+    return _redirect("/admin", msg="Desk reopened")
 
 
 # -- Bolero link (own page) ----------------------------------------------------

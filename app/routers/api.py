@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import current_tech, is_admin
 from ..db import get_db, get_setting, now_iso
-from ..services import bolero, inventory, liveconfig, quotes, streams
+from ..services import away, bolero, inventory, liveconfig, quotes, streams
 
 router = APIRouter(prefix="/api")
 
@@ -240,7 +240,50 @@ def bolero_identify(number: str, tech: dict = Depends(require_tech)):
 def config(tech: dict = Depends(require_tech)):
     """Everything the kiosk shows from settings, plus a version that changes on any edit."""
     with get_db() as db:
-        return liveconfig.for_kiosk(db, tech["tech_id"], tech["site_id"])
+        out = liveconfig.for_kiosk(db, tech["tech_id"], tech["site_id"])
+        out["away"] = away.get(db, tech["site_id"])
+        return out
+
+
+# -- away from desk --------------------------------------------------------------
+
+class AwayIn(BaseModel):
+    minutes: Optional[int] = None
+    until: str = ""
+    note: str = ""
+
+
+class Unlock(BaseModel):
+    password: str = ""
+
+
+@router.get("/away")
+def away_get(tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        return {"away": away.get(db, tech["site_id"])}
+
+
+@router.post("/away")
+def away_start(body: AwayIn, tech: dict = Depends(require_tech)):
+    with get_db() as db:
+        t = db.execute("SELECT display_name FROM techs WHERE id = ?", (tech["tech_id"],)).fetchone()
+        try:
+            a = away.start(db, tech["site_id"], minutes=body.minutes, until_hm=body.until, note=body.note, tech_name=t["display_name"] if t else "")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"away": a}
+
+
+@router.post("/away/unlock")
+def away_unlock(body: Unlock, tech: dict = Depends(require_tech)):
+    import time as _time
+    from ..auth import check_admin_password
+    with get_db() as db:
+        if not check_admin_password(db, body.password):
+            _time.sleep(0.7)
+            raise HTTPException(403, "Wrong admin password")
+        away.clear(db, tech["site_id"])
+    return {"ok": True}
 
 
 # -- mirror -------------------------------------------------------------------
@@ -286,6 +329,7 @@ def mirror_state(site_id: int):
                 state["tech_name"] = t["display_name"]   # renamed techs show up on the mirror straight away
         return {
             "config": liveconfig.for_mirror(db, site_id),
+            "away": away.get(db, site_id),
             "state": state,
             "updated_at": row["updated_at"] if row else None,
             "age": age,

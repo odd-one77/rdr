@@ -39,8 +39,9 @@
       const s = data.state || {};
       if (data.greeting) greeting = data.greeting;
       if (s.tech_name) techName = s.tech_name;
-      const j = JSON.stringify(s) + JSON.stringify(greeting);
-      if (j !== lastJson) { lastJson = j; render(s); }
+      const away = data.away || null;
+      const j = JSON.stringify(s) + JSON.stringify(greeting) + JSON.stringify(away ? [away.label, away.note, away.until_hm, away.remaining, away.overdue] : null);
+      if (j !== lastJson) { lastJson = j; away ? renderAway(away) : render(s); }
     } catch (e) {}
   }
   let stagger = 0;
@@ -76,6 +77,14 @@
     swapping = setTimeout(() => { main.innerHTML = html; main.classList.remove('leaving'); main.classList.toggle('is-idle', mode === 'idle'); swapping = null; }, 220);
   }
   function begin(mode) { fresh = mode !== lastMode; stagger = 0; }
+  // Desk closed for a moment: keep the feed, replace the welcome with when the tech is back.
+  function renderAway(a) {
+    const big = a.overdue ? 'Back any moment' : (a.remaining != null && a.label.startsWith('Back in') ? `Back in ${a.remaining} min` : a.label);
+    const sub = a.note || 'The desk is unattended for a moment';
+    begin('away');
+    swap(`<div class="idle ${fresh ? 'anim' : ''}"><div class="k">Away from desk</div><div class="big">${esc(big)}</div>${a.until_hm && !a.overdue ? `<div class="credit">until ${esc(a.until_hm)}</div>` : ''}<div class="sub">${esc(sub)}</div></div>`, 'idle');
+    idleShown = false;   // a fresh saying when the desk reopens
+  }
   function render(s){
     if (s.result && s.result.items && s.result.items.length) {
       const kind = s.result.kind;

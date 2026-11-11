@@ -545,3 +545,26 @@ Barcode: @si99000002
     packs = [r for r in rows if r[1] == "Bolero Beltpack"]
     assert [r[0] for r in packs] == ["SI99000014", "SI99000013", "SI99000006", "SI99000015"] and packs[0][5] == "4"
     assert [r[0] for r in rows if r[1] == "Pro-D1 Headset"] == ["SI99000002"]
+
+
+def test_away_from_desk(client):
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    h = {"X-RDR-Site": "1"}
+    assert client.get("/api/away", headers=h).json()["away"] is None
+    r = client.post("/api/away", json={"minutes": 10, "note": "Gone to stage"}, headers=h)
+    a = r.json()["away"]
+    assert r.status_code == 200 and a["label"] == "Back in 10 min" and a["remaining"] in (9, 10) and a["until_hm"] and not a["overdue"]
+    assert client.get("/api/config", headers=h).json()["away"]["label"] == "Back in 10 min"
+    assert client.get("/api/mirror/1").json()["away"]["note"] == "Gone to stage"
+    assert client.get("/api/mirror/2").json()["away"] is None      # per site
+    assert client.post("/api/away/unlock", json={"password": "wrong"}, headers=h).status_code == 403
+    assert client.get("/api/away", headers=h).json()["away"] is not None
+    assert client.post("/api/away/unlock", json={"password": "test1234"}, headers=h).status_code == 200
+    assert client.get("/api/away", headers=h).json()["away"] is None
+    # a clock time, and the plain "be right back"
+    assert client.post("/api/away", json={"until": "23:59"}, headers=h).json()["away"]["label"] == "Back at 23:59"
+    assert client.post("/api/away", json={}, headers=h).json()["away"]["label"] == "Be right back"
+    client.post("/admin/login", data={"password": "test1234"})      # picking a tech dropped the admin login
+    assert "Be right back" in client.get("/admin").text
+    client.post("/admin/away/clear/1")
+    assert client.get("/api/away", headers=h).json()["away"] is None

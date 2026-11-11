@@ -166,6 +166,7 @@
   async function pollConfig() {
     try {
       const c = await api('/api/config');
+      if (window.RDRLock) RDRLock.apply(c.away || null);
       if (c.version === configVersion) return;
       configVersion = c.version;
       if (!c.tech.active || !c.site.active) { location.href = '/start'; return; }

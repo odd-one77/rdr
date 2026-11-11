@@ -435,3 +435,18 @@ td.saved { animation: savedFade .4s ease-out 1.2s forwards; }
   .mono, .si { font-size: 8.5px; }
   .badge, .badge[class] { border: 0; background: none !important; color: #000 !important; padding: 0; font-size: 8.5px; font-weight: 600; text-transform: uppercase; }
 }
+
+/* away from desk */
+.lock-screen { position: fixed; inset: 0; z-index: 300; background: rgba(10,10,12,.97); display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .25s ease; }
+.lock-screen.open { opacity: 1; pointer-events: auto; }
+.lock-card { width: min(460px, 92vw); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 28px 28px 24px; text-align: center; box-shadow: 0 24px 64px rgba(0,0,0,.6); }
+.lock-card .k { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.lock-card .big { font-size: 34px; font-weight: 700; margin: 8px 0 4px; }
+.lock-card .sub { color: var(--muted); font-size: 14px; min-height: 18px; margin-bottom: 18px; }
+.lock-card form { display: flex; gap: 8px; }
+.lock-card form input { flex: 1; }
+.lock-card .err { color: var(--red); font-size: 13px; min-height: 18px; margin-top: 8px; }
+body.locked { overflow: hidden; }
+.preset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.preset-grid .btn { height: 40px; }
+.mirror .idle .k { font-size: 14px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }

@@ -2,6 +2,7 @@
 {% block title %}Dashboard{% endblock %}
 {% block admin %}
 <div class="page-head"><h1>Dashboard</h1><div class="row"><a class="btn" href="/admin/transactions?format=csv">Export all transactions</a></div></div>
+{% for a in aways %}<div class="panel" style="margin-bottom:12px;box-shadow:inset 3px 0 0 var(--amber)"><div class="panel-body row wrap"><div class="grow"><b>{{ a.site_name }}</b> is away: {{ a.label }}{% if a.note %} · {{ a.note }}{% endif %} <span class="muted">· locked by {{ a.tech_name or 'a tech' }} since {{ a.since[11:16] }}</span></div><form method="post" action="/admin/away/clear/{{ a.site_id }}"><button class="btn sm">Reopen desk</button></form></div></div>{% endfor %}
 <div class="grid cols-4" style="margin-bottom:16px">
   <div class="panel stat"><div class="label">Devices</div><div class="value">{{ counts.devices }}</div><div class="sub"><span class="green">{{ overall.totals.n_in }} in</span> · <span class="red">{{ overall.totals.n_out }} out</span>{% if overall.totals.n_lost + overall.totals.n_damaged %} · <span class="amber">{{ overall.totals.n_lost + overall.totals.n_damaged }} lost/damaged</span>{% endif %}</div></div>
   <div class="panel stat"><div class="label">People</div><div class="value">{{ counts.people }}</div><div class="sub">{{ counts.holders }} with devices signed out</div></div>

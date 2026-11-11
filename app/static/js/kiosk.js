@@ -627,12 +627,34 @@
   }
 
 
+  // ---- away from desk -------------------------------------------------------------
+  const PRESETS = [['Be right back', {}], ['5 min', { minutes: 5 }], ['10 min', { minutes: 10 }], ['15 min', { minutes: 15 }], ['30 min', { minutes: 30 }], ['1 hour', { minutes: 60 }]];
+  function openAway() {
+    modal('Away from desk', `
+      <p class="help">Locks this desk behind the admin password. The mirror keeps the programme feed and shows when you are back.</p>
+      <div class="preset-grid">${PRESETS.map(([l], i) => `<button class="btn" data-preset="${i}">${esc(l)}</button>`).join('')}</div>
+      <div class="grid cols-2" style="margin-top:10px"><div class="field"><label>Or back at</label><input type="time" id="aw_until"></div><div class="field"><label>Note for the mirror (optional)</label><input id="aw_note" placeholder="e.g. Gone to stage, call 1234"></div></div>`,
+      [{ label: 'Cancel' }, { label: 'Lock until the time above', cls: 'primary', onClick: async root => {
+        const until = $('#aw_until', root).value;
+        if (!until) { toast('warn', 'Pick a time', 'or use one of the buttons above'); return; }
+        await goAway({ until, note: $('#aw_note', root).value });
+      } }]);
+    document.querySelectorAll('#modalRoot [data-preset]').forEach(b => b.onclick = () => goAway(Object.assign({ note: ($('#aw_note') || {}).value || '' }, PRESETS[+b.dataset.preset][1])));
+  }
+  async function goAway(opts) {
+    try { const a = await RDRLock.start(opts); closeModal(); drawer.classList.remove('open'); drawerBack.classList.remove('open'); toast('ok', 'Desk locked', a.label, 2500); pushState(); }
+    catch (e) { toast('err', 'Could not lock', e.message); }
+  }
+  RDRLock.onUnlock = () => { toast('ok', 'Desk reopened', '', 2000); focusScan(); pushState(); };
+  const menuAway = $('#menuAway'); if (menuAway) menuAway.onclick = e => { e.preventDefault(); openAway(); };
+
   // ---- live configuration: admin edits show up here without a reload ------------
   let configVersion = null;
   const setLive = (id, text) => { const el = document.getElementById(id); if (!el) return; if (el.textContent !== text) { el.textContent = text; el.classList.remove('live-swap'); void el.offsetWidth; el.classList.add('live-swap'); } };
   async function pollConfig() {
     try {
       const c = await api('/api/config');
+      RDRLock.apply(c.away || null);
       if (c.version === configVersion) return;
       configVersion = c.version;
       if (!c.tech.active || !c.site.active) { location.href = '/start'; return; }

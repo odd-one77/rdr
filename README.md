@@ -132,6 +132,16 @@ at every start.
 Admin logins expire after 20 idle minutes and are dropped whenever a tech picks
 their name on the start screen, so a kiosk never carries an admin session.
 
+## Away from desk
+
+The kiosk menu has **Away from desk**: Be right back, 5/10/15/30 minutes, an
+hour, or a clock time, with an optional note. It locks that site's kiosk and
+phone view behind the admin password (the lock survives a reload and shows on
+every tab of the site) and the mirror keeps the programme feed but replaces the
+welcome with "Back in 7 min", "Back at 14:35" or "Be right back", counting down
+and then "Back any moment". Reopen with the admin password on the lock screen,
+or from the admin dashboard.
+
 ## Bolero antenna link (optional)
 
 The Bolero link page (admin sidebar, under System) takes the address of the core
