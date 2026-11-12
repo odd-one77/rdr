@@ -152,6 +152,7 @@ ACTION_LABELS = {
     "imported": "Device imported",
     "assigned": "Device reserved",
     "unassigned": "Reservation removed",
+    "transfer": "Stock transfer",
     "note": "Note",
 }
 

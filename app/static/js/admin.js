@@ -26,6 +26,7 @@
   if (toggle) {
     const key = 'rdr-direct-edit-' + toggle.dataset.directEdit;
     const table = document.querySelector('table.editable, table.autosave');
+    let dirty = false;
     const flash = (el, ok) => { el.classList.remove('saved', 'failed'); void el.offsetWidth; el.classList.add(ok ? 'saved' : 'failed'); };
     async function save(endpoint, id, field, value, el) {
       try {
@@ -40,19 +41,29 @@
       if (!table) return;
       if (table.classList.contains('editable')) {
         table.querySelectorAll('td[data-field]').forEach(td => {
-          if (on && !td.querySelector('input')) {
-            const text = td.textContent.trim(); td.dataset.orig = text;
-            td.innerHTML = `<input value="${text.replace(/"/g, '&quot;')}">`;
-            const inp = td.querySelector('input');
-            const commit = async () => { if (inp.value.trim() === td.dataset.orig) return; const v = await save(table.dataset.endpoint, td.closest('tr').dataset.id, td.dataset.field, inp.value, td); if (v !== null) { td.dataset.orig = v; inp.value = v; } else inp.value = td.dataset.orig; };
-            inp.addEventListener('blur', commit);
-            inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } if (e.key === 'Escape') { inp.value = td.dataset.orig; inp.blur(); } });
-          } else if (!on && td.querySelector('input')) {
-            const v = td.querySelector('input').value;
-            td.textContent = v;
-            if (td.dataset.field === 'name') td.innerHTML = `<a href="/admin/people/${td.closest('tr').dataset.id}"><b>${v.replace(/</g, '&lt;')}</b></a>`;
-          }
+          if (on && !td.querySelector('input, select')) {
+            // data-value holds the raw value when the cell shows something else (a name for an id, a chip)
+            const opts = document.getElementById('opt-' + td.dataset.field);
+            td._html = td.innerHTML;
+            td.dataset.orig = td.dataset.value !== undefined ? td.dataset.value : td.textContent.trim();
+            const inp = document.createElement(opts ? 'select' : 'input');
+            if (opts) inp.innerHTML = opts.innerHTML;
+            inp.value = td.dataset.orig;
+            td.replaceChildren(inp);
+            const commit = async () => {
+              if (inp.value.trim() === td.dataset.orig) return;
+              const v = await save(table.dataset.endpoint, td.closest('tr').dataset.id, td.dataset.field, inp.value, td);
+              if (v !== null) { td.dataset.orig = v; inp.value = v; dirty = true; } else inp.value = td.dataset.orig;
+            };
+            if (opts) inp.addEventListener('change', commit);
+            else {
+              inp.addEventListener('blur', commit);
+              inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } if (e.key === 'Escape') { inp.value = td.dataset.orig; inp.blur(); } });
+            }
+          } else if (!on && td.querySelector('input, select')) td.innerHTML = td._html;
         });
+        // the plain table is drawn by the server: after an edit, fetch it again instead of rebuilding it here
+        if (!on && dirty) location.reload();
       } else if (table.classList.contains('autosave')) {
         table.querySelectorAll('tr[data-id] input[name], tr[data-id] select[name]').forEach(inp => {
           if (inp.dataset.bound) return; inp.dataset.bound = '1';
@@ -68,6 +79,48 @@
     toggle.checked = localStorage.getItem(key) === '1';
     apply(toggle.checked);
     toggle.addEventListener('change', () => { localStorage.setItem(key, toggle.checked ? '1' : '0'); apply(toggle.checked); });
+  }
+  // Stock transfer: every scan moves one device into the chosen site, in the order scanned.
+  const tfScan = document.getElementById('tfScan');
+  if (tfScan) {
+    const site = document.getElementById('tfSite'), list = document.getElementById('tfList'), count = document.getElementById('tfCount');
+    const none = list.querySelector('.none');
+    let moved = 0, queue = Promise.resolve();
+    const setCount = n => { moved = n; count.textContent = n; };
+    const post = async (si, to) => {
+      const r = await fetch('/admin/transfer/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ si, site_id: to }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || 'Transfer failed');
+      return d;
+    };
+    function add(d) {
+      const tr = document.createElement('tr'); tr.className = 'row-new';
+      if (d.outcome === 'moved') tr.innerHTML = `<td><a href="/admin/devices/${d.id}"><b>${esc(d.label || d.si)}</b></a>${d.holder_name ? ` <span class="amber">out with ${esc(d.holder_name)}</span>` : ''}</td><td class="mono">${esc(d.si)}</td><td>${esc(d.type)}</td><td class="muted">${esc(d.from_site)}</td><td>${esc(d.to_site)}</td><td><span class="badge in">Moved</span></td><td class="right"><button class="btn sm ghost">Undo</button></td>`;
+      else if (d.outcome === 'already') tr.innerHTML = `<td><a href="/admin/devices/${d.id}"><b>${esc(d.label || d.si)}</b></a></td><td class="mono">${esc(d.si)}</td><td>${esc(d.type)}</td><td class="muted">${esc(d.from_site)}</td><td>${esc(d.to_site)}</td><td><span class="badge neutral">Already there</span></td><td></td>`;
+      else tr.innerHTML = `<td class="muted">${esc(d.message || 'No device with this SI')}</td><td class="mono">${esc(d.si)}</td><td></td><td></td><td></td><td><span class="badge lost">Not moved</span></td><td></td>`;
+      const undo = tr.querySelector('button');
+      if (undo) undo.onclick = async () => {
+        undo.disabled = true;
+        try {
+          await post(d.si, d.from_site_id == null ? '' : String(d.from_site_id));
+          tr.querySelector('.badge').outerHTML = '<span class="badge neutral">Undone</span>'; undo.remove(); setCount(moved - 1);
+        } catch (e) { undo.disabled = false; alert(e.message); }
+        tfScan.focus();
+      };
+      none.remove(); list.prepend(tr);
+    }
+    const scan = si => { queue = queue.then(async () => {
+      try { const d = await post(si, site.value); add(d); if (d.outcome === 'moved') setCount(moved + 1); }
+      catch (e) { add({ outcome: 'failed', si, message: e.message }); }
+    }); };
+    const take = text => text.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).forEach(scan);
+    tfScan.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); take(tfScan.value); tfScan.value = ''; } });
+    tfScan.addEventListener('paste', e => {
+      const text = (e.clipboardData || window.clipboardData).getData('text');
+      if (/[\r\n]/.test(text.trim())) { e.preventDefault(); take(text); tfScan.value = ''; }
+    });
+    site.addEventListener('change', () => tfScan.focus());
+    document.getElementById('tfClear').onclick = () => { list.replaceChildren(none); setCount(0); tfScan.focus(); };
   }
   // Person pickers: a search input + hidden id + results dropdown.
   document.querySelectorAll('[data-person-picker]').forEach(input => {

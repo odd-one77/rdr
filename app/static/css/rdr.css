@@ -444,6 +444,12 @@ td.actions { white-space: nowrap; text-align: right; }
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); min-height: 36px; margin-bottom: var(--s4); flex-wrap: wrap; }
 .page-head .sub { color: var(--muted); font-size: 13px; margin-top: 2px; max-width: 720px; }
 .page-head .row { gap: var(--s2); }
+.transfer-bar { display: flex; gap: var(--s3); align-items: end; flex-wrap: wrap; }
+.transfer-bar .field { margin: 0; min-width: 200px; }
+.transfer-bar .field.wide { flex: 1; min-width: 240px; }
+.transfer-bar #tfScan { height: 44px; font-size: 16px; }
+.transfer-bar select { height: 44px; }
+tr.row-new td { animation: fadeIn var(--move) var(--ease) both; }
 .filters { display: flex; gap: var(--s2); align-items: end; flex-wrap: wrap; margin-bottom: var(--s4); }
 .filters .field { margin: 0; min-width: 150px; }
 .filters .field.wide { min-width: 240px; flex: 1; }
@@ -492,7 +498,9 @@ details summary:hover { color: var(--text); }
 details[open] summary { margin-bottom: var(--s3); }
 .check.toggle { border: 1px solid var(--border); border-radius: var(--radius); padding: 0 12px; height: 34px; }
 body.direct-edit .check.toggle { border-color: var(--red); }
-table.editable td[data-field] input { height: 30px; padding: 0 8px; font-size: 13px; background: var(--panel-3); }
+table.editable td[data-field] input, table.editable td[data-field] select { height: 30px; padding: 0 8px; font-size: 13px; background-color: var(--panel-3); }
+table.editable td[data-field] select { min-width: 96px; padding-right: 26px; }
+body.direct-edit table.editable td[data-field] { padding-top: 4px; padding-bottom: 4px; }
 body.direct-edit table.autosave td.actions button[value=save] { display: none; }
 td.saved { box-shadow: inset 0 0 0 1px var(--green); }
 td.failed { box-shadow: inset 0 0 0 1px var(--red); }

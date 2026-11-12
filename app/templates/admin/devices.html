@@ -2,7 +2,7 @@
 {% block title %}Devices{% endblock %}
 {% block admin %}
 <div class="page-head"><h1>Devices <span class="h-count">{{ total }}</span></h1>
-  <div class="row"><a class="btn" href="/admin/import">easyjob import</a><button class="btn" data-toggle="#bulk">Bulk paste</button><a class="btn primary" href="/admin/devices/new">New device</a></div></div>
+  <div class="row"><label class="check toggle" title="Edit cells in the table. Each change saves when you leave the cell."><input type="checkbox" id="directEdit" data-direct-edit="devices"> Direct edit</label><a class="btn" href="/admin/transfer">Stock transfer</a><a class="btn" href="/admin/import">easyjob import</a><button class="btn" data-toggle="#bulk">Bulk paste</button><a class="btn primary" href="/admin/devices/new">New device</a></div></div>
 <form class="panel hidden mb" id="bulk" method="post" action="/admin/devices/bulk">
   <div class="panel-head"><h2>Bulk create by pasting</h2></div>
   <div class="panel-body grid cols-3">
@@ -18,12 +18,15 @@
   <div class="field"><label>Status</label><select name="status"><option value="">All</option>{% for s in ['in','out','lost','damaged'] %}<option value="{{ s }}" {{ 'selected' if f_status == s }}>{{ s }}</option>{% endfor %}</select></div>
   <div class="field"><label>Site</label><select name="site_id"><option value="">All</option><option value="shared" {{ 'selected' if f_site == 'shared' }}>Shared stock</option>{% for s in sites %}<option value="{{ s.id }}" {{ 'selected' if f_site == s.id|string }}>{{ s.name }}</option>{% endfor %}</select></div>
 </form>
-<div class="panel"><div class="table-wrap"><table>
-  <tr><th>Status</th><th>Label</th><th>SI</th><th>Type</th><th>Site</th><th>Holder</th><th>Reserved for</th><th>Last event</th></tr>
+<template id="opt-type_id">{% for t in types %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</template>
+<template id="opt-site_id"><option value="">Shared</option>{% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</template>
+<div class="panel"><div class="table-wrap"><table class="editable" data-endpoint="/admin/devices/{id}/field">
+  <tr><th>Status</th><th>Label</th><th>SI</th><th>Type</th><th>Site</th><th>Bolero ID</th><th>Holder</th><th>Reserved for</th><th>Last event</th></tr>
   {% for d in devices %}
-  <tr><td><span class="badge {{ d.status }}">{{ d.status }}</span></td><td><a href="/admin/devices/{{ d.id }}"><b>{{ d.label or d.si }}</b></a></td><td class="mono">{{ d.si }}</td><td>{{ d.type_name }}</td><td class="muted">{{ d.site_name or 'Shared' }}</td>
-    <td>{% if d.holder_id %}<a href="/admin/people/{{ d.holder_id }}">{{ d.holder_name }}</a>{% endif %}{% if d.linked_id %} <span class="bolero">Bolero {{ d.linked_id }}</span>{% endif %}</td><td class="muted">{{ d.assigned_person_name or '' }}</td><td class="mono muted">{{ d.last_event_at or '' }}</td></tr>
+  <tr data-id="{{ d.id }}"><td><span class="badge {{ d.status }}">{{ d.status }}</span></td><td data-field="label" data-value="{{ d.label or '' }}"><a href="/admin/devices/{{ d.id }}"><b>{{ d.label or d.si }}</b></a></td><td class="mono" data-field="si">{{ d.si }}</td><td data-field="type_id" data-value="{{ d.type_id }}">{{ d.type_name }}</td><td class="muted" data-field="site_id" data-value="{{ d.site_id or '' }}">{{ d.site_name or 'Shared' }}</td>
+    {% if 'bolero' in d.type_name|lower and 'antenna' not in d.type_name|lower %}<td data-field="linked_id" data-value="{{ d.linked_id or '' }}">{% if d.linked_id %}<span class="bolero">Bolero {{ d.linked_id }}</span>{% endif %}</td>{% else %}<td></td>{% endif %}
+    <td>{% if d.holder_id %}<a href="/admin/people/{{ d.holder_id }}">{{ d.holder_name }}</a>{% endif %}</td><td class="muted">{{ d.assigned_person_name or '' }}</td><td class="mono muted">{{ d.last_event_at or '' }}</td></tr>
   {% endfor %}
-  {% if not devices %}<tr><td colspan="8" class="empty">No devices match.</td></tr>{% endif %}
+  {% if not devices %}<tr><td colspan="9" class="empty">No devices match.</td></tr>{% endif %}
 </table></div></div>
 {% endblock %}

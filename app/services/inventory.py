@@ -425,6 +425,32 @@ def swap(
     return {"old": _brief(device_by_id(db, old_device_id)), "new": _brief(device_by_id(db, new_device_id)), "ts": ts}
 
 
+def transfer(db: sqlite3.Connection, device_id: int, site_id: Optional[int], tech: Optional[dict]) -> dict:
+    """Move a device into another site's stock (None is shared stock).
+
+    The move is logged against the site the device arrives at, so it shows in that site's activity.
+    """
+    d = device_by_id(db, device_id)
+    if d is None:
+        raise ValueError("Unknown device")
+    to_name = "Shared stock"
+    if site_id is not None:
+        s = db.execute("SELECT name FROM sites WHERE id = ?", (site_id,)).fetchone()
+        if s is None:
+            raise ValueError("Unknown site")
+        to_name = s["name"]
+    r = _brief(d)
+    r.update(from_site_id=d["site_id"], from_site=d["site_name"] or "Shared stock", to_site_id=site_id, to_site=to_name)
+    if d["site_id"] == site_id:
+        r.update(outcome="already", message=f"Already in {to_name}")
+        return r
+    db.execute("UPDATE devices SET site_id = ?, updated_at = ? WHERE id = ?", (site_id, now_iso(), device_id))
+    who = {"tech_id": tech.get("tech_id") if tech else None, "site_id": site_id if site_id is not None else d["site_id"]}
+    ts = log(db, "transfer", device_id, None, who, note=f"{r['from_site']} to {to_name}")
+    r.update(outcome="moved", message=f"Moved from {r['from_site']} to {to_name}", ts=ts, site_name=to_name if site_id is not None else None)
+    return r
+
+
 def quick_create_device(
     db: sqlite3.Connection,
     si: str,

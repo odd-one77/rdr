@@ -1,0 +1,20 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Stock transfer{% endblock %}
+{% block admin %}
+<div class="page-head"><div><h1>Stock transfer</h1><div class="sub">Scan devices to move them into another site's stock. Each scan saves straight away.</div></div>
+  <a class="btn" href="/admin/transactions?action=transfer">History</a></div>
+<div class="panel mb">
+  <div class="panel-body transfer-bar">
+    <div class="field"><label for="tfSite">Move to</label><select id="tfSite">{% for s in sites %}<option value="{{ s.id }}" {{ 'selected' if dest == s.id|string }}>{{ s.name }}</option>{% endfor %}<option value="" {{ 'selected' if dest == 'shared' }}>Shared stock</option></select></div>
+    <div class="field wide"><label for="tfScan">Device SI</label><input id="tfScan" class="mono" placeholder="Scan or type an SI number" autocomplete="off" autofocus></div>
+  </div>
+  <div class="panel-note">Paste a list of SI numbers to move them all at once. The last few digits are enough when only one device ends with them.</div>
+</div>
+<div class="panel">
+  <div class="panel-head"><h2>Moved <span class="mono" id="tfCount">0</span></h2><button class="btn sm ghost" id="tfClear">Clear list</button></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Device</th><th>SI</th><th>Type</th><th>From</th><th>To</th><th>Result</th><th></th></tr></thead>
+    <tbody id="tfList"><tr class="none"><td colspan="7" class="empty">Nothing scanned yet.</td></tr></tbody>
+  </table></div>
+</div>
+{% endblock %}

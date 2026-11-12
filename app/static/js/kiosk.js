@@ -23,7 +23,7 @@
   const ACTIONS = {
     out: 'OUT', in: 'IN', in_noop: 'Scan (already in)', out_noop: 'Scan (already out)', out_reassign: 'OUT (reassigned)',
     swap_out: 'Swap returned', swap_in: 'Swap issued', lost: 'LOST', damaged: 'DAMAGED', restored: 'Restored',
-    created: 'Created', imported: 'Imported', assigned: 'Reserved', unassigned: 'Unreserved',
+    created: 'Created', imported: 'Imported', assigned: 'Reserved', unassigned: 'Unreserved', transfer: 'Transfer',
   };
 
   const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null, collector: null, recipients: [], served: [], lastPerson: null };

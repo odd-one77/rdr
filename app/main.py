@@ -130,10 +130,13 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(404)
     async def not_found(request: Request, exc):  # pragma: no cover - simple UX nicety
-        if request.url.path.startswith("/api/"):
+        # scripts (the API, and the admin pages' JSON saves) get JSON with the reason; a browser gets a page
+        if request.url.path.startswith("/api/") or "json" in request.headers.get("content-type", ""):
             from fastapi.responses import JSONResponse
-            return JSONResponse({"error": "Not found"}, status_code=404)
-        return render(request, "error.html", title="Not found", detail=str(request.url.path)), 404
+            return JSONResponse({"error": "Not found", "detail": getattr(exc, "detail", None) or "Not found"}, status_code=404)
+        page = render(request, "error.html", title="Not found", detail=str(request.url.path))
+        page.status_code = 404
+        return page
 
     return app
 

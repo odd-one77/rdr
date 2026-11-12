@@ -70,11 +70,18 @@ In this mode *Update and restart* uses `git pull`.
   person's devices, with the collector noted in the history. The strip counts what
   went to whom; Exit (or Escape) ends it.
 - **Edit details** on the kiosk person card fixes a name, role, phone or
-  Bolero ID without leaving the counter. In Admin, People and Device types
-  have a **Direct edit** toggle that turns the table into editable cells
-  which save as you leave them.
-- The kiosk menu (three bars, top right) holds Mirror, Admin, phone setup
-  and Switch tech.
+  Bolero ID without leaving the counter. In Admin, People, Devices and
+  Device types have a **Direct edit** toggle that turns the table into
+  editable cells which save as you leave them. On Devices that covers the
+  label, SI, type, site and Bolero ID.
+- **Stock transfer** (Admin, also in the kiosk menu) moves devices into
+  another site's stock. Pick the site, then scan each device or paste a
+  list of SI numbers. Every scan saves at once, shows where the device came
+  from, and can be undone from the list. Each move is in Transactions as
+  "Stock transfer". A device that is signed out can still be moved and is
+  flagged with who has it.
+- The kiosk menu (three bars, top right) holds Mirror, Admin, Stock transfer,
+  phone setup and Switch tech.
 - **Live settings**: kiosks, phones and mirrors pick up admin changes within a
   few seconds without a refresh: event name and logo, tech and site names,
   device types, mirror wording, PGM feed and feed size. A feed added to a

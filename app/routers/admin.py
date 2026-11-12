@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from pydantic import BaseModel as _BM
 
 from ..auth import (
     ADMIN_COOKIE, admin_password_set, admin_token, check_admin_password, is_admin, live_tech, set_admin_password,
@@ -40,32 +41,45 @@ def _tech(db, request: Request) -> dict | None:
     return live_tech(db, request, active=False)
 
 
+def _after_login(target: str) -> str:
+    """Where to go after the password: only ever a page inside Admin."""
+    ok = target.startswith("/admin/") and "//" not in target and "\\" not in target and not target.startswith("/admin/log")
+    return target if ok else "/admin"
+
+
 def require_admin(request: Request) -> None:
     if not is_admin(request):
-        raise HTTPException(status_code=303, headers={"Location": "/admin/login"})
+        # a page link (the kiosk menu goes straight to Stock transfer) comes back to the same page after the password
+        where = "/admin/login"
+        if request.method == "GET" and _after_login(request.url.path) != "/admin":
+            where += "?next=" + quote(request.url.path + ("?" + request.url.query if request.url.query else ""), safe="")
+        raise HTTPException(status_code=303, headers={"Location": where})
 
 
 # -- login --------------------------------------------------------------------
 
 @router.get("/login", response_class=HTMLResponse)
-def login(request: Request):
+def login(request: Request, next: str = ""):
     with get_db() as db:
         first_time = not admin_password_set(db)
-    return render(request, "admin/login.html", first_time=first_time)
+    target = _after_login(next)
+    return render(request, "admin/login.html", first_time=first_time, next=target if target != "/admin" else "")
 
 
 @router.post("/login")
-def login_post(request: Request, password: str = Form(""), confirm: str = Form("")):
+def login_post(request: Request, password: str = Form(""), confirm: str = Form(""), next: str = Form("")):
+    target = _after_login(next)
+    back = "/admin/login" + (f"?next={quote(target, safe='')}" if target != "/admin" else "")
     with get_db() as db:
         if not admin_password_set(db):
             if len(password) < 4:
-                return _redirect("/admin/login", err="Password needs at least 4 characters")
+                return _redirect(back, err="Password needs at least 4 characters")
             if password != confirm:
-                return _redirect("/admin/login", err="Passwords do not match")
+                return _redirect(back, err="Passwords do not match")
             set_admin_password(db, password)
         elif not check_admin_password(db, password):
-            return _redirect("/admin/login", err="Wrong password")
-    resp = RedirectResponse("/admin", status_code=303)
+            return _redirect(back, err="Wrong password")
+    resp = RedirectResponse(target, status_code=303)
     resp.set_cookie(ADMIN_COOKIE, admin_token(), max_age=60 * 60 * 12, samesite="lax", httponly=True)
     return resp
 
@@ -392,14 +406,58 @@ def device_save(request: Request, device_id: int, action: str = Form("save"), si
                 return _redirect(f"/admin/devices/{device_id}", msg="Device reserved")
             inventory.clear_assignment(db, device_id, tech)
             return _redirect(f"/admin/devices/{device_id}", msg="Reservation removed")
+        if inventory.device_by_id(db, device_id) is None:
+            raise HTTPException(404)
+        if not inventory.norm_si(si):
+            return _redirect(f"/admin/devices/{device_id}", err="The SI number cannot be empty")
         dup = db.execute("SELECT id FROM devices WHERE si = ? COLLATE NOCASE AND id <> ?", (inventory.norm_si(si), device_id)).fetchone()
         if dup:
             return _redirect(f"/admin/devices/{device_id}", err="Another device already has that SI")
         db.execute(
-            "UPDATE devices SET si = ?, type_id = ?, label = ?, site_id = ?, notes = ?, linked_id = ?, updated_at = ? WHERE id = ?",
-            (inventory.norm_si(si), type_id, label.strip(), int(site_id) if site_id else None, notes.strip(), linked_id.strip(), now_iso(), device_id),
+            "UPDATE devices SET si = ?, type_id = ?, label = ?, notes = ?, linked_id = ?, updated_at = ? WHERE id = ?",
+            (inventory.norm_si(si), type_id, label.strip(), notes.strip(), linked_id.strip(), now_iso(), device_id),
         )
+        try:
+            inventory.transfer(db, device_id, int(site_id) if site_id else None, tech)
+        except ValueError as e:
+            return _redirect(f"/admin/devices/{device_id}", err=str(e))
     return _redirect(f"/admin/devices/{device_id}", msg="Saved")
+
+
+# -- stock transfer -----------------------------------------------------------
+
+class TransferScan(_BM):
+    si: str
+    site_id: str = ""
+
+
+@router.get("/transfer", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+def transfer_page(request: Request, to: str = ""):
+    with get_db() as db:
+        tech = _tech(db, request)
+    # where the scans go by default: the site asked for, else the site this tech is working at
+    dest = to if (to.isdigit() or to == "shared") else (str(tech["site_id"]) if tech else "")
+    return render(request, "admin/transfer.html", dest=dest, active="transfer")
+
+
+@router.post("/transfer/scan", dependencies=[Depends(require_admin)])
+def transfer_scan(request: Request, body: TransferScan):
+    """One scan moves one device. The SI has to match, or be the unmistakable end of exactly one SI."""
+    si = inventory.norm_si(body.si)
+    if body.site_id and not body.site_id.isdigit():
+        raise HTTPException(400, "Unknown site")
+    with get_db() as db:
+        d = inventory.device_by_si(db, si)
+        if d is None and len(si) >= 3:
+            hits = db.execute("SELECT id FROM devices WHERE si LIKE ? LIMIT 2", (f"%{si}",)).fetchall()
+            if len(hits) == 1:
+                d = inventory.device_by_id(db, hits[0]["id"])
+        if d is None:
+            return {"outcome": "unknown", "si": si}
+        try:
+            return inventory.transfer(db, d["id"], int(body.site_id) if body.site_id else None, _tech(db, request))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
 
 # -- assignments --------------------------------------------------------------
@@ -445,15 +503,13 @@ def assignments_clear(request: Request, confirm: str = Form("")):
 
 # -- direct edit (inline cells) --------------------------------------------------
 
-from pydantic import BaseModel as _BM
-
-
 class FieldEdit(_BM):
     field: str
     value: str = ""
 
 
 PEOPLE_FIELDS = {"name", "dept", "role", "phone", "external_id", "bolero_id", "allocation"}
+DEVICE_FIELDS = {"label", "si", "type_id", "site_id", "linked_id", "notes"}
 TYPE_FIELDS = {"name", "short_code", "sort_order", "active"}
 
 
@@ -470,6 +526,35 @@ def person_field(person_id: int, body: FieldEdit):
         if body.field == "external_id" and v and db.execute("SELECT 1 FROM people WHERE external_id = ? AND id <> ?", (v, person_id)).fetchone():
             raise HTTPException(409, "That unique ID is already used")
         inventory.update_person(db, person_id, **{body.field: v})
+    return {"ok": True, "value": v}
+
+
+@router.post("/devices/{device_id}/field", dependencies=[Depends(require_admin)])
+def device_field(request: Request, device_id: int, body: FieldEdit):
+    if body.field not in DEVICE_FIELDS:
+        raise HTTPException(400, "Field not editable")
+    v = body.value.strip()
+    with get_db() as db:
+        if inventory.device_by_id(db, device_id) is None:
+            raise HTTPException(404, "Unknown device")
+        if body.field == "si":
+            v = inventory.norm_si(v)
+            if not v:
+                raise HTTPException(400, "The SI number cannot be empty")
+            if db.execute("SELECT 1 FROM devices WHERE si = ? COLLATE NOCASE AND id <> ?", (v, device_id)).fetchone():
+                raise HTTPException(409, "Another device already has that SI")
+        elif body.field == "type_id":
+            if not v.isdigit() or db.execute("SELECT 1 FROM device_types WHERE id = ?", (int(v),)).fetchone() is None:
+                raise HTTPException(400, "Unknown type")
+        elif body.field == "site_id":
+            if v and not v.isdigit():
+                raise HTTPException(400, "Unknown site")
+            try:
+                inventory.transfer(db, device_id, int(v) if v else None, _tech(db, request))
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+            return {"ok": True, "value": v}
+        db.execute(f"UPDATE devices SET {body.field} = ?, updated_at = ? WHERE id = ?", (int(v) if body.field == "type_id" else v, now_iso(), device_id))
     return {"ok": True, "value": v}
 
 

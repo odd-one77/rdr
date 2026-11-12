@@ -619,3 +619,85 @@ def test_stale_tech_session_goes_back_to_start(client):
     assert r.status_code == 303 and "msg=Device" in r.headers["location"]
     client.post(f"/admin/techs/{tech}", data={"action": "delete"})
     client.post("/start", data={"tech_id": 1, "site_id": 1})
+
+
+def test_device_direct_edit_and_stock_transfer(client):
+    """Devices can be edited cell by cell, and scanning moves them between sites with a logged transfer."""
+    from app.db import get_db
+
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    client.post("/admin/login", data={"password": "test1234"})   # picking a tech drops the admin login, so log in after
+    client.post("/admin/sites", data={"name": "Transfer Site"})
+    with get_db() as db:
+        dest = db.execute("SELECT id FROM sites WHERE name = 'Transfer Site'").fetchone()["id"]
+        tid = db.execute("SELECT id FROM device_types ORDER BY sort_order LIMIT 1").fetchone()["id"]
+        other = db.execute("SELECT id FROM device_types ORDER BY sort_order LIMIT 1 OFFSET 2").fetchone()["id"]
+    client.post("/admin/devices/bulk", data={"type_id": tid, "lines": "SI77TF0001, Transfer A\nSI77TF0002, Transfer B\nSI77TF0003"})
+
+    def dev(si):
+        with get_db() as db:
+            return dict(db.execute("SELECT * FROM devices WHERE si = ?", (si,)).fetchone())
+
+    a, b = dev("SI77TF0001"), dev("SI77TF0002")
+    edit = lambda d, field, value: client.post(f"/admin/devices/{d['id']}/field", json={"field": field, "value": value})
+
+    # direct edit: label, SI, type, Bolero ID
+    assert edit(a, "label", " Renamed A ").json()["value"] == "Renamed A" and dev("SI77TF0001")["label"] == "Renamed A"
+    assert edit(a, "si", "@si77tf0009").json()["value"] == "SI77TF0009"
+    assert edit(a, "si", "SI77TF0002").status_code == 409 and edit(a, "si", " ").status_code == 400
+    assert edit(a, "si", "SI77TF0001").status_code == 200
+    assert edit(a, "type_id", str(other)).status_code == 200 and dev("SI77TF0001")["type_id"] == other
+    assert edit(a, "type_id", "99999").status_code == 400 and edit(a, "status", "out").status_code == 400
+    assert edit(a, "linked_id", "77").status_code == 200 and dev("SI77TF0001")["linked_id"] == "77"
+    r = client.post("/admin/devices/999999/field", json={"field": "label", "value": "x"})
+    assert r.status_code == 404 and r.json()["detail"] == "Unknown device"
+    assert client.get("/admin/devices/999999").status_code == 404   # a page, not a server error
+    # a site change in direct edit is a transfer and is logged
+    assert edit(a, "site_id", str(dest)).status_code == 200 and dev("SI77TF0001")["site_id"] == dest
+    assert edit(a, "site_id", "99999").status_code == 400
+    assert edit(a, "site_id", "").status_code == 200 and dev("SI77TF0001")["site_id"] is None
+    page = client.get("/admin/devices?q=SI77TF")
+    assert 'data-direct-edit="devices"' in page.text and 'data-field="site_id"' in page.text and 'id="opt-type_id"' in page.text
+
+    # stock transfer: the page defaults to the tech's site, or the one asked for
+    assert '<option value="1" selected>' in client.get("/admin/transfer").text
+    assert f'<option value="{dest}" selected>' in client.get(f"/admin/transfer?to={dest}").text
+    scan = lambda si, to: client.post("/admin/transfer/scan", json={"si": si, "site_id": str(to) if to else ""})
+    r = scan("si77tf0001", dest).json()
+    assert r["outcome"] == "moved" and r["from_site"] == "Shared stock" and r["to_site"] == "Transfer Site" and r["from_site_id"] is None
+    assert scan("SI77TF0001", dest).json()["outcome"] == "already"
+    assert scan("TF0002", dest).json()["outcome"] == "moved" and dev("SI77TF0002")["site_id"] == dest   # unmistakable ending
+    assert scan("SI77TF000", dest).json()["outcome"] == "unknown" and scan("NOPE123", dest).json() == {"outcome": "unknown", "si": "NOPE123"}
+    assert scan("SI77TF0003", 99999).status_code == 400 and dev("SI77TF0003")["site_id"] is None
+    assert scan("SI77TF0002", None).json()["to_site"] == "Shared stock" and dev("SI77TF0002")["site_id"] is None   # undo
+    with get_db() as db:
+        rows = db.execute("SELECT x.note, x.site_id, x.tech_id FROM transactions x WHERE x.action = 'transfer' AND x.device_id = ? ORDER BY x.id", (b["id"],)).fetchall()
+    assert [(x["note"], x["site_id"]) for x in rows] == [("Shared stock to Transfer Site", dest), ("Transfer Site to Shared stock", dest)]
+    assert rows[0]["tech_id"] == 1
+    assert "Stock transfer" in client.get("/admin/transactions?action=transfer").text
+
+    # the device form logs a site change the same way, and only when the site really changes
+    form = {"si": "SI77TF0003", "type_id": str(tid), "label": "Transfer C", "site_id": str(dest)}
+    client.post(f"/admin/devices/{dev('SI77TF0003')['id']}", data=form)
+    client.post(f"/admin/devices/{dev('SI77TF0003')['id']}", data=form)
+    with get_db() as db:
+        n = db.execute("SELECT COUNT(*) FROM transactions WHERE action = 'transfer' AND device_id = ?", (dev("SI77TF0003")["id"],)).fetchone()[0]
+    assert n == 1 and dev("SI77TF0003")["site_id"] == dest and dev("SI77TF0003")["label"] == "Transfer C"
+
+    # transfers need the admin login
+    from fastapi.testclient import TestClient
+    from app.main import app
+    anon = TestClient(app, follow_redirects=False)
+    assert anon.post("/admin/transfer/scan", json={"si": "SI77TF0001", "site_id": ""}).status_code == 303
+    # and the kiosk menu link comes back to the transfer page once the password is in
+    r = anon.get("/admin/transfer?to=1")
+    assert r.status_code == 303 and r.headers["location"] == "/admin/login?next=%2Fadmin%2Ftransfer%3Fto%3D1"
+    assert 'name="next" value="/admin/transfer?to=1"' in anon.get(r.headers["location"]).text
+    assert anon.post("/admin/login", data={"password": "nope", "next": "/admin/transfer?to=1"}).headers["location"].startswith("/admin/login?next=%2Fadmin%2Ftransfer%3Fto%3D1&err=")
+    assert anon.post("/admin/login", data={"password": "test1234", "next": "/admin/transfer?to=1"}).headers["location"] == "/admin/transfer?to=1"
+    for bad in ("//evil.example", "https://evil.example", "/admin//evil.example", "/start", "/admin/logout"):
+        assert anon.post("/admin/login", data={"password": "test1234", "next": bad}).headers["location"] == "/admin"
+
+    for si in ("SI77TF0001", "SI77TF0002", "SI77TF0003"):
+        client.post(f"/admin/devices/{dev(si)['id']}", data={"action": "delete"})
+    client.post(f"/admin/sites/{dest}", data={"action": "delete"})

@@ -5,6 +5,7 @@
   <form class="panel" method="post" action="/admin/login">
     <div class="panel-head"><h2>{{ 'Set the admin password' if first_time else 'Admin' }}</h2></div>
     <div class="panel-body">
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
       {% if first_time %}<p class="help">First run. Choose the admin password for this installation. It can be changed later in Settings.</p>{% endif %}
       <div class="field"><label>Password</label><input type="password" name="password" autofocus required></div>
       {% if first_time %}<div class="field"><label>Confirm</label><input type="password" name="confirm" required></div>{% endif %}
