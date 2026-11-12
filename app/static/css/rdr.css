@@ -59,7 +59,8 @@ small, .muted { color: var(--muted); }
 .sm { font-size: 12px; }
 .narrow { max-width: 720px; }
 .nowrap { white-space: nowrap; }
-.short { max-width: 160px; }
+/* width helpers for form controls only: "short" is also a table-wrap height */
+input.short, select.short { max-width: 160px; }
 .mid { max-width: 320px; }
 .span-2 { grid-column: span 2; }
 .inline-form { display: inline-flex; gap: 6px; align-items: center; }
@@ -188,6 +189,7 @@ td.num, th.num { text-align: right; font-family: var(--mono); }
 .code.tall { max-height: 60vh; }
 .content.page-narrow { max-width: 1000px; margin: 0 auto; }
 td.vtop { vertical-align: top; }
+td.fit { width: 1%; white-space: nowrap; }
 td.sub:first-child { padding-left: var(--s3); }
 tr.last td[rowspan] { border-bottom: 0; }
 td.empty { color: var(--muted); padding-top: var(--s4); padding-bottom: var(--s4); }

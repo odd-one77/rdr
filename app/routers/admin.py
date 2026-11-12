@@ -684,7 +684,7 @@ def import_review(request: Request, token: str):
         request, "admin/import_review.html", staged=staged, kind=importer.KINDS[staged["kind"]],
         counts=staged["plan"]["counts"],
         conflicts=[i for i in items if i["action"] == "conflict"],
-        errors=[i for i in items if i["action"] == "error"],
+        errors=[i for i in items if i["action"] in ("error", "skip")],
         sample=[i for i in items if i["action"] in ("create", "update")][:15],
         active="import",
     )

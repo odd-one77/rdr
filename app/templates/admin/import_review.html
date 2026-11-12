@@ -24,11 +24,11 @@
     </table></div></div>
   {% endif %}
   {% if errors %}
-  <div class="panel mb"><div class="panel-head"><h2>Rows that will be skipped · {{ errors | length }}</h2><span class="muted sm">Ignored device types, missing SI numbers, rows without a name</span></div>
-    <div class="table-wrap short"><table>{% for e in errors %}<tr><td class="dim">row {{ e.row + 2 }}</td><td>{{ e.data.values() | select | join(' · ') }}</td><td class="amber">{{ e.message }}</td></tr>{% endfor %}</table></div></div>
+  <div class="panel mb"><div class="panel-head"><h2>Rows that will be skipped · {{ errors | length }}</h2><span class="muted sm">Ignored device types, missing SI numbers, rows without a name, duplicates in the file</span></div>
+    <div class="table-wrap short"><table>{% for e in errors %}<tr><td class="dim fit">row {{ e.row + 2 }}</td><td>{{ e.data.values() | select | join(' · ') }}</td><td class="amber">{{ e.message }}</td></tr>{% endfor %}</table></div></div>
   {% endif %}
   <div class="panel mb"><div class="panel-head"><h2>Sample of what will be imported</h2></div>
-    <div class="table-wrap short"><table>{% for s in sample %}<tr><td><span class="badge {{ 'in' if s.action == 'create' else 'neutral' }}">{{ s.action }}</span></td><td>{{ s.data.values() | select | join(' · ') }}</td><td class="muted">{{ s.message }}</td></tr>{% endfor %}</table></div></div>
+    <div class="table-wrap short"><table>{% for s in sample %}<tr><td class="fit"><span class="badge {{ 'in' if s.action == 'create' else 'neutral' }}">{{ s.action }}</span></td><td>{{ s.data.values() | select | join(' · ') }}</td><td class="muted">{{ s.message }}</td></tr>{% endfor %}</table></div></div>
   <div class="row"><button class="btn primary" name="action" value="commit">Import now</button><button class="btn ghost" name="action" value="discard">Discard</button></div>
 </form>
 {% endblock %}
