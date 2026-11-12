@@ -122,6 +122,8 @@ DEFAULT_DEVICE_TYPES = [
     ("Bolero Beltpack", "BOL", 10),
     ("Bolero Antenna", "ANT", 20),
     ("Radio", "RAD", 30),
+    ("Hytera PD682 Radio", "RAD", 31),
+    ("Moto R7 Radio", "RAD", 32),
     ("RSM", "RSM", 40),
     ("Pro-D2 Headset", "HS", 50),
     ("Pro-D1 Headset", "HS", 51),
@@ -129,6 +131,9 @@ DEFAULT_DEVICE_TYPES = [
     ("Covert Headset", "HS", 53),
     ("Max-E1 Headset", "HS", 54),
     ("Headset", "HS", 55),
+    ("TS2 Headset", "HS", 56),
+    ("Hytera TS2 Headset", "HS", 57),
+    ("Moto R7 TS2 Headset", "HS", 58),
     ("Earpiece", "EAR", 60),
     ("Radio Headset Adapter", "ADP", 65),
     ("Charger", "CHG", 70),
@@ -200,6 +205,8 @@ MIGRATIONS = [
     ("people", "faceplate", "TEXT NOT NULL DEFAULT ''"),
     ("people", "allocation", "TEXT NOT NULL DEFAULT ''"),
 ]
+# types added to the defaults after a database may already exist: offered once, then the list is the user's
+ADDED_DEVICE_TYPES = {"0.9.5": ["Hytera PD682 Radio", "Moto R7 Radio", "TS2 Headset", "Hytera TS2 Headset", "Moto R7 TS2 Headset"]}
 DROPPED_TABLES = ["plans"]   # short-lived 0.3.0 feature, replaced by the person's Bolero ID alone
 
 
@@ -233,6 +240,18 @@ def seed(db: sqlite3.Connection) -> None:
             "INSERT INTO device_types (name, short_code, sort_order) VALUES (?, ?, ?)",
             DEFAULT_DEVICE_TYPES,
         )
+    seen = db.execute("SELECT value FROM settings WHERE key = 'types_added'").fetchone()
+    seen = set((seen["value"] or "").split(",")) if seen else set()
+    for release, names in ADDED_DEVICE_TYPES.items():
+        if release in seen:
+            continue
+        for row in DEFAULT_DEVICE_TYPES:
+            if row[0] in names:
+                db.execute("INSERT INTO device_types (name, short_code, sort_order) SELECT ?, ?, ? "
+                           "WHERE NOT EXISTS (SELECT 1 FROM device_types WHERE lower(name) = lower(?))", (*row, row[0]))
+        seen.add(release)
+        db.execute("INSERT INTO settings (key, value) VALUES ('types_added', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                   (",".join(sorted(x for x in seen if x)),))
     if db.execute("SELECT COUNT(*) FROM techs").fetchone()[0] == 0:
         db.execute(
             "INSERT INTO techs (username, display_name, role) VALUES ('tech', 'RDR Tech', 'lead')"

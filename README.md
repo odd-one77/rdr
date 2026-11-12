@@ -177,8 +177,13 @@ Import in Admin has two sources. **easyjob import** takes the delivery note
 PDF or the easyjob export (`.xlsx` / `.csv`) for devices; **Allocation**
 takes the comms allocation sheet for people. From the delivery note PDF, every barcode (`@si…`) becomes a device and the
 description picks the type (BL-BPK → Bolero Beltpack, PRO-D1 / PRO-D2 /
-AIR-D1 / MAX-E1 / Covert → that headset, HC Headset Cord → Radio Headset
-Adapter, Hytera / Motorola → Radio, RSM → RSM). The same rules apply to an export sheet whose
+AIR-D1 / MAX-E1 / Covert → that headset, TS2 Surveillance Kit → TS2 Headset,
+Hytera TS2 Headset or Moto R7 TS2 Headset, HC Headset Cord → Radio Headset
+Adapter, RSM → RSM). Radios are typed by make and model (Hytera PD682
+Handheld Radio → Hytera PD682 Radio, Motorola R7 → Moto R7 Radio); a radio
+with no readable model is a plain Radio. Only the product itself is read:
+"for PD605" or "for Beltpacks, Panels" says what it fits, not what it is.
+The same rules apply to an export sheet whose
 "Article" column carries the description. Panels, antennas, chargers,
 batteries, covers, power, cables and cases are listed as ignored on the
 review screen, never created as device types. Scanners that send the

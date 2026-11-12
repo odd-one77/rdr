@@ -177,7 +177,7 @@ def test_import_people_with_conflict(client):
 def test_import_devices_descriptions(client):
     content = _xlsx(["Inventory No", "Article", "Name"], [
         ["SI-BOL-1001", "Bolero Beltpack", "Bolero 61 (renamed)"],       # existing type name -> update label
-        ["SI-RAD-2001", "Hytera PD685 Radio handset", "Radio 01"],       # description -> Radio
+        ["SI-RAD-2001", "Hytera PD685 Radio handset", "Radio 01"],       # description -> radio of that model
         ["SI-NEW-9001", "Riedel BL-ANT-1010 Bolero Antenna", "Antenna A"],   # accessory -> ignored
         ["SI-NEW-9002", "Riedel RSP-2318 Smartpanel", "Panel"],          # panel -> ignored
         ["SI-RAD-2001", "Radio", "dup"],                                 # dup in file
@@ -190,7 +190,7 @@ def test_import_devices_descriptions(client):
     _follow(client, client.post(f"/admin/import/s/{token}/commit", data={"action": "commit"}))
     assert not client.get("/api/devices/lookup?si=SI-NEW-9001").json()["found"]
     assert not client.get("/api/devices/lookup?si=SI-NEW-9002").json()["found"]
-    assert client.get("/api/devices/lookup?si=SI-RAD-2001").json()["device"]["type_name"] == "Radio"
+    assert client.get("/api/devices/lookup?si=SI-RAD-2001").json()["device"]["type_name"] == "Hytera PD685 Radio"
     assert client.get("/api/devices/lookup?si=SI-BOL-1001").json()["device"]["label"] == "Bolero 61 (renamed)"
     # status untouched by import
     assert client.get("/api/devices/lookup?si=SI-BOL-1001").json()["device"]["status"] == "in"

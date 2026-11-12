@@ -91,6 +91,7 @@ GUESSES = {
 
 # easyjob descriptions -> RDR device types. First match wins; anything unmatched is ignored
 # (panels, antennas, power, batteries, chargers, cables, cases...). Keep the specific before the general.
+# Only the product itself is read: "..., for PD605" or "for Beltpacks, Panels" says what it fits, not what it is.
 DESCRIPTION_RULES: list[tuple[tuple[str, ...], str]] = [
     (("bl-bpk", "bolero beltpack"), "Bolero Beltpack"),
     (("pro-d1",), "Pro-D1 Headset"),
@@ -98,12 +99,42 @@ DESCRIPTION_RULES: list[tuple[tuple[str, ...], str]] = [
     (("air-d1",), "Air-D1 Headset"),
     (("max-e1",), "Max-E1 Headset"),
     (("covert",), "Covert Headset"),
-    (("hc headset cord", "headset cord"), "Radio Headset Adapter"),
+    (("hc headset cord", "headset cord", "headset adapter"), "Radio Headset Adapter"),
     (("intercom headset", "headset"), "Headset"),
     (("rsm", "speaker mic", "remote speaker"), "RSM"),
     (("earpiece", "ear piece"), "Earpiece"),
-    (("hytera", "motorola", "kenwood", "radio handset", "handheld radio", " radio"), "Radio"),
 ]
+
+# TS2 surveillance kits are headsets, one type per connector family
+_TS2 = re.compile(r"\bts2\b|surveillance kit")
+# radios are typed by make and model: "Hytera PD682 Radio", "Moto R7 Radio"
+_RADIO_BRANDS = (("hytera", "Hytera"), ("motorola", "Moto"), ("moto", "Moto"), ("kenwood", "Kenwood"))
+_RADIO_MODEL = re.compile(r"^(?:mototrbo\s+)?([a-z]{1,3}-?\d{1,4}[a-z]{0,2})\b")
+_RADIO_FAMILIES = re.compile(r"^(pd|pt|hp|bd|bp|x1|r\d|dp|sl|xpr|nx|tk)")
+_RADIO_WORD = re.compile(r"\bradios?\b|\bwalkie")
+
+
+def _ts2_type(d: str) -> str:
+    if "hytera" in d:
+        return "Hytera TS2 Headset"
+    if re.search(r"\bmoto(rola)?\b|\bmototrbo\b|\br7\b", d):
+        return "Moto R7 TS2 Headset"
+    return "TS2 Headset"
+
+
+def _radio_type(product: str) -> str:
+    """'Hytera PD682 Handheld Radio, DMR' -> 'Hytera PD682 Radio'. A radio with no readable model is a plain
+    'Radio'; a make on its own (some other accessory) is nothing."""
+    said_radio = bool(_RADIO_WORD.search(product))
+    for word, brand in _RADIO_BRANDS:
+        at = re.search(rf"\b{word}\b\s+", product)
+        if not at:
+            continue
+        m = _RADIO_MODEL.match(product[at.end():])
+        if m and (said_radio or _RADIO_FAMILIES.match(m.group(1))):
+            return f"{brand} {m.group(1).upper()} Radio"
+        break
+    return "Radio" if said_radio else ""
 
 
 # accessories and infrastructure that mention a tracked product in their description but are not one
@@ -113,13 +144,27 @@ IGNORE_WORDS = ("cover", "charger", "bl-chg", "battery", "bl-bat", "antenna", "b
 
 
 def classify_description(desc: str) -> str:
-    d = " " + (desc or "").lower() + " "
+    full = " ".join((desc or "").lower().split())
+    product = re.split(r",?\s+for\s+", full, maxsplit=1)[0]
+    d = " " + product + " "
+    if _TS2.search(product):
+        return _ts2_type(full)
     if any(w in d for w in IGNORE_WORDS):
         return ""
     for keys, tname in DESCRIPTION_RULES:
         if any(k in d for k in keys):
             return tname
-    return ""
+    return _radio_type(product)
+
+
+def new_type_defaults(name: str) -> tuple[str, int]:
+    """Short code and list position for a type the import creates, so it sits with its family."""
+    n = name.lower()
+    if "adapter" not in n and "headset" in n:
+        return "HS", 56
+    if "adapter" not in n and "radio" in n:
+        return "RAD", 31
+    return name[:3].upper(), 500
 
 
 _POS_LINE = re.compile(r"^(\d{1,4})\s+(\d{5,9})\s+(.+?)(?:\s+(\d{1,4}))?\s*$")
@@ -649,7 +694,7 @@ def _commit_devices(db, items, decisions, tech) -> dict:
         d = it["data"]
         tkey = d["type"].lower()
         if tkey not in types:
-            cur = db.execute("INSERT INTO device_types (name, short_code, sort_order) VALUES (?, ?, 500)", (d["type"], d["type"][:3].upper()))
+            cur = db.execute("INSERT INTO device_types (name, short_code, sort_order) VALUES (?, ?, ?)", (d["type"], *new_type_defaults(d["type"])))
             types[tkey] = cur.lastrowid
             new_types += 1
         site_id = sites.get(d["site"].lower()) if d["site"] else None

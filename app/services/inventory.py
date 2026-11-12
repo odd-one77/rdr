@@ -100,7 +100,7 @@ def search_people(db: sqlite3.Connection, q: str, limit: int = 12) -> list[sqlit
         SELECT p.*,
                (SELECT COUNT(*) FROM devices d WHERE d.holder_id = p.id) AS held_count,
                (SELECT COALESCE(NULLIF(d.label,''), t.name) FROM devices d JOIN device_types t ON t.id = d.type_id
-                 WHERE d.holder_id = p.id AND d.status = 'out' AND t.name LIKE '%radio%' ORDER BY d.label LIMIT 1) AS radio_label,
+                 WHERE d.holder_id = p.id AND d.status = 'out' AND t.name LIKE '%radio%' AND t.name NOT LIKE '%adapter%' ORDER BY d.label LIMIT 1) AS radio_label,
                (SELECT COALESCE(NULLIF(d.linked_id,''), NULLIF(d.label,''), 'Bolero') FROM devices d JOIN device_types t ON t.id = d.type_id
                  WHERE d.holder_id = p.id AND d.status = 'out' AND t.name LIKE '%bolero%' AND t.name NOT LIKE '%antenna%' LIMIT 1) AS held_bolero,
                (SELECT COUNT(*) FROM assignments a JOIN devices d ON d.id = a.device_id

@@ -473,7 +473,7 @@ Barcode:
     assert by_type["Radio Headset Adapter"] == ["SI99000003"]           # the cord is for radio headsets, not a radio
     assert "" in by_type and len(by_type[""]) == 2 + 1 + 3               # antenna x2, battery (no barcode), mic x3 ignored
     assert importer.classify_description("Riedel PRO-D2 (XLR4F) Intercom Headset") == "Pro-D2 Headset"
-    assert importer.classify_description("Hytera PD685 Radio") == "Radio"
+    assert importer.classify_description("Hytera PD685 Radio") == "Hytera PD685 Radio"
     assert importer.classify_description("Riedel RSP-2318 Smartpanel") == ""
     assert importer.classify_description("Riedel BL-CHG-1005-R Bolero 5-way Charger, for Riedel BL-BPK-1006-19 Bolero") == ""
     assert importer.classify_description("Riedel Bolero BL-BPK-Cover Black") == ""
@@ -522,7 +522,7 @@ def test_easyjob_export_descriptions_become_types(client):
     client.post(loc, data={f"map_{k}": ("" if v is None else str(v)) for k, v in m.items()})
     plan = importer.load_staged(token)["plan"]
     assert plan["counts"] == {"create": 3, "update": 0, "conflict": 0, "skip": 0, "error": 2}
-    assert {it["data"]["type"] for it in plan["items"] if it["action"] == "create"} == {"Bolero Beltpack", "Pro-D1 Headset", "Radio"}
+    assert {it["data"]["type"] for it in plan["items"] if it["action"] == "create"} == {"Bolero Beltpack", "Pro-D1 Headset", "Hytera PD685 Radio"}
     assert all("Ignored" in it["message"] for it in plan["items"] if it["action"] == "error")
     client.post(f"/admin/import/s/{token}/commit", data={"action": "commit"})
     client.post("/start", data={"tech_id": 1, "site_id": 1})
@@ -701,3 +701,69 @@ def test_device_direct_edit_and_stock_transfer(client):
     for si in ("SI77TF0001", "SI77TF0002", "SI77TF0003"):
         client.post(f"/admin/devices/{dev(si)['id']}", data={"action": "delete"})
     client.post(f"/admin/sites/{dest}", data={"action": "delete"})
+
+
+def test_ts2_headsets_and_radio_models(client):
+    """TS2 surveillance kits are headsets (one type per connector family) and radios are typed by make and model.
+    What a product is "for" never decides its type."""
+    from app import db as dbm
+    from app.services import importer
+    c = importer.classify_description
+    assert c("Riedel TS2 Surveillance Kit (XLR4F), with Clear Acoustic Tube, for Beltpacks, Panels, black") == "TS2 Headset"
+    assert c("Hytera EAN22 TS2 Surveillance Kit, with Clear Acoustic Tube, for PD605") == "Hytera TS2 Headset"
+    assert c("Motorola R7 TS2 Surveillance Kit, with Clear Acoustic Tube") == "Moto R7 TS2 Headset"
+    assert c("Hytera PD682 Handheld Radio, DMR, UHF, 400-527MHz, 1024 Channel, GPS") == "Hytera PD682 Radio"
+    assert c("Motorola MOTOTRBO R7 Handheld Radio, DMR, UHF") == "Moto R7 Radio"
+    assert c("Handheld Radio, UHF") == "Radio"
+    assert c("Hytera SM26N2 Remote Speaker Mic, Audio Jack 3,5mm, Emergency Button, for PD605, PD665,\nPD685, X1") == "RSM"
+    assert c("Hytera BL1504 Battery, Li-Ion, 1500mAh, for PD605, PD665, PD685, PD405") == ""
+    assert c("Hytera Radio Antenna, UTV, 450-520MHz, GPS, 9cm, for PD6XX, X1e/p") == ""
+    assert c("Hytera PC69 Programming Cable") == ""                      # a make alone is not a radio
+    assert c("Earpiece, for Riedel BL-BPK-1006-19 Bolero Beltpack") == "Earpiece"
+    assert c("Riedel PRO-D1 (XLR4F) Intercom Headset, for Panels") == "Pro-D1 Headset"
+    for name in ("TS2 Headset", "Hytera TS2 Headset", "Moto R7 TS2 Headset", "Hytera PD682 Radio", "Moto R7 Radio"):
+        assert c(name) == name                                           # the type names read back as themselves
+    assert importer.new_type_defaults("Kenwood NX-3220 Radio") == ("RAD", 31)
+    assert importer.new_type_defaults("Some TS2 Headset") == ("HS", 56)
+    assert importer.new_type_defaults("Radio Headset Adapter")[1] == 500
+
+    rows = importer.parse_delivery_text("""Pos. Art.No. Description Qty.
+2 1009001 Hytera PD682 Handheld Radio, DMR, UHF, 400-527MHz, 1024 Channel, GPS 2
+Barcode:
+@si77100001, @si77100002
+6 1009002 Hytera EAN22 TS2 Surveillance Kit, with Clear Acoustic Tube, for PD605 2
+Barcode:
+@si77100003, @si77100004
+7 1009003 Riedel TS2 Surveillance Kit (XLR4F), with Clear Acoustic Tube, for Beltpacks, Panels, black 1
+Barcode:
+@si77100005
+""")
+    assert [(r[0], r[1]) for r in rows] == [("SI77100001", "Hytera PD682 Radio"), ("SI77100002", "Hytera PD682 Radio"),
+                                            ("SI77100003", "Hytera TS2 Headset"), ("SI77100004", "Hytera TS2 Headset"), ("SI77100005", "TS2 Headset")]
+
+    # the new types ship with the defaults and reach an existing database once; a type the user removes stays removed
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    client.post("/admin/login", data={"password": "test1234"})
+    types = {t["name"]: t for t in client.get("/api/types").json()["types"]}
+    assert {"TS2 Headset", "Hytera TS2 Headset", "Moto R7 TS2 Headset", "Hytera PD682 Radio", "Moto R7 Radio", "Radio"} <= set(types)
+    with dbm.get_db() as db:
+        db.execute("DELETE FROM device_types WHERE name = 'Moto R7 TS2 Headset'")
+    dbm.init_db()
+    with dbm.get_db() as db:
+        assert db.execute("SELECT 1 FROM device_types WHERE name = 'Moto R7 TS2 Headset'").fetchone() is None
+        db.execute("DELETE FROM settings WHERE key = 'types_added'")
+    dbm.init_db()
+    with dbm.get_db() as db:
+        assert db.execute("SELECT short_code FROM device_types WHERE name = 'Moto R7 TS2 Headset'").fetchone()["short_code"] == "HS"
+
+    # the chip beside a name is for a radio of any model, never for the headset adapter
+    person = client.post("/api/people", json={"name": "Model Radio Person"}).json()["person"]
+    adapter = client.post("/api/devices/quick", json={"si": "SI77100010", "type_id": types["Radio Headset Adapter"]["id"], "label": "Cord 1"}).json()["device"]
+    client.post("/api/signout", json={"person_id": person["id"], "device_ids": [adapter["id"]]})
+    assert not client.get("/api/people/search?q=Model+Radio").json()["results"][0]["radio_label"]
+    radio = client.post("/api/devices/quick", json={"si": "SI77100011", "type_id": types["Hytera PD682 Radio"]["id"], "label": "PD682 07"}).json()["device"]
+    client.post("/api/signout", json={"person_id": person["id"], "device_ids": [radio["id"]]})
+    assert client.get("/api/people/search?q=Model+Radio").json()["results"][0]["radio_label"] == "PD682 07"
+    client.post("/api/signin", json={"device_ids": [adapter["id"], radio["id"]]})
+    for d in (adapter, radio):
+        client.post(f"/admin/devices/{d['id']}", data={"action": "delete"})

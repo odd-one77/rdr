@@ -8,6 +8,8 @@
   const TYPES = window.RDR.types;
   const idOf = v => String(v || '').replace(/^bolero\s*/i, '');
   const isPack = d => /bolero/i.test(d.type_name || d.type || '') && !/antenna/i.test(d.type_name || d.type || '');
+  const isRadio = n => /radio/i.test(n || '') && !/adapter/i.test(n || '');
+  const isHeadset = n => /headset/i.test(n || '') && !/adapter/i.test(n || '');
   // What sits beside a name: Bolero (person's ID or the held pack), Radio (held radio), both, or nothing.
   function chips(p, holdings) {
     const out = [];
@@ -15,7 +17,7 @@
     const bol = p.bolero_id ? idOf(p.bolero_id) : (pack ? idOf(pack.linked_id || pack.label) : (p.held_bolero ? idOf(p.held_bolero) : ''));
     const face = p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : '';
     if (bol || pack) out.push(`<span class="bolero${p.faceplate ? ' faced' : ''}"${face} title="Bolero ID${p.faceplate ? ' · faceplate colour' : ''}">${bol ? 'Bolero ' + esc(bol) : 'Bolero'}</span>`);
-    const radio = (holdings || []).find(d => /radio/i.test(d.type_name || ''));
+    const radio = (holdings || []).find(d => isRadio(d.type_name));
     const radioLabel = radio ? (radio.label || 'Radio') : (p.radio_label || '');
     if (radioLabel) out.push(`<span class="bolero radio" title="Radio">${esc(radioLabel)}</span>`);
     return out.join(' ');
@@ -217,13 +219,17 @@
     const norm = x => String(x || '').toLowerCase().replace(/headset|beltpack|bp|pack/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
     return p.allocation.split(/[·,/;+]| and /).map(x => x.trim()).filter(Boolean).map(text => {
       const key = norm(text), isPackText = /bolero|beltpack|\bbp\b|\bpack\b/i.test(text);
+      // a bare "Radio" or "Headset" is met by any model; anything more specific must be that type
+      const any = key === 'radio' ? isRadio : (!key && /headset/i.test(text) ? isHeadset : null);
+      const named = TYPES.map(t => ({ t, k: norm(t.name) })).filter(x => x.k);
+      const closest = (list, dir) => list.sort((a, b) => dir * (a.k.length - b.k.length))[0];
       let type = null;
-      if (key) type = TYPES.find(t => norm(t.name) === key) || TYPES.find(t => { const k = norm(t.name); return k && (k.includes(key) || key.includes(k)); }) || null;
-      if (!type && isPackText) type = TYPES.find(t => /bolero/i.test(t.name) && !/headset/i.test(t.name)) || null;
-      if (!type && /headset/i.test(text)) type = TYPES.find(t => /headset/i.test(t.name) && !/adapter/i.test(t.name)) || null;
+      if (any) type = TYPES.find(t => t.name.toLowerCase() === text.toLowerCase()) || null;
+      else if (key) type = (named.find(x => x.k === key) || closest(named.filter(x => x.k.includes(key)), 1) || closest(named.filter(x => key.includes(x.k)), -1) || {}).t || null;
+      if (!type && !any && isPackText) type = TYPES.find(t => /bolero/i.test(t.name) && !/headset/i.test(t.name)) || null;
       const pack = !!(isPackText || (type && isPack({ type_name: type.name })));
-      const matches = d => type ? d.type_id === type.id || d.type_name === type.name : (key ? norm(d.type_name).includes(key) : false);
-      return { text, type, pack, matches };
+      const matches = d => any ? any(d.type_name) : (type ? d.type_id === type.id || d.type_name === type.name : (key ? norm(d.type_name).includes(key) : false));
+      return { text, type, pack, matches, any: !!any };
     });
   }
 
@@ -253,7 +259,7 @@
     const plannedRow = p.bolero_id && !hasPack ? `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">Bolero Beltpack <span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : ''}>ID ${esc(myId)}</span></div><div class="type">${reservedPack ? `Reserved: ${esc(reservedPack.label || reservedPack.si)} · <span class="si">${esc(reservedPack.si)}</span>. Scan it to sign out.` : 'No pack linked yet. Scan one for this person.'}</div></span></li>` : '';
     // Everything else on the allocation line (headset, radio, …) that the person does not hold yet.
     const allocRows = allocationItems(p).filter(a => !(a.pack && (hasPack || p.bolero_id)) && !hold.some(d => a.matches(d))).map(a =>
-      `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">${esc(a.type ? a.type.name : a.text)}</div><div class="type">${a.type ? 'From allocation. Scan one for this person.' : `From allocation: ${esc(a.text)}`}</div></span></li>`).join('');
+      `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">${esc(a.type ? a.type.name : a.text)}</div><div class="type">${a.type || a.any ? 'From allocation. Scan one for this person.' : `From allocation: ${esc(a.text)}`}</div></span></li>`).join('');
     panel.innerHTML = `
       <div class="person-card">
         <div class="row"><div class="name grow">${esc(p.name)}</div>${chips(p, hold)}<button class="btn sm ghost" id="btnEditPerson" title="Edit details">Edit</button><button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
