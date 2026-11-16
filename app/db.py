@@ -271,7 +271,8 @@ def reset_db() -> None:
         ).fetchall()
         for name, kind in rows:
             if kind in ("table", "index"):
-                db.execute(f"DROP {kind} IF EXISTS \"{name.replace('"', '""')}\"")
+                quoted = '"' + name.replace('"', '""') + '"'
+                db.execute(f"DROP {kind} IF EXISTS {quoted}")
     init_db()
 
 
