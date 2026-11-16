@@ -25,8 +25,7 @@ phones and the mirror screen can reach it. Other machines on the LAN use
 `http://<pc-ip>:8080`; the address is shown in Admin under Settings, on the Server tab.
 
 Upgrading: in Admin open Settings, Updates tab, and press **Update and restart**. It downloads the newest
-release and swaps the app code in place. The repo is private, so paste a
-GitHub fine-grained token (Contents: read) under *Update source* once.
+release and swaps the app code in place. No GitHub account or token is needed.
 Re-running a newer setup exe over the top also works and keeps `data/`.
 
 ## Install (Debian container)
@@ -38,28 +37,24 @@ needs a LAN address the kiosk, mirror and phones can reach.
 
    ```
    apt-get update && apt-get install -y curl
-   export GH_TOKEN=github_pat_your_token
-   curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
-     https://api.github.com/repos/odd-one77/rdr/contents/installer/get_debian.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/odd-one77/rdr/main/installer/get_debian.sh | bash
    ```
 
-   The repo is private, so `GH_TOKEN` is a GitHub fine-grained token with
-   *Contents: read* on it, the same one **Update and restart** uses.
 2. Open the address it prints (`http://<container-ip>:8080`), go to **Admin**
    and set the admin password.
 
 Running the same command again upgrades to the latest release. For one named
-release end the command with `| bash -s 0.9.7`.
+release end the command with `| bash -s 0.9.11`.
 
 Without GitHub access from the container, download
 **rdr-debian-&lt;version&gt;.tar.gz** from the latest
 [GitHub release](https://github.com/odd-one77/rdr/releases/latest), copy it in
-(from a Proxmox host: `pct push <id> rdr-debian-0.9.7.tar.gz /root/rdr-debian-0.9.7.tar.gz`)
+(from a Proxmox host: `pct push <id> rdr-debian-0.9.11.tar.gz /root/rdr-debian-0.9.11.tar.gz`)
 and run:
 
 ```
-tar -xzf rdr-debian-0.9.7.tar.gz
-bash rdr-debian-0.9.7/installer/install_debian.sh
+tar -xzf rdr-debian-0.9.11.tar.gz
+bash rdr-debian-0.9.11/installer/install_debian.sh
 ```
 
 The installer adds `python3`, `python3-venv` and `ffmpeg` from Debian, puts
@@ -77,8 +72,8 @@ Times are recorded with the server's clock, and a new container is often on
 UTC. Check with `date` and set the zone once:
 `timedatectl set-timezone Europe/London`, then `systemctl restart rdr`.
 
-Upgrading: **Update and restart** in Admin works as on Windows (same GitHub
-token). Or run the install command again. Either way `/var/lib/rdr` is left
+Upgrading: **Update and restart** in Admin works as on Windows. Or run the
+install command again. Either way `/var/lib/rdr` is left
 alone.
 
 Capture card feeds (`dshow:`) are Windows only. On Debian the programme feed
@@ -93,7 +88,7 @@ To remove RDR: `systemctl disable --now rdr`, delete
 The same download builds a Debian based image:
 
 ```
-tar -xzf rdr-debian-0.9.7.tar.gz && cd rdr-debian-0.9.7
+tar -xzf rdr-debian-0.9.11.tar.gz && cd rdr-debian-0.9.11
 docker build -t rdr .
 docker run -d --name rdr --restart unless-stopped --network host \
   -e TZ=Europe/London -v rdr-data:/data rdr

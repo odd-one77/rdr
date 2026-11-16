@@ -206,7 +206,7 @@
           <dl class="kv"><dt>Branch</dt><dd class="mono">{{ info.branch }}</dd><dt>Commit</dt><dd class="mono">{{ info.commit }}</dd><dt>Last commit</dt><dd>{{ info.last_commit }}</dd><dt>Remote</dt><dd class="mono">{{ info.remote }}</dd>
             <dt>Status</dt><dd>{% if info.fetch_ok is defined and not info.fetch_ok %}<span class="red">Fetch failed: {{ info.fetch_error }}</span>{% elif info.behind is none %}<span class="muted">Unknown (no upstream, or not checked yet)</span>{% elif info.behind == 0 %}<span class="green">Up to date</span>{% else %}<span class="amber">{{ info.behind }} commit(s) behind</span>{% endif %}{% if info.dirty %} · <span class="amber">local changes present</span>{% endif %}</dd></dl>
           {% else %}
-          <dl class="kv"><dt>Installed</dt><dd class="mono">v{{ info.version }}</dd><dt>Source</dt><dd><span class="mono">github.com/{{ info.repo }}</span>{% if info.has_token %} <span class="green">· token saved</span>{% else %} <span class="amber">· no token</span>{% endif %}</dd>
+          <dl class="kv"><dt>Installed</dt><dd class="mono">v{{ info.version }}</dd><dt>Source</dt><dd><span class="mono">github.com/{{ info.repo }}</span>{% if info.has_token %} <span class="green">· token saved</span>{% endif %}</dd>
             <dt>Latest</dt><dd>{% if info.fetch_error %}<span class="red">{{ info.fetch_error }}</span>{% elif info.latest %}<span class="mono">{{ info.latest.tag }}</span> <span class="muted">({{ info.latest.published }})</span> {% if info.update_available %}<span class="amber">· update available</span>{% else %}<span class="green">· up to date</span>{% endif %}{% else %}<span class="muted">Not checked yet</span>{% endif %}</dd></dl>
           {% endif %}
         </div>
@@ -223,7 +223,7 @@
         <div class="set-control"><input name="github_repo" value="{{ info.repo }}" class="mid"></div>
       </div>
       <div class="set-row">
-        <div class="set-label"><b>GitHub token</b><span>Needed for a private repo. Fine-grained, Contents: read.</span></div>
+        <div class="set-label"><b>GitHub token</b><span>Only for a private repo. Fine-grained, Contents: read.</span></div>
         <div class="set-control"><input type="password" name="github_token" placeholder="{{ 'Saved. Leave blank to keep it.' if info.has_token else 'github_pat_…' }}" autocomplete="off">
           {% if info.has_token %}<label class="check mt-s"><input type="checkbox" name="clear_token" value="1"> Remove the saved token</label>{% endif %}</div>
       </div>

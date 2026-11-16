@@ -7,8 +7,8 @@ Two modes, picked automatically:
 * **release** - installed from the Windows setup exe or the Debian download
                 (no git). Downloads the
                 ``rdr-app-<version>.zip`` asset of the latest GitHub release and
-                unpacks it over the install folder. The repo is private, so a
-                GitHub token with read access is stored in data/config.json.
+                unpacks it over the install folder. The repo is public; a GitHub
+                token in data/config.json is only needed for a private fork.
 
 Both then reinstall requirements and ask the launcher (run.py) to restart.
 Only code is touched: data/ (database, logo, config) is never written.
@@ -100,7 +100,7 @@ def latest_release(repo: str, token: str | None) -> dict:
 def _describe_http_error(e: Exception) -> str:
     if isinstance(e, urllib.error.HTTPError):
         if e.code in (401, 403):
-            return "GitHub refused the request (401/403). The repo is private: add a GitHub token with read access in Settings."
+            return "GitHub refused the request (401/403). A private repo needs a GitHub token with read access in Settings. Too many checks in an hour also cause this."
         if e.code == 404:
             return "No release found (404). Publish a release with an rdr-app-*.zip asset, or check the repo name/token."
         return f"GitHub returned HTTP {e.code}"
