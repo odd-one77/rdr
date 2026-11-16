@@ -3,6 +3,7 @@
   'use strict';
   const $ = (sel, root = document) => root.querySelector(sel);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const hex = v => /^[0-9a-f]{6}$/i.test(v || '') ? v : '';   // faceplate colours go into style attributes
   const TECH = window.RDR.tech;
   if (!TECH) { location.replace('/start'); return; }   // no tech and site picked: nothing here can work
   const TYPES = window.RDR.types;
@@ -15,7 +16,7 @@
     const out = [];
     const pack = (holdings || []).find(isPack);
     const bol = p.bolero_id ? idOf(p.bolero_id) : (pack ? idOf(pack.linked_id || pack.label) : (p.held_bolero ? idOf(p.held_bolero) : ''));
-    const face = p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : '';
+    const face = p.faceplate ? ` style="--face:#${hex(p.faceplate)}"` : '';
     if (bol || pack) out.push(`<span class="bolero${p.faceplate ? ' faced' : ''}"${face} title="Bolero ID${p.faceplate ? ' · faceplate colour' : ''}">${bol ? 'Bolero ' + esc(bol) : 'Bolero'}</span>`);
     const radio = (holdings || []).find(d => isRadio(d.type_name));
     const radioLabel = radio ? (radio.label || 'Radio') : (p.radio_label || '');
@@ -82,7 +83,7 @@
       const d = await api(`/api/recent?limit=40&scope=${state.scope}`);
       $('#feed').innerHTML = d.transactions.map(x => {
         const label = ACTIONS[x.action] || x.action;
-        return `<li class="act-${x.action}"><span class="ts">${esc(x.ts.slice(11, 16))}</span><span class="txt"><div class="l1"><span class="what">${esc(label)}</span> · ${esc(x.label || x.si || '')}</div><div class="l2">${esc([x.person_name, x.tech_name, x.note].filter(Boolean).join(' · ') || x.si || '')}</div></span></li>`;
+        return `<li class="act-${esc(x.action)}"><span class="ts">${esc(x.ts.slice(11, 16))}</span><span class="txt"><div class="l1"><span class="what">${esc(label)}</span> · ${esc(x.label || x.si || '')}</div><div class="l2">${esc([x.person_name, x.tech_name, x.note].filter(Boolean).join(' · ') || x.si || '')}</div></span></li>`;
       }).join('') || '<li><span class="ts"></span><span class="dim">No activity yet.</span></li>';
     } catch (e) { /* ignore */ }
   }
@@ -249,14 +250,14 @@
     const line2 = [p.phone ? `<span class="mono">${esc(p.phone)}</span>` : '', p.external_id ? `<span class="si">ID ${esc(p.external_id)}</span>` : ''].filter(Boolean).join(' · ');
     // Assigned list: one row per device, led by its type, then linked ID and SI.
     const devRow = (d, actions) => `<li>
-          <span class="badge ${d.status}">${esc(d.status)}</span>
-          <span class="txt"><div class="label">${esc(d.type_name)}${d.linked_id ? ` <span class="bolero${p.faceplate && isPack(d) ? ' faced' : ''}"${p.faceplate && isPack(d) ? ` style="--face:#${esc(p.faceplate)}"` : ''}>ID ${esc(d.linked_id)}</span>` : ''}</div><div class="type">${d.label && d.label !== d.type_name ? esc(d.label) + ' · ' : ''}<span class="si">${esc(d.si)}</span>${d.holder_name && (!p || d.holder_id !== p.id) ? ` · <span class="amber">with ${esc(d.holder_name)}</span>` : ''}</div></span>
+          <span class="badge ${esc(d.status)}">${esc(d.status)}</span>
+          <span class="txt"><div class="label">${esc(d.type_name)}${d.linked_id ? ` <span class="bolero${p.faceplate && isPack(d) ? ' faced' : ''}"${p.faceplate && isPack(d) ? ` style="--face:#${hex(p.faceplate)}"` : ''}>ID ${esc(d.linked_id)}</span>` : ''}</div><div class="type">${d.label && d.label !== d.type_name ? esc(d.label) + ' · ' : ''}<span class="si">${esc(d.si)}</span>${d.holder_name && (!p || d.holder_id !== p.id) ? ` · <span class="amber">with ${esc(d.holder_name)}</span>` : ''}</div></span>
           <span class="actions">${actions}</span></li>`;
     const byType = [...hold].sort((a, b) => (a.type_name > b.type_name ? 1 : a.type_name < b.type_name ? -1 : 0));
     const hasPack = hold.some(isPack);
     const myId = idOf(p.bolero_id);
     const reservedPack = pre.find(d => isPack(d) && (!d.linked_id || idOf(d.linked_id) === myId));
-    const plannedRow = p.bolero_id && !hasPack ? `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">Bolero Beltpack <span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : ''}>ID ${esc(myId)}</span></div><div class="type">${reservedPack ? `Reserved: ${esc(reservedPack.label || reservedPack.si)} · <span class="si">${esc(reservedPack.si)}</span>. Scan it to sign out.` : 'No pack linked yet. Scan one for this person.'}</div></span></li>` : '';
+    const plannedRow = p.bolero_id && !hasPack ? `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">Bolero Beltpack <span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${hex(p.faceplate)}"` : ''}>ID ${esc(myId)}</span></div><div class="type">${reservedPack ? `Reserved: ${esc(reservedPack.label || reservedPack.si)} · <span class="si">${esc(reservedPack.si)}</span>. Scan it to sign out.` : 'No pack linked yet. Scan one for this person.'}</div></span></li>` : '';
     // Everything else on the allocation line (headset, radio, …) that the person does not hold yet.
     const allocRows = allocationItems(p).filter(a => !(a.pack && (hasPack || p.bolero_id)) && !hold.some(d => a.matches(d))).map(a =>
       `<li class="pending"><span class="badge neutral">plan</span><span class="txt"><div class="label">${esc(a.type ? a.type.name : a.text)}</div><div class="type">${a.type || a.any ? 'From allocation. Scan one for this person.' : `From allocation: ${esc(a.text)}`}</div></span></li>`).join('');
@@ -338,7 +339,7 @@
       const d = await api(`/api/devices/search?q=${encodeURIComponent(q)}`);
       if (seq !== scanSeq || scanEl.value.trim() !== q) return;   // a newer keystroke or a scan happened meanwhile
       scanHits = d.results; scanIdx = scanHits.length ? 0 : -1;
-      scanResults.innerHTML = scanHits.map(x => `<div class="item" data-id="${x.id}"><div><div class="name">${esc(x.label || x.si)} <span class="muted fw-n">· ${esc(x.type_name)}</span>${x.linked_id ? ` <span class="bolero">ID ${esc(x.linked_id)}</span>` : ''}</div><div class="meta"><span class="mono">${esc(x.si)}</span>${x.holder_name ? ` · with ${esc(x.holder_name)}` : ''}${x.site_name ? ` · ${esc(x.site_name)}` : ''}</div></div><span class="badge ${x.status}">${esc(x.status)}</span></div>`).join('')
+      scanResults.innerHTML = scanHits.map(x => `<div class="item" data-id="${x.id}"><div><div class="name">${esc(x.label || x.si)} <span class="muted fw-n">· ${esc(x.type_name)}</span>${x.linked_id ? ` <span class="bolero">ID ${esc(x.linked_id)}</span>` : ''}</div><div class="meta"><span class="mono">${esc(x.si)}</span>${x.holder_name ? ` · with ${esc(x.holder_name)}` : ''}${x.site_name ? ` · ${esc(x.site_name)}` : ''}</div></div><span class="badge ${esc(x.status)}">${esc(x.status)}</span></div>`).join('')
         + `<div class="empty"><span>${scanHits.length ? 'Not it?' : 'No device matches “' + esc(q) + '”'}</span><button class="btn sm" data-create>+ Create “${esc(q)}”</button></div>`;
       scanResults.classList.remove('hidden'); paintScanActive();
       scanResults.querySelectorAll('.item').forEach(el => el.onmousedown = () => pickScanHit(scanHits.find(x => x.id === +el.dataset.id)));
@@ -406,7 +407,7 @@
       if (d.assigned_person_name && (!p || d.assigned_person_id !== p.id)) note += (note ? ' · ' : '') + `reserved for ${d.assigned_person_name}`;
       return `<li class="${cls}${d.id === justAdded ? ' new' : ''}"><span class="idx">${i + 1}</span>
         <span class="txt"><div class="label">${esc(d.label || d.si)}${d.for && state.collector ? ` <span class="for${p && d.for.id === p.id ? ' active' : ''}">for ${esc(d.for.name.split(' ')[0])}</span>` : ''}</div><div class="sub">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${note ? ` · <span class="${cls === 'conflict' ? 'red' : 'amber'}">${esc(note)}</span>` : ''}</div></span>
-        <span class="badge ${d.status}">${esc(d.status)}</span>
+        <span class="badge ${esc(d.status)}">${esc(d.status)}</span>
         <span class="remove" data-rm="${d.id}" title="Remove">&#10005;</span></li>`;
     }).join('');
     ul.querySelectorAll('[data-rm]').forEach(el => el.onclick = () => removeFromBasket(+el.dataset.rm));
@@ -616,8 +617,8 @@
       let txt;
       if (!i.ok) txt = `<span class="dim">Bolero link: ${esc(i.error)}</span>`;
       else if (!i.known) txt = `<span class="amber">No Bolero ${esc(n)} on the system</span>`;
-      else if (i.charger) txt = `Bolero ${esc(n)} is in <b>${esc(i.charger.name)}, bay ${esc(String(i.charger.bay))}</b>${i.battery != null ? ` · ${i.battery}%` : ''}${i.can_identify ? ` <button class="btn sm" id="btnFlash">Flash it</button>` : ''}`;
-      else if (i.online) txt = `Bolero ${esc(n)} is <b class="green">on</b>${i.battery != null ? ` · ${i.battery}%` : ''}${i.antenna ? ` · ${esc(String(i.antenna))}` : ''} <span class="dim">· not in a charger</span>`;
+      else if (i.charger) txt = `Bolero ${esc(n)} is in <b>${esc(i.charger.name)}, bay ${esc(String(i.charger.bay))}</b>${i.battery != null ? ` · ${esc(String(i.battery))}%` : ''}${i.can_identify ? ` <button class="btn sm" id="btnFlash">Flash it</button>` : ''}`;
+      else if (i.online) txt = `Bolero ${esc(n)} is <b class="green">on</b>${i.battery != null ? ` · ${esc(String(i.battery))}%` : ''}${i.antenna ? ` · ${esc(String(i.antenna))}` : ''} <span class="dim">· not in a charger</span>`;
       else if (i.online === false) txt = `Bolero ${esc(n)} is <b>off</b>${i.charging ? ' (charging)' : ''}${!i.charger_data ? ' · not seen in a networked charger' : ' · not in a charger'}`;
       else txt = `<span class="dim">Bolero ${esc(n)}: no status yet</span>`;
       el.innerHTML = txt;

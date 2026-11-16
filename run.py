@@ -31,7 +31,19 @@ def main() -> int:
     ap.add_argument("--host")
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--reload", action="store_true", help="developer auto-reload")
+    ap.add_argument("--clear-access-code", action="store_true",
+                    help="remove the remote access code and turn remote access off, then exit")
     args = ap.parse_args()
+
+    if args.clear_access_code:
+        from app.auth import set_access_code
+        from app.config import load_config, save_config
+        set_access_code(None)
+        cfg = load_config()
+        cfg["remote_access"] = False
+        save_config(cfg)
+        print("Access code removed and remote access turned off. Restart RDR if it is running.")
+        return 0
 
     if os.name == "nt":
         try:

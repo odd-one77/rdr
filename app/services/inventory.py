@@ -6,6 +6,7 @@ history of each device and each person can be viewed later.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from typing import Iterable, Optional
 
@@ -489,9 +490,16 @@ def create_person(
         """INSERT INTO people (external_id, name, dept, role, phone, bolero_id, faceplate, allocation, notes, created_at, updated_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         ((external_id or "").strip() or None, name.strip(), dept.strip(), role.strip(), phone.strip(), (bolero_id or "").strip(),
-         (faceplate or "").strip().lstrip("#").upper(), (allocation or "").strip(), notes, ts, ts),
+         clean_hex(faceplate), (allocation or "").strip(), notes, ts, ts),
     )
     return person_by_id(db, cur.lastrowid)
+
+
+def clean_hex(value: str | None) -> str:
+    """A faceplate colour as six hex digits, upper case, or "" for anything else.
+    The colour ends up in style attributes, so nothing else may get through."""
+    v = (value or "").strip().lstrip("#")
+    return v.upper() if re.fullmatch(r"[0-9A-Fa-f]{6}", v) else ""
 
 
 def update_person(db: sqlite3.Connection, person_id: int, **fields) -> sqlite3.Row:
@@ -502,6 +510,8 @@ def update_person(db: sqlite3.Connection, person_id: int, **fields) -> sqlite3.R
             v = v.strip()
             if k == "external_id":
                 v = v or None
+            if k == "faceplate":
+                v = clean_hex(v)
             sets.append(f"{k} = ?"); vals.append(v)
     if sets:
         sets.append("updated_at = ?"); vals.append(now_iso())

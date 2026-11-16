@@ -13,8 +13,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel as _BM
 
 from ..auth import (
-    ADMIN_COOKIE, admin_password_set, admin_token, check_admin_password, is_admin, live_tech, set_admin_password,
+    ADMIN_COOKIE, MIN_PASSWORD, access_code_set, admin_password_set, admin_token, check_admin_password, is_admin,
+    live_tech, set_access_code, set_admin_password, set_cookie, upgrade_admin_hash,
 )
+from .. import security
 from ..config import DATA_DIR, IMPORT_DIR, UPLOAD_DIR, load_config, save_config
 from ..db import ACTION_LABELS, get_db, get_setting, now_iso, reset_db, set_setting
 from ..main import lan_addresses, render
@@ -63,24 +65,40 @@ def login(request: Request, next: str = ""):
     with get_db() as db:
         first_time = not admin_password_set(db)
     target = _after_login(next)
-    return render(request, "admin/login.html", first_time=first_time, next=target if target != "/admin" else "")
+    return render(request, "admin/login.html", first_time=first_time, next=target if target != "/admin" else "",
+                  setup_blocked=first_time and security.is_remote(request), min_password=MIN_PASSWORD)
+
+
+ADMIN_SESSION = 60 * 60 * 12
 
 
 @router.post("/login")
 def login_post(request: Request, password: str = Form(""), confirm: str = Form(""), next: str = Form("")):
     target = _after_login(next)
     back = "/admin/login" + (f"?next={quote(target, safe='')}" if target != "/admin" else "")
+    origin = security.origin_from(request)
     with get_db() as db:
         if not admin_password_set(db):
-            if len(password) < 4:
-                return _redirect(back, err="Password needs at least 4 characters")
+            # whoever sets the first password owns the server, so that has to happen in the room
+            if origin.remote:
+                return _redirect(back, err="Set the admin password from a computer on the local network")
+            if len(password) < MIN_PASSWORD:
+                return _redirect(back, err=f"Password needs at least {MIN_PASSWORD} characters")
             if password != confirm:
                 return _redirect(back, err="Passwords do not match")
             set_admin_password(db, password)
-        elif not check_admin_password(db, password):
-            return _redirect(back, err="Wrong password")
+        else:
+            wait = security.limiter.wait("admin password", origin)
+            if wait:
+                return _redirect(back, err=security.wait_text(wait))
+            if not check_admin_password(db, password):
+                security.limiter.fail("admin password", origin)
+                return _redirect(back, err="Wrong password")
+            security.limiter.ok("admin password", origin)
+            upgrade_admin_hash(db, password)
+        token = admin_token(db)
     resp = RedirectResponse(target, status_code=303)
-    resp.set_cookie(ADMIN_COOKIE, admin_token(), max_age=60 * 60 * 12, samesite="lax", httponly=True)
+    set_cookie(resp, request, ADMIN_COOKIE, token, ADMIN_SESSION)
     return resp
 
 
@@ -298,7 +316,7 @@ def person_save(person_id: int, action: str = Form("save"), name: str = Form("")
         db.execute(
             "UPDATE people SET name = ?, dept = ?, role = ?, phone = ?, external_id = ?, bolero_id = ?, faceplate = ?, allocation = ?, notes = ?, updated_at = ? WHERE id = ?",
             (name.strip(), dept.strip(), role.strip(), phone.strip(), external_id.strip() or None, bolero_id.strip(),
-             "" if faceplate in ("", "none") else faceplate.strip().lstrip("#").upper(), allocation.strip(), notes.strip(), now_iso(), person_id),
+             inventory.clean_hex(faceplate), allocation.strip(), notes.strip(), now_iso(), person_id),
         )
         inventory.link_reserved_packs(db, person_id)
     return _redirect(f"/admin/people/{person_id}", msg="Saved")
@@ -727,19 +745,80 @@ def settings_page(request: Request, fetch: int = 0):
     https = {"on": bool(cfg.get("https")), "port": cfg.get("https_port", 8443), "cert": certs.status(),
              "listening": _port_open(int(cfg.get("https_port", 8443))) if cfg.get("https") else None, "log": _tail(DATA_DIR / "https.log")}
     devices_out = streams.list_capture_devices() if request.query_params.get("devices") else None
+    origin = security.origin_from(request)
+    remote = {"on": bool(cfg.get("remote_access")), "code_set": access_code_set(cfg), "scope": cfg.get("access_scope", "all"),
+              "proxies": "\n".join(cfg.get("trusted_proxies") or []), "hosts": "\n".join(cfg.get("public_hosts") or []),
+              "local_hosts": "\n".join(cfg.get("local_hosts") or []),
+              "admin": bool(cfg.get("remote_admin")), "how": origin.describe(), "here_remote": origin.remote,
+              "https": origin.https, "min": MIN_PASSWORD}
     return render(request, "admin/settings.html", info=info, update_log=updater.last_output(), lan=lan_addresses(), mirror=mirror,
-                  https=https, streams=streams.status(), capture_devices=devices_out, active="settings")
+                  https=https, streams=streams.status(), capture_devices=devices_out, remote=remote, active="settings")
 
 
 @router.post("/settings/password", dependencies=[Depends(require_admin)])
-def settings_password(current: str = Form(""), password: str = Form(""), confirm: str = Form("")):
+def settings_password(request: Request, current: str = Form(""), password: str = Form(""), confirm: str = Form("")):
+    origin = security.origin_from(request)
     with get_db() as db:
+        wait = security.limiter.wait("admin password", origin)
+        if wait:
+            return _redirect("/admin/settings#password", err=security.wait_text(wait))
         if not check_admin_password(db, current):
+            security.limiter.fail("admin password", origin)
             return _redirect("/admin/settings#password", err="Current password is wrong")
-        if len(password) < 4 or password != confirm:
-            return _redirect("/admin/settings#password", err="New passwords must match and be at least 4 characters")
+        if len(password) < MIN_PASSWORD or password != confirm:
+            return _redirect("/admin/settings#password", err=f"New passwords must match and be at least {MIN_PASSWORD} characters")
         set_admin_password(db, password)
-    return _redirect("/admin/settings#password", msg="Password changed")
+        token = admin_token(db)
+    # every other browser's admin session ends with the old password; this one carries on
+    resp = _redirect("/admin/settings#password", msg="Password changed. Other browsers have to sign in again.")
+    set_cookie(resp, request, ADMIN_COOKIE, token, ADMIN_SESSION)
+    return resp
+
+
+@router.post("/settings/remote", dependencies=[Depends(require_admin)])
+def settings_remote(request: Request, remote_access: str = Form(""), access_scope: str = Form("all"),
+                    trusted_proxies: str = Form(""), public_hosts: str = Form(""), local_hosts: str = Form(""),
+                    remote_admin: str = Form("")):
+    proxies, bad = security.clean_proxies(trusted_proxies)
+    if bad:
+        return _redirect("/admin/settings#remote", err="Not a usable proxy address: " + ", ".join(bad[:3]))
+    cfg = load_config()
+    if remote_access and not cfg.get("access_code_hash"):
+        return _redirect("/admin/settings#remote", err="Set an access code before turning remote access on")
+    origin = security.origin_from(request)
+    if origin.remote and (not remote_access or not remote_admin):
+        # saving this from outside would lock the person saving it out halfway through
+        return _redirect("/admin/settings#remote", err="Turn remote access or remote Admin off from the local network")
+    cfg["remote_access"] = bool(remote_access)
+    cfg["remote_admin"] = bool(remote_admin)
+    cfg["access_scope"] = "proxy" if access_scope == "proxy" else "all"
+    cfg["trusted_proxies"] = proxies
+    cfg["public_hosts"] = security.clean_hosts(public_hosts)
+    cfg["local_hosts"] = [h for h in security.clean_hosts(local_hosts) if h not in cfg["public_hosts"]]
+    save_config(cfg)
+    note = ""
+    if cfg["access_scope"] == "proxy" and not proxies:
+        note = " Every browser needs the code until a proxy address is listed."
+    return _redirect("/admin/settings#remote", msg="Remote access saved." + note)
+
+
+@router.post("/settings/access-code", dependencies=[Depends(require_admin)])
+def settings_access_code(request: Request, code: str = Form(""), confirm: str = Form(""), clear: str = Form("")):
+    if clear:
+        if security.is_remote(request):
+            return _redirect("/admin/settings#remote", err="Remove the access code from the local network")
+        set_access_code(None)
+        cfg = load_config()
+        cfg["remote_access"] = False
+        save_config(cfg)
+        return _redirect("/admin/settings#remote", msg="Access code removed. Remote access is off.")
+    if len(code) < MIN_PASSWORD or code != confirm:
+        return _redirect("/admin/settings#remote", err=f"Codes must match and be at least {MIN_PASSWORD} characters")
+    set_access_code(code)
+    from ..auth import ACCESS_COOKIE, ACCESS_DAYS, access_token
+    resp = _redirect("/admin/settings#remote", msg="Access code saved. Other browsers have to enter the new code.")
+    set_cookie(resp, request, ACCESS_COOKIE, access_token(), ACCESS_DAYS * 86400)   # this browser keeps going
+    return resp
 
 
 @router.post("/settings/server", dependencies=[Depends(require_admin)])
@@ -959,7 +1038,7 @@ def backup_page(request: Request, token: str = ""):
     pending = None
     if token:
         staged = IMPORT_DIR / f"backup-{token}.zip"
-        if staged.exists() and token.replace("-", "").replace("_", "").isalnum():
+        if token.replace("-", "").replace("_", "").isalnum() and staged.exists():
             try:
                 pending = backup.inspect(staged.read_bytes())
                 pending["token"] = token
@@ -992,9 +1071,8 @@ def backup_snapshot_restore(name: str, confirm: str = Form("")):
     except (ValueError, FileNotFoundError) as e:
         return _redirect("/admin/backup", err=str(e))
     updater.schedule_restart()
-    resp = RedirectResponse(f"/admin/settings?restarting=1&msg={quote('Snapshot restored. Restarting...')}", status_code=303)
-    resp.delete_cookie(ADMIN_COOKIE)
-    return resp
+    # the admin cookie is tied to the password: it carries on if the snapshot has the same one
+    return RedirectResponse(f"/admin/settings?restarting=1&msg={quote('Snapshot restored. Restarting.')}", status_code=303)
 
 
 @router.post("/backup/export", dependencies=[Depends(require_admin)])
@@ -1019,6 +1097,8 @@ async def backup_inspect(file: UploadFile = File(...)):
 
 @router.post("/backup/restore", dependencies=[Depends(require_admin)])
 def backup_restore(token: str = Form(...), confirm: str = Form(""), restore_config: str = Form("")):
+    if not token or not token.replace("-", "").replace("_", "").isalnum():
+        return _redirect("/admin/backup", err="That upload has expired. Upload the backup again.")
     staged = IMPORT_DIR / f"backup-{token}.zip"
     if not staged.exists():
         return _redirect("/admin/backup", err="That upload has expired. Upload the backup again.")
@@ -1030,6 +1110,4 @@ def backup_restore(token: str = Form(...), confirm: str = Form(""), restore_conf
         return _redirect("/admin/backup", err=f"Restore failed: {e}")
     staged.unlink(missing_ok=True)
     updater.schedule_restart()
-    resp = RedirectResponse(f"/admin/settings?restarting=1&msg={quote('Restored ' + info['event'] + '. Restarting...')}", status_code=303)
-    resp.delete_cookie(ADMIN_COOKIE)
-    return resp
+    return RedirectResponse(f"/admin/settings?restarting=1&msg={quote('Restored ' + info['event'] + '. Restarting.')}", status_code=303)

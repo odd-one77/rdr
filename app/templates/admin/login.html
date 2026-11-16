@@ -6,10 +6,13 @@
     <div class="panel-head"><h2>{{ 'Set the admin password' if first_time else 'Admin' }}</h2></div>
     <div class="panel-body">
       {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-      {% if first_time %}<p class="help">First run. Choose the admin password for this installation. It can be changed later in Settings.</p>{% endif %}
-      <div class="field"><label>Password</label><input type="password" name="password" autofocus required></div>
-      {% if first_time %}<div class="field"><label>Confirm</label><input type="password" name="confirm" required></div>{% endif %}
+      {% if setup_blocked %}<p class="help">No admin password is set yet. Set it from a computer on the local network.</p>
+      {% else %}
+      {% if first_time %}<p class="help">First run. Choose the admin password for this installation, at least {{ min_password }} characters. It can be changed later in Settings.</p>{% endif %}
+      <div class="field"><label>Password</label><input type="password" name="password" autocomplete="{{ 'new-password' if first_time else 'current-password' }}" {% if first_time %}minlength="{{ min_password }}" {% endif %}autofocus required></div>
+      {% if first_time %}<div class="field"><label>Confirm</label><input type="password" name="confirm" autocomplete="new-password" required></div>{% endif %}
       <button class="btn primary block" type="submit">{{ 'Save and continue' if first_time else 'Log in' }}</button>
+      {% endif %}
       <p class="center mt sm"><a class="muted" href="/">Back to kiosk</a></p>
     </div>
   </form>

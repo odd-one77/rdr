@@ -23,7 +23,7 @@ from openpyxl import load_workbook
 
 from ..config import IMPORT_DIR, ensure_dirs
 from ..db import now_iso
-from .inventory import log, norm_phone, norm_si
+from .inventory import clean_hex, log, norm_phone, norm_si
 
 KINDS = {
     "devices": {
@@ -485,7 +485,7 @@ def _faceplate(row, fills, mapping) -> str:
         if len(text) == 6 and all(ch in "0123456789abcdefABCDEF" for ch in text):
             return text.upper()
         return COLOUR_NAMES.get(text.lower(), "")
-    return (fills[idx] if fills and idx < len(fills) else "") or ""
+    return clean_hex((fills[idx] if fills and idx < len(fills) else "") or "")
 
 
 def _person_row(row, mapping, fills=None) -> dict:

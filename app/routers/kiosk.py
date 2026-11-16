@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from ..auth import ADMIN_COOKIE, TECH_COOKIE, live_tech, tech_token
+from ..auth import ADMIN_COOKIE, TECH_COOKIE, live_tech, set_cookie, tech_token
 from ..db import get_db
 from ..main import render
 from ..config import load_config
@@ -48,7 +48,7 @@ def start_post(request: Request, tech_id: int = Form(...), site_id: int = Form(.
         return RedirectResponse("/start?err=Please+pick+a+tech+and+a+site", status_code=303)
     target = "/m" if is_mobile(request) else (next if next.startswith("/") and not next.startswith("//") else "/")
     resp = RedirectResponse(target, status_code=303)
-    resp.set_cookie(TECH_COOKIE, tech_token(tech_id, site_id), max_age=60 * 60 * 24 * 30, samesite="lax")
+    set_cookie(resp, request, TECH_COOKIE, tech_token(tech_id, site_id), 60 * 60 * 24 * 30)
     resp.delete_cookie(ADMIN_COOKIE)  # a tech session never carries an admin login along
     return resp
 
@@ -73,10 +73,8 @@ def mirror(request: Request, site: int | None = None):
     from ..services import streams
     with get_db() as db:
         pgm_size = get_setting(db, "pgm_size") or "half"
-    site_d = dict(s) if s else {"id": site, "name": "RDR", "rtsp_url": None}
-    kind = streams.classify_feed(site_d.get("rtsp_url") or "")
-    feed = {"kind": kind, "relay": kind in streams.RELAY_KINDS, "url": site_d.get("rtsp_url"),
-            "embed": streams.youtube_embed(site_d["rtsp_url"]) if kind == "youtube" else None}
+    feed = streams.browser_feed(s["rtsp_url"] if s else "")
+    site_d = {"id": int(s["id"]) if s else int(site), "name": s["name"] if s else "RDR"}
     return render(request, "kiosk/mirror.html", mirror_site=site_d, feed=feed, pgm_size=pgm_size if pgm_size in ("small", "half", "large") else "half")
 
 

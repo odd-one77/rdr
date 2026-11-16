@@ -217,6 +217,8 @@ def migrate(db: sqlite3.Connection) -> None:
             db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
     for table in DROPPED_TABLES:
         db.execute(f"DROP TABLE IF EXISTS {table}")
+    # faceplate colours end up in style attributes: anything but six hex digits from older versions goes
+    db.execute("UPDATE people SET faceplate = '' WHERE faceplate <> '' AND (length(faceplate) <> 6 OR faceplate GLOB '*[^0-9A-Fa-f]*')")
 
 
 def init_db() -> None:
@@ -268,7 +270,8 @@ def reset_db() -> None:
             "SELECT name, type FROM sqlite_master WHERE type IN ('table','index') AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
         for name, kind in rows:
-            db.execute(f"DROP {kind} IF EXISTS \"{name}\"")
+            if kind in ("table", "index"):
+                db.execute(f"DROP {kind} IF EXISTS \"{name.replace('"', '""')}\"")
     init_db()
 
 

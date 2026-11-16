@@ -243,11 +243,62 @@ exact charger resource differs by firmware; the explorer on the same page shows
 the raw answers so it can be found and set on site. Unofficial interface: a firmware
 update may change it.
 
+## Remote access through a reverse proxy
+
+RDR is built for the room network and answers only there until you open it up. Anything that comes through a proxy or tunnel, or from a public address, gets a "Remote access is off" page.
+
+To reach it from outside:
+
+1. Put a reverse proxy or tunnel in front that adds HTTPS (Caddy, nginx, Cloudflare Tunnel, Tailscale Funnel). Never port-forward RDR's own port to the internet.
+2. In Admin, Settings, Remote access, set an access code. Every browser then enters it once.
+3. Fill in the proxy address (where the proxy connects to RDR from, often `127.0.0.1`) and the public address people type, for example `rdr.example.com`.
+4. Turn remote access on. Admin stays local only unless you also allow Admin through the proxy.
+
+With "Only browsers outside the local network", kiosks, phones and mirrors in the room skip the code. That needs the proxy address, so RDR can tell proxied requests apart.
+
+Caddy example:
+
+```
+rdr.example.com {
+    reverse_proxy 192.168.1.20:8080
+    request_body {
+        max_size 512MB
+    }
+}
+```
+
+nginx example:
+
+```
+location / {
+    proxy_pass http://192.168.1.20:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 512m;
+}
+```
+
+The proxy has to pass the Host header (or `X-Forwarded-Host`) and `X-Forwarded-For`. Large uploads are only for backup restores and imports.
+
+What RDR does by itself:
+
+- Refuses host names it does not know, so a web page elsewhere cannot reach a LAN server through DNS tricks. IP addresses and names such as `rdr.local` always work; list any other room network names under Local names.
+- Refuses changes that do not come from its own pages.
+- Locks out an address after five wrong access codes or admin passwords, for 30 seconds and up to 15 minutes.
+- Lets the first admin password be set only from the local network.
+- Keeps camera addresses and passwords for the programme feed on the server.
+- Sends a strict content security policy and the usual protective headers.
+
+A forgotten access code is removed on the server with `python run.py --clear-access-code` (on Debian: `sudo -u rdr RDR_DATA_DIR=/var/lib/rdr /opt/rdr/.venv/bin/python /opt/rdr/run.py --clear-access-code`). That also turns remote access off.
+
 ## Backup and moving machines
 
 Backup and restore in Admin exports one zip with the database, logo and server
 settings. On the other machine install RDR, go to Backup and restore, upload the
 zip, check the summary, type RESTORE. The server restarts on the restored data.
+The remote access setup and access code stay with each machine and are never in a
+backup. The GitHub token and Bolero admin password are only included when asked for.
 
 ## Imports
 

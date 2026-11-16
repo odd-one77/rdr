@@ -34,7 +34,7 @@
   </form>
   <div class="muted sm mono">RDR v{{ version }}</div>
 </div>
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
 (function(){
   const form = document.getElementById('startForm'), go = document.getElementById('go');
   const grids = { tech_id: document.getElementById('techs'), site_id: document.getElementById('sites') };

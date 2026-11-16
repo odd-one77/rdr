@@ -3,7 +3,7 @@
 {% block content %}
 <div class="content page-narrow">
   <div class="page-head"><div><h1>{{ person.name }}</h1><div class="sub">{{ [person.dept, person.role, person.phone] | select | join(' · ') }}{% if person.external_id %} · ID {{ person.external_id }}{% endif %}</div></div>
-    <div class="row"><span class="muted sm">{{ ev.name }}{% if ev.show_name %} · {{ ev.show_name }}{% endif %}</span><a class="btn ghost" href="/admin/people/{{ person.id }}">Back</a><a class="btn" href="/admin/people/{{ person.id }}/report?format=csv">CSV</a><button class="btn primary" onclick="print()">Print</button></div></div>
+    <div class="row"><span class="muted sm">{{ ev.name }}{% if ev.show_name %} · {{ ev.show_name }}{% endif %}</span><a class="btn ghost" href="/admin/people/{{ person.id }}">Back</a><a class="btn" href="/admin/people/{{ person.id }}/report?format=csv">CSV</a><button class="btn primary" type="button" data-print>Print</button></div></div>
   <div class="panel mb"><div class="panel-head"><h2>Outstanding devices · {{ holdings | length }}</h2></div>
     <table><tr><th>Status</th><th>Device</th><th>SI</th><th>Type</th><th>Since</th></tr>
     {% for d in holdings %}<tr><td><span class="badge {{ d.status }}">{{ d.status }}</span></td><td><b>{{ d.label or d.si }}</b></td><td class="mono">{{ d.si }}</td><td>{{ d.type_name }}</td><td class="mono">{{ d.last_event_at }}</td></tr>{% endfor %}

@@ -53,6 +53,9 @@ def is_mobile(request: Request) -> bool:
     return any(m in ua for m in MOBILE_MARKERS)
 
 
+PRIVATE_CONFIG = ("access_code_hash", "github_token", "trusted_proxies")
+
+
 def base_context(request: Request) -> dict:
     """Context every page needs: event, tech session, sites, flash messages."""
     with get_db() as db:
@@ -65,16 +68,16 @@ def base_context(request: Request) -> dict:
             s = db.execute("SELECT * FROM sites WHERE id = ?", (sess["site_id"],)).fetchone()
             if t and s:
                 tech = {"id": t["id"], "username": t["username"], "display_name": t["display_name"], "role": t["role"],
-                        "site_id": s["id"], "site_name": s["name"], "site": dict(s)}
+                        "site_id": s["id"], "site_name": s["name"]}
     return {
         "request": request,
         "event": dict(event) if event else {},
-        "sites": [dict(s) for s in sites],
+        "sites": [{k: s[k] for k in s.keys() if k != "rtsp_url"} for s in sites],
         "tech": tech,
         "is_admin": is_admin(request),
         "msg": request.query_params.get("msg"),
         "err": request.query_params.get("err"),
-        "config": load_config(),
+        "config": {k: v for k, v in load_config().items() if k not in PRIVATE_CONFIG},
     }
 
 
@@ -103,15 +106,16 @@ async def _lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     ensure_dirs()
     init_db()
-    app = FastAPI(title="RDR", version=__version__, docs_url=None, redoc_url=None, lifespan=_lifespan)
+    app = FastAPI(title="RDR", version=__version__, docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
     app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
     app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
     from .services.streams import STREAM_DIR
     STREAM_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/streams", StaticFiles(directory=str(STREAM_DIR)), name="streams")
 
-    from .routers import admin, api, kiosk  # noqa: WPS433 (local import keeps startup order simple)
+    from .routers import access, admin, api, kiosk  # noqa: WPS433 (local import keeps startup order simple)
 
+    app.include_router(access.router)
     app.include_router(kiosk.router)
     app.include_router(api.router)
     app.include_router(admin.router)
@@ -125,10 +129,15 @@ def create_app() -> FastAPI:
             response.headers["Cache-Control"] = "no-cache, must-revalidate"
         elif not request.url.path.startswith(("/uploads/", "/streams/")):
             response.headers.setdefault("Cache-Control", "no-store")
-        if request.url.path.startswith("/admin") and request.url.path != "/admin/logout" and is_admin(request):
-            from .auth import ADMIN_COOKIE, admin_token
-            response.set_cookie(ADMIN_COOKIE, admin_token(), max_age=60 * 60 * 12, samesite="lax", httponly=True)
+        if (request.url.path.startswith("/admin") and request.url.path not in ("/admin/logout", "/admin/settings/password")
+                and "set-cookie" not in response.headers and is_admin(request)):
+            from .auth import ADMIN_COOKIE, admin_token, set_cookie
+            set_cookie(response, request, ADMIN_COOKIE, admin_token(), 60 * 60 * 12)
         return response
+
+    # outermost, so it runs before everything above (see security.py)
+    from .security import SecurityMiddleware
+    app.add_middleware(SecurityMiddleware)
 
     @app.exception_handler(404)
     async def not_found(request: Request, exc):  # pragma: no cover - simple UX nicety

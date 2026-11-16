@@ -35,7 +35,7 @@
 </div>
 <div class="toasts" id="toasts"></div>
 <div id="modalRoot"></div>
-<script>window.RDR = { tech: {{ tech | tojson }}, types: {{ types | tojson }}, secure: {{ 'true' if secure else 'false' }} };</script>
+<script nonce="{{ request.state.csp_nonce }}">window.RDR = { tech: {{ tech | tojson }}, types: {{ types | tojson }}, secure: {{ 'true' if secure else 'false' }} };</script>
 <script src="/static/vendor/html5-qrcode.min.js?v={{ version }}"></script>
 <script src="/static/js/lock.js?v={{ version }}"></script>
 <script src="/static/js/phone.js?v={{ version }}"></script>

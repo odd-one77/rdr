@@ -64,6 +64,22 @@ def youtube_embed(url: str) -> str | None:
     return f"https://www.youtube.com/embed/{vid}?autoplay=1&mute=1&controls=0&loop=1&playlist={vid}&rel=0&modestbranding=1&playsinline=1"
 
 
+def browser_feed(url: str) -> dict:
+    """What the mirror page is told about a feed. Relay feeds (rtsp, capture cards) are played from
+    /streams, so their address, which may carry a camera password, never leaves the server."""
+    url = (url or "").strip()
+    kind = classify_feed(url)
+    direct = kind in ("hls", "file") and url.lower().startswith(("http://", "https://", "/"))
+    return {"kind": kind if kind != "hls" and kind != "file" or direct else "unknown", "relay": kind in RELAY_KINDS,
+            "url": url if direct else None, "embed": youtube_embed(url) if kind == "youtube" else None}
+
+
+def mask(text: str) -> str:
+    """Hide passwords in addresses shown in errors: rtsp://user:secret@cam becomes rtsp://user:***@cam."""
+    import re
+    return re.sub(r"(\w+://[^/\s:@]*:)[^@\s/]*@", r"\1***@", text or "")
+
+
 FFMPEG_MISSING = ("ffmpeg not found. Put ffmpeg.exe in the tools folder next to the app." if sys.platform.startswith("win")
                   else "ffmpeg not found. Install it with: apt install ffmpeg")
 
@@ -94,21 +110,29 @@ def _input_args(url: str) -> tuple[list[str], bool]:
     kind = classify_feed(url)
     if kind == "dshow":
         name, _, query = url[len("dshow:"):].partition("?")
-        args = ["-f", "dshow", "-rtbufsize", "256M"]
-        for part in query.split("&"):
-            if "=" in part:
-                k, v = part.split("=", 1)
-                args += [f"-{k}", v]
-        return args + ["-i", f"video={name.strip()}"], True
+        return ["-f", "dshow", "-rtbufsize", "256M"] + _capture_options(query) + ["-i", f"video={name.strip()}"], True
     if kind == "decklink":
         name, _, query = url[len("decklink:"):].partition("?")
-        args = ["-f", "decklink"]
-        for part in query.split("&"):
-            if "=" in part:
-                k, v = part.split("=", 1)
-                args += [f"-{k}", v]
-        return args + ["-i", name.strip()], True
+        return ["-f", "decklink"] + _capture_options(query) + ["-i", name.strip()], True
     return ["-rtsp_transport", "tcp", "-fflags", "nobuffer", "-flags", "low_delay", "-i", url], False
+
+
+CAPTURE_OPTIONS = {"video_size", "framerate", "pixel_format", "vcodec", "rtbufsize", "format_code", "video_input",
+                   "raw_format", "duplex_mode", "timecode_format", "video_pin_name", "crossbar_video_input_pin_number",
+                   "audio_input", "channels", "draw_bars", "queue_size"}
+
+
+def _capture_options(query: str) -> list[str]:
+    """Options after '?' in a dshow:/decklink: address. Only known capture options with plain values,
+    so the address can never name an output file or another ffmpeg switch."""
+    import re
+    args: list[str] = []
+    for part in query.split("&"):
+        k, sep, v = part.partition("=")
+        k, v = k.strip(), v.strip()
+        if sep and k in CAPTURE_OPTIONS and re.fullmatch(r"[A-Za-z0-9 ._:/x+-]{1,40}", v) and not v.startswith("-"):
+            args += [f"-{k}", v]
+    return args
 
 
 def list_capture_devices() -> str:
@@ -157,7 +181,7 @@ def ensure_running(site_id: int, url: str, transcode: bool = False) -> dict:
         out = _site_dir(site_id)
         for f in out.glob("*"):
             f.unlink(missing_ok=True)
-        log = open(out / "ffmpeg.log", "w", encoding="utf-8")
+        log = open(_log_path(site_id), "w", encoding="utf-8")
         proc = subprocess.Popen(_command(ffmpeg, url, out, transcode), stdout=log, stderr=subprocess.STDOUT,
                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         entry = {"proc": proc, "url": url, "started": now, "last_ping": now, "transcode": transcode, "log": log}
@@ -175,10 +199,15 @@ def _public(site_id: int, entry: dict) -> dict:
     return info
 
 
+def _log_path(site_id: int) -> Path:
+    # next to the data, not in the folder /streams serves
+    return DATA_DIR / f"ffmpeg-{int(site_id)}.log"
+
+
 def _tail_log(site_id: int, lines: int = 3) -> str:
     try:
-        text = (STREAM_DIR / str(site_id) / "ffmpeg.log").read_text(encoding="utf-8", errors="replace").strip().splitlines()
-        return " | ".join(text[-lines:])
+        text = _log_path(site_id).read_text(encoding="utf-8", errors="replace").strip().splitlines()
+        return mask(" | ".join(text[-lines:]))
     except OSError:
         return ""
 

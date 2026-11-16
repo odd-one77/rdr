@@ -83,7 +83,7 @@
 </aside>
 <div class="toasts" id="toasts"></div>
 <div id="modalRoot"></div>
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
   window.RDR = { tech: {{ tech | tojson }}, types: {{ types | tojson }} };
 </script>
 <script src="/static/js/lock.js?v={{ version }}"></script>

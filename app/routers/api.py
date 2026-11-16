@@ -28,6 +28,21 @@ def require_tech(request: Request) -> dict:
     return tech
 
 
+def require_staff(request: Request) -> None:
+    """A tech session or Admin: for figures nobody outside the desk needs."""
+    if is_admin(request):
+        return
+    with get_db() as db:
+        if live_tech(db, request) is None:
+            raise HTTPException(status_code=401, detail="Pick a tech and site first")
+
+
+@router.get("/ping")
+def ping():
+    """Open to everyone, also before the access code: tells a restarting page the server is back."""
+    return {"ok": True}
+
+
 def _row(r) -> Optional[dict]:
     return dict(r) if r is not None else None
 
@@ -205,7 +220,7 @@ def swap(body: SwapIn, tech: dict = Depends(require_tech)):
             raise HTTPException(400, str(e))
 
 
-@router.get("/summary")
+@router.get("/summary", dependencies=[Depends(require_staff)])
 def summary(request: Request, scope: str = "site"):
     with get_db() as db:
         tech = live_tech(db, request)
@@ -213,7 +228,7 @@ def summary(request: Request, scope: str = "site"):
         return {"site": inventory.summary(db, site_id), "all": inventory.summary(db, None)}
 
 
-@router.get("/recent")
+@router.get("/recent", dependencies=[Depends(require_staff)])
 def recent(request: Request, limit: int = 25, scope: str = "site"):
     with get_db() as db:
         tech = live_tech(db, request)
@@ -274,13 +289,18 @@ def away_start(body: AwayIn, tech: dict = Depends(require_tech)):
 
 
 @router.post("/away/unlock")
-def away_unlock(body: Unlock, tech: dict = Depends(require_tech)):
-    import time as _time
+def away_unlock(request: Request, body: Unlock, tech: dict = Depends(require_tech)):
+    from .. import security
     from ..auth import check_admin_password
+    origin = security.origin_from(request)
+    wait = security.limiter.wait("admin password", origin)
+    if wait:
+        raise HTTPException(429, security.wait_text(wait))
     with get_db() as db:
         if not check_admin_password(db, body.password):
-            _time.sleep(0.7)
+            security.limiter.fail("admin password", origin)
             raise HTTPException(403, "Wrong admin password")
+        security.limiter.ok("admin password", origin)
         away.clear(db, tech["site_id"])
     return {"ok": True}
 
@@ -291,8 +311,36 @@ class KioskState(BaseModel):
     state: dict
 
 
+def _clean(value, depth: int = 0, key: str = ""):
+    """What the kiosk shows on its mirror, reduced to plain short values. The mirror is open to anyone
+    who can see the screen, so nothing a kiosk sends may turn into markup or styling there."""
+    if depth > 6:
+        return None
+    if isinstance(value, dict):
+        return {str(k)[:40]: _clean(v, depth + 1, str(k)) for k, v in list(value.items())[:60]}
+    if isinstance(value, list):
+        return [_clean(v, depth + 1, key) for v in value[:300]]
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, (int, float)):
+        return value if abs(value) < 1e15 else None
+    text = str(value)[:300]
+    if key == "faceplate":
+        return inventory.clean_hex(text)
+    return text
+
+
+def clean_state(state: dict) -> dict:
+    out = _clean(state) or {}
+    result = out.get("result")
+    if isinstance(result, dict):
+        result["kind"] = "out" if result.get("kind") == "out" else "in"
+    return out
+
+
 @router.post("/kiosk/state")
 def kiosk_state(body: KioskState, tech: dict = Depends(require_tech)):
+    body.state = clean_state(body.state)
     with get_db() as db:
         t = db.execute("SELECT display_name FROM techs WHERE id = ?", (tech["tech_id"],)).fetchone()
         body.state["tech_name"] = t["display_name"] if t else None

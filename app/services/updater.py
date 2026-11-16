@@ -74,7 +74,10 @@ def _version_tuple(v: str) -> tuple:
 def _gh_request(url: str, token: str | None, accept: str = "application/vnd.github+json", timeout: int = 30) -> bytes:
     req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "RDR-updater", "X-GitHub-Api-Version": "2022-11-28"})
     if token:
-        req.add_header("Authorization", f"Bearer {token}")
+        # never carried along a redirect: asset downloads go on to a storage host that must not see the token
+        req.add_unredirected_header("Authorization", f"Bearer {token}")
+    if not url.startswith("https://"):
+        raise ValueError("Update downloads must use https")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
 

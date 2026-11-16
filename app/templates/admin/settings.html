@@ -3,12 +3,13 @@
 {% block admin %}
 <div class="page-head"><h1>Settings</h1><span class="muted mono sm">RDR v{{ info.version }}{% if info.commit %} · {{ info.branch }}@{{ info.commit }}{% endif %}</span></div>
 {% if request.query_params.get('restarting') %}<div class="banner ok" id="restartNote">Server is restarting. This page reloads when it is back.</div>
-<script>(function(){let n=0;const t=setInterval(async()=>{n++;try{const r=await fetch('/api/summary',{cache:'no-store'});if(r.ok&&n>2){clearInterval(t);location.href='/admin/settings?msg=Back+online'+location.hash;}}catch(e){}},1500);})();</script>{% endif %}
+<script nonce="{{ request.state.csp_nonce }}">(function(){let n=0;const t=setInterval(async()=>{n++;try{const r=await fetch('/api/ping',{cache:'no-store'});if(r.status<500&&n>2){clearInterval(t);location.href='/admin/settings?msg=Back+online'+location.hash;}}catch(e){}},1500);})();</script>{% endif %}
 
 <nav class="tabs" id="setTabs">
   <a href="#mirror" data-tab="mirror">Mirror screen</a>
   <a href="#phones" data-tab="phones">Phones</a>
   <a href="#server" data-tab="server">Server</a>
+  <a href="#remote" data-tab="remote">Remote access</a>
   <a href="#updates" data-tab="updates">Updates{% if info.update_available or (info.behind and info.behind > 0) %}<span class="dot" title="Update available"></span>{% endif %}</a>
   <a href="#password" data-tab="password">Password</a>
   <a href="#data" data-tab="data">Data</a>
@@ -137,6 +138,64 @@
     </div>
   </section>
 
+  <section class="set-section" data-tab="remote">
+    <div class="panel">
+      <div class="panel-head"><h2>Remote access</h2></div>
+      <div class="set-note">RDR only answers on the local network until this is set up. To reach it from outside, put it behind a reverse proxy or tunnel that adds HTTPS, set an access code, then turn remote access on. The README has an example proxy setup.</div>
+      <div class="set-row">
+        <div class="set-label"><b>This browser</b><span>How this page reached RDR.</span></div>
+        <div class="set-control"><span>{{ remote.how }}</span>{% if remote.here_remote and not remote.https %}<p class="help amber">Not over HTTPS. Codes and passwords cross the network readable.</p>{% endif %}</div>
+      </div>
+    </div>
+
+    <form method="post" action="/admin/settings/access-code" class="panel">
+      <div class="panel-head"><h2>Access code</h2>{% if remote.code_set %}<span class="green sm">Set</span>{% else %}<span class="muted sm">Not set</span>{% endif %}</div>
+      <div class="set-note">One shared code. Each browser enters it once and is remembered for 90 days of use. Changing it signs every other browser out.</div>
+      <div class="set-row">
+        <div class="set-label"><b>{{ 'New code' if remote.code_set else 'Code' }}</b><span>At least {{ remote.min }} characters.</span></div>
+        <div class="set-control"><input type="password" name="code" minlength="{{ remote.min }}" class="mid" autocomplete="new-password"></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Confirm</b></div>
+        <div class="set-control"><input type="password" name="confirm" class="mid" autocomplete="new-password"></div>
+      </div>
+      <div class="panel-foot"><button class="btn primary">Save code</button>{% if remote.code_set and not remote.here_remote %}<button class="btn danger lead" name="clear" value="1" formnovalidate data-confirm="Remove the access code? Remote access turns off.">Remove code</button>{% endif %}</div>
+    </form>
+
+    <form method="post" action="/admin/settings/remote" class="panel">
+      <div class="panel-head"><h2>Outside access</h2></div>
+      <div class="set-row">
+        <div class="set-label"><b>Remote access</b><span>Answer requests that come through a proxy or from a public address.</span></div>
+        <div class="set-control"><label class="check"><input type="checkbox" name="remote_access" value="1" {{ 'checked' if remote.on }} {{ 'disabled' if not remote.code_set }}> Allow with the access code</label>
+          {% if not remote.code_set %}<p class="help">Set an access code first.</p>{% endif %}</div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Who needs the code</b><span>Kiosks, phones and mirrors on the local network can skip it.</span></div>
+        <div class="set-control">
+          <label class="check"><input type="radio" name="access_scope" value="all" {{ 'checked' if remote.scope != 'proxy' }}> Every browser</label>
+          <label class="check mt-s"><input type="radio" name="access_scope" value="proxy" {{ 'checked' if remote.scope == 'proxy' }}> Only browsers outside the local network</label>
+          <p class="help">The second choice needs the proxy address below.</p></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Proxy address</b><span>The address the proxy connects to RDR from. One per line. Only these may tell RDR who the visitor is.</span></div>
+        <div class="set-control"><textarea name="trusted_proxies" rows="2" class="mid mono" placeholder="127.0.0.1">{{ remote.proxies }}</textarea></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Public address</b><span>The name people type to reach RDR from outside. One per line.</span></div>
+        <div class="set-control"><textarea name="public_hosts" rows="2" class="mid mono" placeholder="rdr.example.com">{{ remote.hosts }}</textarea></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Local names</b><span>Other names RDR is opened by on the local network. IP addresses and names like rdr.local always work.</span></div>
+        <div class="set-control"><textarea name="local_hosts" rows="2" class="mid mono" placeholder="rdr.venue.net">{{ remote.local_hosts }}</textarea></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label"><b>Admin from outside</b><span>Off keeps Admin on the local network only.</span></div>
+        <div class="set-control"><label class="check"><input type="checkbox" name="remote_admin" value="1" {{ 'checked' if remote.admin }}> Allow Admin through the proxy</label></div>
+      </div>
+      <div class="panel-foot"><button class="btn primary">Save</button></div>
+    </form>
+  </section>
+
   <section class="set-section" data-tab="updates">
     <div class="panel">
       <div class="panel-head"><h2>{{ 'Update from Git' if info.mode == 'git' else 'Update from GitHub release' }}</h2><a class="btn sm ghost" href="/admin/settings?fetch=1#updates">Check for updates</a></div>
@@ -183,8 +242,8 @@
         <div class="set-control"><input type="password" name="current" required class="mid" autocomplete="current-password"></div>
       </div>
       <div class="set-row">
-        <div class="set-label"><b>New password</b><span>At least 4 characters. It also unlocks the desk after a break.</span></div>
-        <div class="set-control"><input type="password" name="password" required class="mid" autocomplete="new-password"></div>
+        <div class="set-label"><b>New password</b><span>At least {{ remote.min }} characters. It also unlocks the desk after a break.</span></div>
+        <div class="set-control"><input type="password" name="password" required minlength="{{ remote.min }}" class="mid" autocomplete="new-password"></div>
       </div>
       <div class="set-row">
         <div class="set-label"><b>Confirm new password</b></div>
@@ -219,7 +278,7 @@
     </form>
   </section>
 </div>
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
 (function () {
   var wrap = document.getElementById('setWrap'), tabs = document.querySelectorAll('#setTabs a');
   function show(name) {

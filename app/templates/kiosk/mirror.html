@@ -18,9 +18,10 @@
   </div>
   <div class="mirror-foot"><span class="live" id="siteName">{{ mirror_site.name }}</span><span id="mclock"></span></div>
 </div>
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
 (function(){
-  const SITE = {{ mirror_site.id }};
+  const SITE = {{ mirror_site.id | tojson }};
+  const hex = v => /^[0-9a-f]{6}$/i.test(v || '') ? v : '';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const clock = () => { document.getElementById('mclock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
   setInterval(clock, 1000); clock();
@@ -64,12 +65,12 @@
   // Animate only what is new: a screen change animates everything, an added item animates just itself.
   let lastMode = '', lastKeys = new Set(), seenKeys = new Set(), fresh = true;
   let faceplate = '';
-  const chip = id => `<span class="bolero${faceplate ? ' faced' : ''}"${faceplate ? ` style="--face:#${esc(faceplate)}"` : ''}>Bolero ${esc(String(id).replace(/^bolero\s*/i, ''))}</span>`;
+  const chip = id => `<span class="bolero${faceplate ? ' faced' : ''}"${faceplate ? ` style="--face:#${faceplate}"` : ''}>Bolero ${esc(String(id).replace(/^bolero\s*/i, ''))}</span>`;
   const item = (g, small) => { const isNew = fresh || !lastKeys.has(g.key); seenKeys.add(g.key); return `<li class="${isNew ? 'anim' : ''}${small ? ' small' : ''}"${isNew ? ` style="animation-delay:${(stagger++) * 60}ms"` : ''}><span>${g.n > 1 ? `<span class="count">${g.n} ×</span> ` : ''}${esc(g.type)}${g.id ? ' ' + chip(g.id) : ''}</span></li>`; };
   const heading = t => `<div class="heading">${t}</div>`;
   // Someone collecting for others: one block per person, their devices under their name.
   const people = (list, incoming) => `<div class="people">${list.map(g => {
-    faceplate = g.faceplate || '';
+    faceplate = hex(g.faceplate);
     const gs = group(g.items, g, incoming); gs.forEach(x => { x.key = g.name + '|' + x.key; });
     const k = 'for|' + g.name, isNew = fresh || !lastKeys.has(k); seenKeys.add(k);
     return `<section><div class="for${isNew ? ' anim' : ''}"><small>For</small><span>${esc(g.name)}</span>${gs.length ? '' : '<small>No devices yet</small>'}</div>${gs.length ? `<ul class="items">${gs.map(x => item(x, true)).join('')}</ul>` : ''}</section>`;
@@ -96,7 +97,7 @@
   }
   function render(s){
     if (s.result && s.result.items && s.result.items.length) {
-      const kind = s.result.kind;
+      const kind = s.result.kind === 'out' ? 'out' : 'in';
       const mode = 'result:' + (s.result.ts || '');
       begin(mode);
       if (kind === 'out' && s.result.groups && s.result.groups.length) {   // collected for others: addressed to the collector
@@ -107,7 +108,7 @@
           <div class="result out ${fresh ? 'anim' : ''}" style="animation-delay:${total * 60 + 80}ms">${Math.random() < 0.5 ? 'Have a great show!' : 'Have a great day!'}</div>`, mode);
         return;
       }
-      faceplate = (s.result.personInfo || {}).faceplate || '';
+      faceplate = hex((s.result.personInfo || {}).faceplate);
       const groups = group(s.result.items, s.result.personInfo);
       swap(`
         <div class="who ${fresh ? 'anim' : ''}">${esc(s.result.person || 'Devices processed')}<small>${kind === 'out' ? 'Signed out to you' : 'Signed in, thank you'}</small></div>
@@ -133,7 +134,7 @@
     idleShown = false;
     const p = s.person || {};
     const mode = 'person:' + (p.name || '');
-    begin(mode); faceplate = p.faceplate || '';
+    begin(mode); faceplate = hex(p.faceplate);
     const held = group(s.holdings, p), now = group(s.basket, p, true);
     swap(`
       <div class="who ${fresh ? 'anim' : ''}">${p.name ? 'Hi! ' + esc(p.name) : 'Processing devices'}<small>${esc([p.dept, p.role].filter(Boolean).join(' · ') || (p.name ? '' : 'One moment please'))}${p.bolero_id ? ' ' + chip(p.bolero_id) : ''}${p.radio ? ` <span class="bolero radio">${esc(p.radio)}</span>` : ''}</small></div>
@@ -173,7 +174,7 @@
     area.classList.toggle('hidden', !show);
     if (!show) return;
     if (feed.kind === 'youtube' && feed.embed) {
-      area.innerHTML = `<div class="video${animate ? ' anim' : ''}" style="--pgm-aspect: 16 / 9"><span class="pgm">PGM</span><iframe src="${feed.embed}" allow="autoplay; encrypted-media" allowfullscreen frameborder="0"></iframe></div>`;
+      area.innerHTML = `<div class="video${animate ? ' anim' : ''}" style="--pgm-aspect: 16 / 9"><span class="pgm">PGM</span><iframe src="${esc(feed.embed)}" allow="autoplay; encrypted-media" allowfullscreen frameborder="0"></iframe></div>`;
       return;
     }
     area.innerHTML = `<div class="video${animate ? ' anim' : ''}" id="video"><span class="pgm">PGM</span><video id="pgm" muted autoplay playsinline loop></video><div class="status" id="pgmStatus">Connecting to PGM feed</div></div>`;

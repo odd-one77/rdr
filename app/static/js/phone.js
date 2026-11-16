@@ -3,6 +3,7 @@
   'use strict';
   const $ = (sel, root = document) => root.querySelector(sel);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const hex = v => /^[0-9a-f]{6}$/i.test(v || '') ? v : '';   // faceplate colours go into style attributes
   const TYPES = window.RDR.types; const TECH = window.RDR.tech;
   if (!TECH) { location.replace('/start?next=/m'); return; }   // no tech and site picked: nothing here can work
   const state = { person: null, holdings: [], assignments: [], basket: [] };
@@ -56,7 +57,7 @@
   function renderPerson() {
     const p = state.person, el = $('#personPanel');
     if (!p) { el.innerHTML = ''; return; }
-    el.innerHTML = `<div class="row"><div class="grow"><b class="pname">${esc(p.name)}</b><div class="muted sm">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div></div>${p.bolero_id ? `<span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${esc(p.faceplate)}"` : ''}>Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson">&#10005;</button></div>
+    el.innerHTML = `<div class="row"><div class="grow"><b class="pname">${esc(p.name)}</b><div class="muted sm">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div></div>${p.bolero_id ? `<span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${hex(p.faceplate)}"` : ''}>Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson">&#10005;</button></div>
       ${state.holdings.length ? `<div class="muted sm mt-s">Signed out · ${state.holdings.length}: ${state.holdings.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-return-all>Return all</button></div>` : ''}
       ${state.assignments.length ? `<div class="muted sm mt-s">Reserved: ${state.assignments.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-add-all>Add all</button></div>` : ''}`;
     $('#btnClearPerson').onclick = clearPerson;
@@ -99,7 +100,7 @@
       let cls = '', note = '';
       if (d.status === 'out') { if (p && d.holder_id === p.id) { cls = 'warn'; note = 'already with this person'; } else { cls = 'conflict'; note = `out to ${d.holder_name}`; } }
       else if (d.status !== 'in') { cls = 'warn'; note = d.status; }
-      return `<li class="${cls}"><span class="idx">${i + 1}</span><span><div class="label">${esc(d.label || d.si)}</div><div class="sub">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${note ? ` · <span class="${cls === 'conflict' ? 'red' : 'amber'}">${esc(note)}</span>` : ''}</div></span><span class="badge ${d.status}">${esc(d.status)}</span><span class="remove" data-rm="${d.id}">&#10005;</span></li>`;
+      return `<li class="${cls}"><span class="idx">${i + 1}</span><span><div class="label">${esc(d.label || d.si)}</div><div class="sub">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${note ? ` · <span class="${cls === 'conflict' ? 'red' : 'amber'}">${esc(note)}</span>` : ''}</div></span><span class="badge ${esc(d.status)}">${esc(d.status)}</span><span class="remove" data-rm="${d.id}">&#10005;</span></li>`;
     }).join('');
     $('#basket').querySelectorAll('[data-rm]').forEach(el => el.onclick = () => { state.basket = state.basket.filter(x => x.id !== +el.dataset.rm); renderBasket(); });
     const n = state.basket.length;

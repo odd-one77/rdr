@@ -23,7 +23,9 @@ from pathlib import Path
 from .. import __version__
 from ..config import CONFIG_PATH, DATA_DIR, DB_PATH, UPLOAD_DIR, ensure_dirs, load_config, save_config
 
-SENSITIVE_KEYS = ("github_token",)
+SENSITIVE_KEYS = ("github_token", "bolero_admin_password")   # in an export only when asked for
+# How this machine is reached from outside belongs to the machine: never exported, never replaced by a restore
+MACHINE_KEYS = ("access_code_hash", "remote_access", "access_scope", "trusted_proxies", "public_hosts", "local_hosts", "remote_admin")
 
 
 def create(include_token: bool = False) -> tuple[str, bytes]:
@@ -41,9 +43,8 @@ def create(include_token: bool = False) -> tuple[str, bytes]:
             src.close(); dst.close()
             zf.write(snap, "rdr.db")
         cfg = load_config()
-        if not include_token:
-            for k in SENSITIVE_KEYS:
-                cfg.pop(k, None)
+        for k in MACHINE_KEYS + (() if include_token else SENSITIVE_KEYS):
+            cfg.pop(k, None)
         zf.writestr("config.json", json.dumps(cfg, indent=2))
         if UPLOAD_DIR.exists():
             for f in UPLOAD_DIR.rglob("*"):
@@ -110,9 +111,15 @@ def restore(blob: bytes, restore_config: bool = True) -> dict:
         if restore_config and "config.json" in zf.namelist():
             current = load_config()
             incoming = json.loads(zf.read("config.json"))
-            # Keep this machine's token if the backup has none.
+            if not isinstance(incoming, dict):
+                raise ValueError("config.json in the backup is not usable")
+            # Keep this machine's passwords if the backup has none, and always its remote access setup
             for k in SENSITIVE_KEYS:
                 if k not in incoming and k in current:
+                    incoming[k] = current[k]
+            for k in MACHINE_KEYS:
+                incoming.pop(k, None)
+                if k in current:
                     incoming[k] = current[k]
             save_config(incoming)
     return info

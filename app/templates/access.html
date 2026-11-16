@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Access code{% endblock %}
+{% block body %}
+<div class="login-wrap">
+  <form class="panel" method="post" action="/access">
+    <div class="panel-head"><h2>Access code</h2></div>
+    <div class="panel-body">
+      <input type="hidden" name="next" value="{{ next }}">
+      <p class="help">Enter the code from the comms team. This browser remembers it.</p>
+      <div class="field"><label for="code">Code</label><input type="password" id="code" name="code" autocomplete="current-password" autofocus required></div>
+      <button class="btn primary block" type="submit">Continue</button>
+    </div>
+  </form>
+</div>
+{% if err %}<div class="flashes"><div class="flash err" role="alert">{{ err }}</div></div>{% endif %}
+{% endblock %}

@@ -8,6 +8,7 @@
   document.addEventListener('click', e => {
     const c = e.target.closest('[data-confirm]');
     if (c && !confirm(c.dataset.confirm)) { e.preventDefault(); e.stopPropagation(); return; }
+    if (e.target.closest('[data-print]')) { window.print(); return; }
     const t = e.target.closest('[data-toggle]');
     if (t) { e.preventDefault(); const el = document.querySelector(t.dataset.toggle); if (el) el.classList.toggle('hidden'); }
   });

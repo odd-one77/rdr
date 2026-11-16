@@ -72,7 +72,10 @@ class Supervisor:
         self.url = f"http://localhost:{port}/"
         log = self._open_log()
         out = {"stdout": log, "stderr": subprocess.STDOUT} if log else {}
-        cmd = [sys.executable, "-m", "uvicorn", "app.main:app", "--host", host, "--port", str(port), "--log-level", "warning"]
+        # The app reads forwarding headers itself, and only from proxies listed in Settings (app/security.py),
+        # so uvicorn must not rewrite the client address from them.
+        safe = ["--no-proxy-headers", "--no-server-header"]
+        cmd = [sys.executable, "-m", "uvicorn", "app.main:app", "--host", host, "--port", str(port), "--log-level", "warning"] + safe
         if self.reload:
             cmd.append("--reload")
         self.main = subprocess.Popen(cmd, cwd=ROOT_DIR, creationflags=NO_WINDOW, **out)
@@ -86,8 +89,8 @@ class Supervisor:
                 https_log = open(DATA_DIR / "https.log", "a", encoding="utf-8", buffering=1)
                 https_log.write(f"\n== https server start {time.strftime('%Y-%m-%d %H:%M:%S')} port {hport}\n")
                 self.https = subprocess.Popen(
-                    [sys.executable, "-m", "uvicorn", "app.main:app", "--host", host, "--port", str(hport), "--log-level", "info",
-                     "--ssl-keyfile", str(certs.SRV_KEY), "--ssl-certfile", str(certs.SRV_CRT)],
+                    [sys.executable, "-m", "uvicorn", "app.main:app", "--host", host, "--port", str(hport), "--log-level", "info"] + safe +
+                    ["--ssl-keyfile", str(certs.SRV_KEY), "--ssl-certfile", str(certs.SRV_CRT)],
                     cwd=ROOT_DIR, stdout=https_log, stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
         self._emit("starting")
 

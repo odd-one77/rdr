@@ -48,13 +48,10 @@ def for_mirror(db: sqlite3.Connection, site_id: int) -> dict:
     snap = snapshot(db)
     site = next((s for s in snap["sites"] if s["id"] == site_id), None)
     url = (site or {}).get("rtsp_url") or ""
-    kind = streams.classify_feed(url)
     size = snap["settings"].get("pgm_size") or "half"
     return {
         "version": version(snap),
         "event": snap["event"],
         "site": {"id": site_id, "name": site["name"] if site else "RDR"},
-        "feed": {"kind": kind, "relay": kind in streams.RELAY_KINDS, "url": url or None,
-                 "embed": streams.youtube_embed(url) if kind == "youtube" else None,
-                 "size": size if size in ("small", "half", "large") else "half"},
+        "feed": dict(streams.browser_feed(url), size=size if size in ("small", "half", "large") else "half"),
     }

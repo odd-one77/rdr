@@ -2,7 +2,7 @@
 {% block title %}Outstanding{% endblock %}
 {% block admin %}
 <div class="page-head"><div><h1>Outstanding · end of event</h1><div class="sub">Who still has what, how to reach them, and when they were last at a counter.</div></div>
-  <div class="row"><a class="btn" href="/admin/reports?format=csv&report=endofevent">CSV</a><button class="btn primary" onclick="print()">Print</button></div></div>
+  <div class="row"><a class="btn" href="/admin/reports?format=csv&report=endofevent">CSV</a><button class="btn primary" type="button" data-print>Print</button></div></div>
 
 <div class="print-head">
   <div><b>{{ event.name or 'RDR' }}</b>{% if event.show_name %} · {{ event.show_name }}{% endif %}</div>
