@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), rea
 
 
 def test_installer_scripts_parse():
-    for name in ("install_debian.sh", "build_debian.sh"):
+    for name in ("install_debian.sh", "build_debian.sh", "get_debian.sh"):
         subprocess.run(["bash", "-n", str(ROOT / "installer" / name)], check=True)
 
 

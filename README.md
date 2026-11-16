@@ -34,18 +34,33 @@ Re-running a newer setup exe over the top also works and keeps `data/`.
 For a Debian 12 or 13 container (a Proxmox LXC), a VM or a PC. The container
 needs a LAN address the kiosk, mirror and phones can reach.
 
-1. Download **rdr-debian-&lt;version&gt;.tar.gz** from the latest
-   [GitHub release](https://github.com/odd-one77/rdr/releases/latest) and copy
-   it into the container. From a Proxmox host:
-   `pct push <id> rdr-debian-0.9.6.tar.gz /root/rdr-debian-0.9.6.tar.gz`
-2. In the container, as root:
+1. In the container, as root, pull the latest release from GitHub and install it:
 
    ```
-   tar -xzf rdr-debian-0.9.6.tar.gz
-   bash rdr-debian-0.9.6/installer/install_debian.sh
+   apt-get update && apt-get install -y curl
+   export GH_TOKEN=github_pat_your_token
+   curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
+     https://api.github.com/repos/odd-one77/rdr/contents/installer/get_debian.sh | bash
    ```
-3. Open the address it prints (`http://<container-ip>:8080`), go to **Admin**
+
+   The repo is private, so `GH_TOKEN` is a GitHub fine-grained token with
+   *Contents: read* on it, the same one **Update and restart** uses.
+2. Open the address it prints (`http://<container-ip>:8080`), go to **Admin**
    and set the admin password.
+
+Running the same command again upgrades to the latest release. For one named
+release end the command with `| bash -s 0.9.7`.
+
+Without GitHub access from the container, download
+**rdr-debian-&lt;version&gt;.tar.gz** from the latest
+[GitHub release](https://github.com/odd-one77/rdr/releases/latest), copy it in
+(from a Proxmox host: `pct push <id> rdr-debian-0.9.7.tar.gz /root/rdr-debian-0.9.7.tar.gz`)
+and run:
+
+```
+tar -xzf rdr-debian-0.9.7.tar.gz
+bash rdr-debian-0.9.7/installer/install_debian.sh
+```
 
 The installer adds `python3`, `python3-venv` and `ffmpeg` from Debian, puts
 the app in `/opt/rdr` and keeps the data (database, backups, settings) in
@@ -63,8 +78,8 @@ UTC. Check with `date` and set the zone once:
 `timedatectl set-timezone Europe/London`, then `systemctl restart rdr`.
 
 Upgrading: **Update and restart** in Admin works as on Windows (same GitHub
-token). Or unpack a newer download and run the installer again. Either way
-`/var/lib/rdr` is left alone.
+token). Or run the install command again. Either way `/var/lib/rdr` is left
+alone.
 
 Capture card feeds (`dshow:`) are Windows only. On Debian the programme feed
 takes RTSP, YouTube or a direct link.
@@ -78,7 +93,7 @@ To remove RDR: `systemctl disable --now rdr`, delete
 The same download builds a Debian based image:
 
 ```
-tar -xzf rdr-debian-0.9.6.tar.gz && cd rdr-debian-0.9.6
+tar -xzf rdr-debian-0.9.7.tar.gz && cd rdr-debian-0.9.7
 docker build -t rdr .
 docker run -d --name rdr --restart unless-stopped --network host \
   -e TZ=Europe/London -v rdr-data:/data rdr
@@ -272,7 +287,8 @@ band on the Bolero chip beside the person's name on the kiosk and mirror.
 2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
 3. GitHub Actions (`.github/workflows/release.yml`) runs the tests, builds
    `rdr-debian-0.2.0.tar.gz` and installs it in clean Debian 12 and 13
-   containers, as a systemd service and as a Docker image, then builds
+   containers, as a systemd service and as a Docker image, checks that
+   `installer/get_debian.sh` can pull and install the latest release, then builds
    `RDR-Setup-0.2.0.exe` and `rdr-app-0.2.0.zip` on a Windows runner and
    publishes the release. Installed copies pick it up via *Update and restart*.
 
