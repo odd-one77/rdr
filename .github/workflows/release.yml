@@ -65,7 +65,11 @@ jobs:
             docker run --rm -v "$PWD/dist:/dist:ro" -v "$RUNNER_TEMP/check.sh:/check.sh:ro" "$image" bash /check.sh
           done
       - name: Pull the latest release from GitHub in a clean container, without a token
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # gh only checks that a release exists yet; the container gets no token
+          if ! gh release view -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then echo "No release yet, nothing to pull"; exit 0; fi
           docker run --rm -e RDR_SKIP_FFMPEG=1 -v "$PWD/installer/get_debian.sh:/get_debian.sh:ro" debian:12 \
             bash -c 'bash < /get_debian.sh && test -s /opt/rdr/VERSION && test "$(stat -c %U /opt/rdr/app)" = rdr && echo "== Pulled and installed RDR $(cat /opt/rdr/VERSION)"'
       - name: Install as a systemd service, then upgrade over the top

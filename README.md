@@ -44,17 +44,17 @@ needs a LAN address the kiosk, mirror and phones can reach.
    and set the admin password.
 
 Running the same command again upgrades to the latest release. For one named
-release end the command with `| bash -s 0.9.11`.
+release end the command with `| bash -s 0.9.12`.
 
 Without GitHub access from the container, download
 **rdr-debian-&lt;version&gt;.tar.gz** from the latest
 [GitHub release](https://github.com/odd-one77/rdr/releases/latest), copy it in
-(from a Proxmox host: `pct push <id> rdr-debian-0.9.11.tar.gz /root/rdr-debian-0.9.11.tar.gz`)
+(from a Proxmox host: `pct push <id> rdr-debian-0.9.12.tar.gz /root/rdr-debian-0.9.12.tar.gz`)
 and run:
 
 ```
-tar -xzf rdr-debian-0.9.11.tar.gz
-bash rdr-debian-0.9.11/installer/install_debian.sh
+tar -xzf rdr-debian-0.9.12.tar.gz
+bash rdr-debian-0.9.12/installer/install_debian.sh
 ```
 
 The installer adds `python3`, `python3-venv` and `ffmpeg` from Debian, puts
@@ -88,7 +88,7 @@ To remove RDR: `systemctl disable --now rdr`, delete
 The same download builds a Debian based image:
 
 ```
-tar -xzf rdr-debian-0.9.11.tar.gz && cd rdr-debian-0.9.11
+tar -xzf rdr-debian-0.9.12.tar.gz && cd rdr-debian-0.9.12
 docker build -t rdr .
 docker run -d --name rdr --restart unless-stopped --network host \
   -e TZ=Europe/London -v rdr-data:/data rdr
