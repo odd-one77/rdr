@@ -60,7 +60,7 @@
       <div class="set-row">
         <div class="set-label"><b>Status</b></div>
         <div class="set-control"><dl class="kv">
-          <dt>ffmpeg</dt><dd>{% if streams.ffmpeg %}<span class="green mono sm">{{ streams.ffmpeg }}</span>{% else %}<span class="amber">Not found. Put ffmpeg.exe in the tools folder next to the app.</span>{% endif %}</dd>
+          <dt>ffmpeg</dt><dd>{% if streams.ffmpeg %}<span class="green mono sm">{{ streams.ffmpeg }}</span>{% else %}<span class="amber">{% if on_windows %}Not found. Put ffmpeg.exe in the tools folder next to the app.{% else %}Not found. Install it on the server with <span class="mono">apt install ffmpeg</span>.{% endif %}</span>{% endif %}</dd>
           {% for sid, st in streams.streams.items() %}<dt>Site {{ sid }}</dt><dd>{{ 'Running' if st.running else 'Stopped' }}{% if st.error %} · <span class="red">{{ st.error }}</span>{% endif %}</dd>{% endfor %}
         </dl></div>
       </div>
@@ -82,7 +82,7 @@
           <dt>Expires</dt><dd>{{ https.cert.expires or 'unknown' }}</dd>
         </dl>
         {% if https.log and not https.listening %}<div class="code mt-s">{{ https.log | join('\n') }}</div>{% endif %}
-        <p class="help">Phones still can't connect? Allow <span class="mono">python.exe</span> through Windows Firewall for private networks, or open port {{ https.port }}.</p></div>
+        <p class="help">Phones still can't connect? {% if on_windows %}Allow <span class="mono">python.exe</span> through Windows Firewall for private networks, or open port {{ https.port }}.{% else %}Check that port {{ https.port }} is open on the server's firewall.{% endif %}</p></div>
       </div>
       <form method="post" action="/admin/settings/https">
         <input type="hidden" name="https_port" value="{{ https.port }}">

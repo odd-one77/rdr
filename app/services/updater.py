@@ -4,7 +4,8 @@ Two modes, picked automatically:
 
 * **git**     - the folder is a git checkout and git is installed (developer
                 setups). Runs ``git pull --ff-only``.
-* **release** - installed from the Windows setup exe (no git). Downloads the
+* **release** - installed from the Windows setup exe or the Debian download
+                (no git). Downloads the
                 ``rdr-app-<version>.zip`` asset of the latest GitHub release and
                 unpacks it over the install folder. The repo is private, so a
                 GitHub token with read access is stored in data/config.json.
@@ -206,7 +207,11 @@ def apply_zip(blob: bytes, lines: list[str] | None = None) -> int:
     lines = lines if lines is not None else []
     written = 0
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
-        names = [n for n in zf.namelist() if not n.endswith("/")]
+        # The release zip is built on Windows and names its entries with backslashes.
+        # Python only reads those as folders on Windows, so normalise them here.
+        entries = [(n, n.replace("\\", "/")) for n in zf.namelist()]
+        entries = [(n, path) for n, path in entries if not path.endswith("/")]
+        names = [path for _, path in entries]
         # Tolerate a single top-level folder inside the zip (e.g. "rdr-app-0.2.0/app/...").
         prefix = ""
         tops = {n.split("/", 1)[0] for n in names}
@@ -215,8 +220,8 @@ def apply_zip(blob: bytes, lines: list[str] | None = None) -> int:
         # Remove old app/ tree first so deleted modules do not linger.
         if any(n[len(prefix):].startswith("app/") for n in names):
             shutil.rmtree(ROOT_DIR / "app", ignore_errors=True)
-        for n in names:
-            rel = n[len(prefix):]
+        for n, path in entries:
+            rel = path[len(prefix):]
             top = rel.split("/", 1)[0]
             if top not in UPDATABLE or ".." in rel:
                 continue

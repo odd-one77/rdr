@@ -64,6 +64,10 @@ def youtube_embed(url: str) -> str | None:
     return f"https://www.youtube.com/embed/{vid}?autoplay=1&mute=1&controls=0&loop=1&playlist={vid}&rel=0&modestbranding=1&playsinline=1"
 
 
+FFMPEG_MISSING = ("ffmpeg not found. Put ffmpeg.exe in the tools folder next to the app." if sys.platform.startswith("win")
+                  else "ffmpeg not found. Install it with: apt install ffmpeg")
+
+
 def ffmpeg_path() -> str | None:
     """ffmpeg bundled by the installer (tools/), next to the app, or on PATH."""
     exe = "ffmpeg.exe" if sys.platform.startswith("win") else "ffmpeg"
@@ -149,7 +153,7 @@ def ensure_running(site_id: int, url: str, transcode: bool = False) -> dict:
             _stop_locked(site_id)
         ffmpeg = ffmpeg_path()
         if not ffmpeg:
-            return {"running": False, "error": "ffmpeg not found. Put ffmpeg.exe in the tools folder or install ffmpeg."}
+            return {"running": False, "error": FFMPEG_MISSING}
         out = _site_dir(site_id)
         for f in out.glob("*"):
             f.unlink(missing_ok=True)

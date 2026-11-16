@@ -8,12 +8,14 @@ server is started again with the freshly pulled code.
     python run.py --no-browser
     python run.py --port 9000
 
-For the Windows tray application (no console window) use tray.py.
+For the Windows tray application (no console window) use tray.py. On Debian
+the systemd service set up by installer/install_debian.sh runs this file.
 """
 from __future__ import annotations
 
 import argparse
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -40,6 +42,13 @@ def main() -> int:
 
     sup = Supervisor(open_browser=False if args.no_browser else None, reload=args.reload, port=args.port, host=args.host)
     sup.on_change = lambda st: print(f"  RDR {st}  ->  {sup.url}" + (f"   https: {sup.https_url}" if sup.https_url else "") + "   (Ctrl+C to stop)", flush=True)
+    # A service manager stops RDR with SIGTERM: shut down the same way as Ctrl+C.
+    def _terminate(*_):
+        raise KeyboardInterrupt
+    try:
+        signal.signal(signal.SIGTERM, _terminate)
+    except (ValueError, OSError):
+        pass
     try:
         return sup.run_forever()
     except KeyboardInterrupt:

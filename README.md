@@ -2,8 +2,9 @@
 
 Sign-out / sign-in and warehousing for comms devices at live events: Bolero
 beltpacks, radios, RSMs, headsets, earpieces and anything else with an SI
-barcode. Runs on a Windows 11 box, stores everything locally in SQLite, and is
-used from browsers on the LAN (kiosk PC, customer-facing mirror screen, phones).
+barcode. Runs on a Windows 11 box or in a Debian container, stores everything
+locally in SQLite, and is used from browsers on the LAN (kiosk PC,
+customer-facing mirror screen, phones).
 
 ## Install (Windows, one click)
 
@@ -28,10 +29,72 @@ release and swaps the app code in place. The repo is private, so paste a
 GitHub fine-grained token (Contents: read) under *Update source* once.
 Re-running a newer setup exe over the top also works and keeps `data/`.
 
+## Install (Debian container)
+
+For a Debian 12 or 13 container (a Proxmox LXC), a VM or a PC. The container
+needs a LAN address the kiosk, mirror and phones can reach.
+
+1. Download **rdr-debian-&lt;version&gt;.tar.gz** from the latest
+   [GitHub release](https://github.com/odd-one77/rdr/releases/latest) and copy
+   it into the container. From a Proxmox host:
+   `pct push <id> rdr-debian-0.9.6.tar.gz /root/rdr-debian-0.9.6.tar.gz`
+2. In the container, as root:
+
+   ```
+   tar -xzf rdr-debian-0.9.6.tar.gz
+   bash rdr-debian-0.9.6/installer/install_debian.sh
+   ```
+3. Open the address it prints (`http://<container-ip>:8080`), go to **Admin**
+   and set the admin password.
+
+The installer adds `python3`, `python3-venv` and `ffmpeg` from Debian, puts
+the app in `/opt/rdr` and keeps the data (database, backups, settings) in
+`/var/lib/rdr`. RDR runs as its own user under a systemd service named `rdr`
+that starts on boot and comes back if it stops.
+
+| Command | What |
+|---------|------|
+| `systemctl status rdr` | Is it running |
+| `systemctl restart rdr` | Restart the server |
+| `journalctl -u rdr -f` | Follow the log |
+
+Times are recorded with the server's clock, and a new container is often on
+UTC. Check with `date` and set the zone once:
+`timedatectl set-timezone Europe/London`, then `systemctl restart rdr`.
+
+Upgrading: **Update and restart** in Admin works as on Windows (same GitHub
+token). Or unpack a newer download and run the installer again. Either way
+`/var/lib/rdr` is left alone.
+
+Capture card feeds (`dshow:`) are Windows only. On Debian the programme feed
+takes RTSP, YouTube or a direct link.
+
+To remove RDR: `systemctl disable --now rdr`, delete
+`/etc/systemd/system/rdr.service` and `/opt/rdr`, then `userdel rdr`. Deleting
+`/var/lib/rdr` deletes the data.
+
+### Docker
+
+The same download builds a Debian based image:
+
+```
+tar -xzf rdr-debian-0.9.6.tar.gz && cd rdr-debian-0.9.6
+docker build -t rdr .
+docker run -d --name rdr --restart unless-stopped --network host \
+  -e TZ=Europe/London -v rdr-data:/data rdr
+```
+
+Host networking gives RDR the machine's own LAN address, which phones need
+for the HTTPS certificate. Data lives in the `rdr-data` volume. To upgrade,
+build the image from a newer download, then remove and run the container
+again. *Update and restart* in Admin only changes the running container, so
+it is lost when the container is recreated.
+
 ### Developer start (git checkout)
 
 Install Python 3.11+ and Git, `git clone` the repo and double-click
-`RDR.bat`: it creates `.venv`, installs requirements and starts the server.
+`RDR.bat` (Windows) or run `./rdr.sh` (Linux, macOS): it creates `.venv`,
+installs requirements and starts the server.
 In this mode *Update and restart* uses `git pull`.
 
 | URL | What |
@@ -208,11 +271,14 @@ band on the Bolero chip beside the person's name on the kiosk and mirror.
 1. Bump `__version__` in `app/__init__.py` and commit.
 2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
 3. GitHub Actions (`.github/workflows/release.yml`) runs the tests, builds
+   `rdr-debian-0.2.0.tar.gz` and installs it in clean Debian 12 and 13
+   containers, as a systemd service and as a Docker image, then builds
    `RDR-Setup-0.2.0.exe` and `rdr-app-0.2.0.zip` on a Windows runner and
    publishes the release. Installed copies pick it up via *Update and restart*.
 
 To build locally on Windows: `powershell -File installer\build_windows.ps1`
 (needs Inno Setup 6 for the exe; without it you still get `dist\RDR`).
+The Debian download builds anywhere with bash: `bash installer/build_debian.sh`.
 
 ## Reset
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import socket
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from .db import ACTION_LABELS, get_db, init_db
 
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 templates.env.globals["version"] = __version__
+templates.env.globals["on_windows"] = sys.platform.startswith("win")
 templates.env.globals["ACTION_LABELS"] = ACTION_LABELS
 
 

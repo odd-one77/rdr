@@ -49,6 +49,29 @@ def test_apply_zip_replaces_only_app_files(tmp_path, monkeypatch):
     assert (tmp_path / "VERSION").read_text() == "9.9.9"
 
 
+def test_apply_zip_reads_windows_built_zip(tmp_path, monkeypatch):
+    """Compress-Archive writes backslash names and folder entries; a Debian install must unpack them the same."""
+    monkeypatch.setattr(updater, "ROOT_DIR", tmp_path)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "old_module.py").write_text("old")
+    blob = _zip({
+        "app\\static\\": "",
+        "app\\main.py": "new main",
+        "app\\static\\css\\rdr.css": "css",
+        "run.py": "new run",
+        "data\\rdr.db": "EVIL",
+        "app\\..\\..\\escape.txt": "EVIL",
+    })
+    assert updater.apply_zip(blob) == 3
+    assert (tmp_path / "app" / "main.py").read_text() == "new main"
+    assert (tmp_path / "app" / "static" / "css" / "rdr.css").read_text() == "css"
+    assert (tmp_path / "app" / "static").is_dir()
+    assert not (tmp_path / "app" / "old_module.py").exists()
+    assert not (tmp_path / "data").exists()
+    assert not (tmp_path.parent / "escape.txt").exists()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["app", "run.py"]
+
+
 def test_apply_zip_without_top_folder(tmp_path, monkeypatch):
     monkeypatch.setattr(updater, "ROOT_DIR", tmp_path)
     blob = _zip({"app/__init__.py": "x", "requirements.txt": "fastapi"})

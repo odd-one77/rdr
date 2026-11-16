@@ -2,8 +2,9 @@ name: Release
 
 # Push a tag like v0.2.0 (matching app/__init__.py) to build the Windows
 # installer and publish a GitHub release with:
-#   RDR-Setup-<version>.exe   one-click per-user installer
-#   rdr-app-<version>.zip     app-only bundle used by "Update from GitHub release"
+#   RDR-Setup-<version>.exe       one-click per-user installer
+#   rdr-app-<version>.zip         app-only bundle used by "Update from GitHub release"
+#   rdr-debian-<version>.tar.gz   app plus installer/install_debian.sh and the Dockerfile
 
 on:
   push:
@@ -24,8 +25,79 @@ jobs:
       - run: pip install -r requirements.txt pytest httpx
       - run: python -m pytest -q
 
+  # Builds the Debian bundle and installs it for real: in clean Debian
+  # containers, as a systemd service on the runner, and as a Docker image.
+  debian:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Debian bundle
+        run: bash installer/build_debian.sh
+      - name: Install in clean Debian containers
+        run: |
+          cat > "$RUNNER_TEMP/check.sh" <<'EOF'
+          set -euo pipefail
+          tar -xzf /dist/rdr-debian-*.tar.gz -C /tmp
+          bash /tmp/rdr-debian-*/installer/install_debian.sh
+          test "$(stat -c %U /opt/rdr/app /var/lib/rdr | sort -u)" = rdr
+          setpriv --reuid=rdr --regid=rdr --init-groups env RDR_DATA_DIR=/var/lib/rdr /opt/rdr/.venv/bin/python /opt/rdr/run.py --no-browser &
+          PID=$!
+          for i in $(seq 1 60); do
+            if python3 -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080/", timeout=2).read(1)' 2>/dev/null; then
+              ffmpeg -version > /tmp/ffmpeg-version
+              head -n 1 /tmp/ffmpeg-version
+              test -f /var/lib/rdr/rdr.db
+              kill -TERM "$PID"
+              wait "$PID"
+              echo "== RDR answered and stopped cleanly on $(. /etc/os-release; echo "$PRETTY_NAME")"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "RDR did not answer" >&2
+          exit 1
+          EOF
+          for image in debian:12 debian:13; do
+            docker run --rm -v "$PWD/dist:/dist:ro" -v "$RUNNER_TEMP/check.sh:/check.sh:ro" "$image" bash /check.sh
+          done
+      - name: Install as a systemd service, then upgrade over the top
+        run: |
+          tar -xzf dist/rdr-debian-*.tar.gz -C "$RUNNER_TEMP"
+          SRC="$(echo "$RUNNER_TEMP"/rdr-debian-*)"
+          sudo RDR_SKIP_FFMPEG=1 bash "$SRC/installer/install_debian.sh"
+          systemctl is-active rdr
+          systemctl is-enabled rdr
+          curl -fsSL -o /dev/null http://127.0.0.1:8080/
+          sudo -u rdr python3 -c "import sqlite3; c = sqlite3.connect('/var/lib/rdr/rdr.db'); c.execute(\"INSERT INTO settings (key, value) VALUES ('ci_marker', 'kept')\"); c.commit()"
+          sudo RDR_SKIP_FFMPEG=1 bash "$SRC/installer/install_debian.sh"
+          systemctl is-active rdr
+          curl -fsSL -o /dev/null http://127.0.0.1:8080/
+          test "$(sudo -u rdr python3 -c "import sqlite3; print(sqlite3.connect('/var/lib/rdr/rdr.db').execute(\"SELECT value FROM settings WHERE key = 'ci_marker'\").fetchone()[0])")" = kept
+          sudo systemctl stop rdr
+          test "$(systemctl show rdr -p Result --value)" = success
+      - name: Build and run the Docker image
+        run: |
+          SRC="$(echo "$RUNNER_TEMP"/rdr-debian-*)"
+          docker build -q -t rdr-ci "$SRC"
+          docker run -d --name rdr-ci -p 18080:8080 -v rdr-ci-data:/data rdr-ci
+          for i in $(seq 1 60); do
+            if curl -fsSL -o /dev/null http://127.0.0.1:18080/; then
+              docker exec rdr-ci test -f /data/rdr.db
+              docker stop -t 20 rdr-ci
+              test "$(docker inspect -f '{{.State.ExitCode}}' rdr-ci)" = 0
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs rdr-ci
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rdr-debian
+          path: dist/rdr-debian-*.tar.gz
+
   build-windows:
-    needs: test
+    needs: [test, debian]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +120,10 @@ jobs:
           path: |
             dist/RDR-Setup-*.exe
             dist/rdr-app-*.zip
+      - uses: actions/download-artifact@v4
+        with:
+          name: rdr-debian
+          path: dist
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -55,4 +131,5 @@ jobs:
           files: |
             dist/RDR-Setup-*.exe
             dist/rdr-app-*.zip
+            dist/rdr-debian-*.tar.gz
           generate_release_notes: true

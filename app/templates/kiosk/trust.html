@@ -13,7 +13,7 @@
       <ol class="help"><li>Download, then open Settings. Tap "Profile Downloaded" at the top and install it.</li><li>Go to Settings, General, About, Certificate Trust Settings and switch on "RDR Local CA".</li><li>Open <span class="mono">{{ https_url }}</span> in Safari.</li></ol>
       <h3>Android</h3>
       <ol class="help"><li>Download, then go to Settings, Security, Encryption and credentials, Install a certificate, CA certificate.</li><li>Pick the downloaded rdr-ca.crt.</li><li>Open <span class="mono">{{ https_url }}</span> in Chrome.</li></ol>
-      <p class="help">Cannot connect at all? On the RDR PC, allow python.exe through Windows Firewall for private networks, or open the HTTPS port.</p>
+      <p class="help">Cannot connect at all? {% if on_windows %}On the RDR PC, allow python.exe through Windows Firewall for private networks, or open the HTTPS port.{% else %}Check that the HTTPS port is open on the RDR server's firewall.{% endif %}</p>
       <p class="help">The certificate only vouches for this RDR server on this network. Valid for {{ cert.hosts | join(', ') }}{% if cert.expires %} until {{ cert.expires }}{% endif %}.</p>
       {% endif %}
       <p><a class="btn" href="/">Open RDR</a></p>
