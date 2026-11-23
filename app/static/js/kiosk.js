@@ -159,9 +159,13 @@
       searchEl.value = '';
       if (state.collector && !state.recipients.some(r => r.id === id)) {
         state.recipients.push({ id, name: d.person.name, bolero_id: d.person.bolero_id || '', faceplate: d.person.faceplate || '' });
+        // devices scanned before anyone was picked belong to this person
+        const loose = state.basket.filter(x => !x.for);
+        loose.forEach(x => { x.for = { id, name: d.person.name }; });
         const added = d.assignments.filter(a => !state.basket.some(b => b.id === a.id));
         added.forEach(a => addToBasket(a, true));
-        toast('ok', `Added ${d.person.name.split(' ')[0]}`, added.length ? `${added.length} reserved device${added.length > 1 ? 's' : ''} in the list. Scan anything else for them.` : 'Nothing reserved. Scan their devices.', 3000);
+        const n = loose.length + added.length;
+        toast('ok', `Added ${d.person.name.split(' ')[0]}`, n ? `${n} device${n > 1 ? 's' : ''} in the list for them. Scan anything else.` : 'Nothing reserved. Scan their devices.', 3000);
       }
       renderPerson(); renderBasket(); pushState(); updatePrev();
       if (state.collector) searchEl.focus(); else focusScan();
@@ -175,7 +179,8 @@
   }
   function startCollecting(p) {
     state.collector = { id: p.id, name: p.name }; state.served = []; state.recipients = [];
-    state.person = null; state.holdings = []; state.assignments = []; state.basket = state.basket.filter(x => x.for);
+    // the scanned list stays: those devices go to the first person added (only Clear empties the list)
+    state.person = null; state.holdings = []; state.assignments = [];
     renderPerson(); renderBasket(); pushState();
     searchEl.value = ''; searchEl.placeholder = 'Add a person they are collecting for'; searchEl.focus();
   }
@@ -202,7 +207,8 @@
   }
   function removeRecipient(id) {
     state.recipients = state.recipients.filter(r => r.id !== id);
-    state.basket = state.basket.filter(x => !(x.for && x.for.id === id));
+    // their devices stay in the list and go to the next person picked
+    state.basket.forEach(x => { if (x.for && x.for.id === id) delete x.for; });
     if (state.person && state.person.id === id) { state.person = null; state.holdings = []; state.assignments = []; }
     renderPerson(); renderBasket(); pushState(); searchEl.focus();
   }
@@ -420,7 +426,8 @@
     if (state.collector) {
       $('#btnSignOut').disabled = !n || !forIds.length;
       $('#btnSignOut').innerHTML = forIds.length > 1 ? `Sign out for ${forIds.length} people <small>collected by ${esc(state.collector.name.split(' ')[0])}</small>` : `Sign out${p ? ` to ${esc(p.name.split(' ')[0])}` : ''} <small>collected by ${esc(state.collector.name.split(' ')[0])}</small>`;
-      $('#actionHint').textContent = !n ? (state.recipients.length ? `Scan extra devices for ${p ? p.name : 'the selected person'}, or add more people.` : `Add the people ${state.collector.name.split(' ')[0]} is collecting for.`) : `${n} device${n > 1 ? 's' : ''} for ${forIds.length} ${forIds.length === 1 ? 'person' : 'people'} ready.`;
+      const loose = state.basket.filter(x => !x.for).length;
+      $('#actionHint').textContent = loose ? `${loose} device${loose > 1 ? 's' : ''} not given to anyone yet. Add the person they are for.` : !n ? (state.recipients.length ? `Scan extra devices for ${p ? p.name : 'the selected person'}, or add more people.` : `Add the people ${state.collector.name.split(' ')[0]} is collecting for.`) : `${n} device${n > 1 ? 's' : ''} for ${forIds.length} ${forIds.length === 1 ? 'person' : 'people'} ready.`;
     } else {
       $('#btnSignOut').disabled = !n || !p;
       $('#btnSignOut').innerHTML = p ? `Sign out to ${esc(p.name.split(' ')[0])}` : 'Sign out';
