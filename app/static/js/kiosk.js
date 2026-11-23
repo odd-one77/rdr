@@ -29,7 +29,7 @@
     created: 'Created', imported: 'Imported', assigned: 'Reserved', unassigned: 'Unreserved', transfer: 'Transfer',
   };
 
-  const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null, collector: null, recipients: [], served: [], lastPerson: null };
+  const state = { person: null, holdings: [], assignments: [], basket: [], scope: 'site', result: null, collector: null, recipients: [], served: [], lastPerson: null, autoPerson: false };
 
   // ---- api ---------------------------------------------------------------
   async function api(path, opts = {}) {
@@ -149,11 +149,14 @@
     } catch (e) { toast('err', 'Search failed', e.message); }
   }
 
-  async function selectPerson(id) {
+  // auto: picked because a scanned device is out to them. A person picked by hand is never replaced by a scan.
+  async function selectPerson(id, opts = {}) {
     hideResults();
     try {
       const d = await api(`/api/people/${id}`);
       if (state.collector && id === state.collector.id) { toast('warn', `${d.person.name.split(' ')[0]} is the collector`, 'Pick the people they are collecting for, or press Exit.'); return; }
+      if (opts.auto && (state.person || !state.basket.every(x => x.status === 'out' && x.holder_id === id))) return;   // the list changed while loading
+      if (opts.auto) state.autoPerson = true; else if (!state.person || state.person.id !== id) state.autoPerson = false;
       if (state.person && state.person.id !== id) state.lastPerson = { id: state.person.id, name: state.person.name };
       state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.result = null;
       searchEl.value = '';
@@ -173,7 +176,7 @@
   }
   function clearPerson() {
     if (state.person) state.lastPerson = { id: state.person.id, name: state.person.name };
-    state.person = null; state.holdings = []; state.assignments = [];
+    state.person = null; state.holdings = []; state.assignments = []; state.autoPerson = false;
     renderPerson(); renderBasket(); pushState(); updatePrev();
     if (state.collector) { searchEl.focus(); }
   }
@@ -388,6 +391,24 @@
     }
     state.basket.push(device); state.result = null; justAdded = device.id;
     renderBasket(); pushState();
+    followHolder(device);
+  }
+  // A scanned device that is out brings up the person who has it, ready for a swap or a return.
+  // Once the list holds devices that are not all theirs, it goes back to a plain bulk sign in.
+  function followHolder(device) {
+    if (state.collector) return;
+    const theirs = d => d.status === 'out' && d.holder_id && d.holder_id === device.holder_id;
+    if (!state.person) {
+      if (device.status === 'out' && device.holder_id && state.basket.every(theirs)) {
+        selectPerson(device.holder_id, { auto: true });
+        toast('ok', `Out to ${device.holder_name || 'someone'}`, 'Showing them for a swap or return.', 2000);
+      }
+      return;
+    }
+    if (state.autoPerson && !(device.status === 'out' && device.holder_id === state.person.id)) {
+      clearPerson(); focusScan();
+      toast('ok', 'Back to sign in', 'The list has devices from more than one person.', 2500);
+    }
   }
   function removeFromBasket(id) { state.basket = state.basket.filter(d => d.id !== id); renderBasket(); pushState(); }
   function clearBasket() { state.basket = []; renderBasket(); pushState(); }

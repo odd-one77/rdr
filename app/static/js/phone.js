@@ -6,7 +6,7 @@
   const hex = v => /^[0-9a-f]{6}$/i.test(v || '') ? v : '';   // faceplate colours go into style attributes
   const TYPES = window.RDR.types; const TECH = window.RDR.tech;
   if (!TECH) { location.replace('/start?next=/m'); return; }   // no tech and site picked: nothing here can work
-  const state = { person: null, holdings: [], assignments: [], basket: [] };
+  const state = { person: null, holdings: [], assignments: [], basket: [], autoPerson: false };
 
   async function api(path, opts = {}) {
     const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json', 'X-RDR-Site': String(TECH.site_id) }, cache: 'no-store' }, opts));
@@ -47,13 +47,15 @@
     resultsEl.querySelectorAll('.item').forEach(el => el.onmousedown = () => selectPerson(+el.dataset.id));
     resultsEl.querySelector('[data-new]').onmousedown = () => openNewPerson(q);
   }
-  async function selectPerson(id) {
+  async function selectPerson(id, opts = {}) {
     resultsEl.classList.add('hidden');
     const d = await api(`/api/people/${id}`);
+    if (opts.auto && (state.person || !state.basket.every(x => x.status === 'out' && x.holder_id === id))) return;   // the list changed while loading
+    if (opts.auto) state.autoPerson = true; else if (!state.person || state.person.id !== id) state.autoPerson = false;
     state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; searchEl.value = '';
     renderPerson(); renderBasket();
   }
-  function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; renderPerson(); renderBasket(); }
+  function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; state.autoPerson = false; renderPerson(); renderBasket(); }
   function renderPerson() {
     const p = state.person, el = $('#personPanel');
     if (!p) { el.innerHTML = ''; return; }
@@ -93,6 +95,13 @@
   function addToBasket(device, quiet = false) {
     if (state.basket.some(x => x.id === device.id)) { if (!quiet) { beep(false); toast('warn', 'Already in the list', device.label || device.si, 1200); } return; }
     state.basket.push(device); beep(true); renderBasket();
+    // as on the kiosk: a device that is out brings up its holder, mixed devices go back to bulk sign in
+    const theirs = d => d.status === 'out' && d.holder_id && d.holder_id === device.holder_id;
+    if (!state.person) {
+      if (device.status === 'out' && device.holder_id && state.basket.every(theirs)) selectPerson(device.holder_id, { auto: true }).catch(() => {});
+    } else if (state.autoPerson && !(device.status === 'out' && device.holder_id === state.person.id)) {
+      clearPerson(); toast('ok', 'Back to sign in', 'Devices from more than one person.', 2000);
+    }
   }
   function renderBasket() {
     const p = state.person;
