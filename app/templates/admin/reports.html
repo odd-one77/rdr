@@ -1,26 +1,65 @@
 {% extends "admin/base_admin.html" %}
-{% block title %}Outstanding{% endblock %}
+{% block title %}End of show{% endblock %}
 {% block admin %}
-<div class="page-head"><div><h1>Outstanding · end of event</h1><div class="sub">Who still has what, how to reach them, and when they were last at a counter.</div></div>
-  <div class="row"><a class="btn" href="/admin/reports?format=csv&report=endofevent">CSV</a><button class="btn primary" type="button" data-print>Print</button></div></div>
+{% set n_bad = eos.damaged | length + eos.lost | length %}
+<div class="page-head"><div><h1>End of show</h1><div class="sub">Devices still out, and devices damaged or lost with the reasons given.</div></div>
+  <div class="row"><nav class="seg" aria-label="Show">{% for k, label in [('both', 'Both'), ('out', 'Outstanding'), ('damaged', 'Damaged and lost')] %}<a href="/admin/reports?show={{ k }}" class="{{ 'on' if show == k }}">{{ label }}</a>{% endfor %}</nav>
+    <a class="btn" href="/admin/reports?format=csv&report=endofshow&show={{ show }}">CSV</a><button class="btn primary" type="button" data-print>Print</button></div></div>
 
 <div class="print-head">
-  <div><b>{{ event.name or 'RDR' }}</b>{% if event.show_name %} · {{ event.show_name }}{% endif %}</div>
-  <div>Outstanding devices · {{ end_of_event | length }} people · {{ outstanding | length }} devices · printed {{ now }}</div>
+  <div><b>{{ event.name or 'RDR' }}</b>{% if event.show_name %} · {{ event.show_name }}{% endif %} · {{ {'both': 'End of show', 'out': 'Outstanding devices', 'damaged': 'Damaged and lost devices'}[show] }}</div>
+  <div>{% if show != 'damaged' %}{{ eos.n_out }} still out{% endif %}{% if show == 'both' %} · {% endif %}{% if show != 'out' %}{{ eos.damaged | length }} damaged · {{ eos.lost | length }} lost{% endif %} · printed {{ now }}</div>
 </div>
 
-<div class="panel report"><div class="panel-head"><h2>{{ event.name or 'RDR' }}{% if event.show_name %} · {{ event.show_name }}{% endif %}</h2><span class="muted sm">{{ end_of_event | length }} people · {{ outstanding | length }} devices not in stock</span></div>
+<div class="grid cols-4 mb report-stats">
+  <div class="panel stat"><div class="label">Still out</div><div class="value">{{ eos.n_out }}</div><div class="sub">{{ eos.still_out | length }} people</div></div>
+  <div class="panel stat"><div class="label">Damaged</div><div class="value">{{ eos.damaged | length }}</div><div class="sub">Out of use</div></div>
+  <div class="panel stat"><div class="label">Lost</div><div class="value">{{ eos.lost | length }}</div><div class="sub">Not returned</div></div>
+  <div class="panel stat"><div class="label">Not in stock</div><div class="value">{{ eos.n_out + n_bad }}</div><div class="sub">{{ eos.by_type | length }} device types</div></div>
+</div>
+
+{% if show != 'damaged' %}
+<div class="panel report mb{{ ' is-empty' if not eos.still_out }}"><div class="panel-head"><h2>Still out · {{ eos.n_out }}</h2><span class="muted sm">{{ eos.still_out | length }} people</span></div>
+  <h2 class="print-title">Still out · {{ eos.n_out }}</h2>
   <div class="table-wrap full"><table>
-    <thead><tr><th>Person</th><th>Contact</th><th>Last seen</th><th>Device</th><th>Status</th><th>Signed out</th><th>Where / by</th></tr></thead>
-    <tbody>{% for p in end_of_event %}{% set last = loop.last %}{% for d in p['items'] %}
+    <thead><tr><th>Person</th><th>Contact</th><th>Last seen</th><th>Device</th><th>Signed out</th><th>Where / by</th></tr></thead>
+    <tbody>{% for p in eos.still_out %}{% set last = loop.last %}{% for d in p['items'] %}
     <tr{% if last %} class="last"{% endif %}>{% if loop.first %}<td rowspan="{{ p['items'] | length }}" class="vtop"><a href="/admin/people/{{ p.person_id }}"><b>{{ p.name }}</b></a><div class="muted sm">{{ [p.dept, p.role] | select | join(' · ') }}{% if p.bolero_id %} · Bolero {{ p.bolero_id }}{% endif %}</div></td>
       <td rowspan="{{ p['items'] | length }}" class="mono vtop">{{ p.phone }}</td>
       <td rowspan="{{ p['items'] | length }}" class="mono muted vtop">{{ p.last_seen or '' }}</td>{% endif %}
       <td class="sub"><a href="/admin/devices/{{ d.device_id }}">{{ d.label or d.si }}</a> <span class="si">{{ d.si }}</span><div class="muted sm">{{ d.type_name }}</div></td>
-      <td><span class="badge {{ d.status }}">{{ d.status }}</span></td>
       <td class="mono muted">{{ d.issued_at or '' }}</td>
       <td class="muted">{{ [d.issued_site, d.issued_by] | select | join(' · ') }}</td></tr>
     {% endfor %}{% endfor %}
-    {% if not end_of_event %}<tr><td colspan="7" class="empty">Nothing outstanding. Every device is back.</td></tr>{% endif %}</tbody>
+    {% if not eos.still_out %}<tr><td colspan="6" class="empty">Nothing still out. Every device is back.</td></tr>{% endif %}</tbody>
   </table></div></div>
+
+{% endif %}
+
+{% if show != 'out' %}
+{% for title, rows, empty in [('Damaged', eos.damaged, 'No damaged devices.'), ('Lost', eos.lost, 'No lost devices.')] %}
+<div class="panel report mb{{ ' is-empty' if not rows }}"><div class="panel-head"><h2>{{ title }} · {{ rows | length }}</h2></div>
+  <h2 class="print-title">{{ title }} · {{ rows | length }}</h2>
+  <div class="table-wrap full"><table>
+    <thead><tr><th>Device</th><th>Reason</th><th>Last with</th><th>Reported</th><th>Where / by</th></tr></thead>
+    <tbody>{% for d in rows %}
+    <tr><td class="sub"><a href="/admin/devices/{{ d.device_id }}">{{ d.label or d.si }}</a> <span class="si">{{ d.si }}</span><div class="muted sm">{{ d.type_name }}{% if d.home_site %} · {{ d.home_site }}{% endif %}</div></td>
+      <td>{% if d.reason %}<b>{{ d.reason }}</b>{% endif %}{% if d.note %}<div class="muted sm">{{ d.note }}</div>{% endif %}{% if not d.reason and not d.note %}<span class="muted">No reason given</span>{% endif %}</td>
+      <td>{% if d.person_id %}<a href="/admin/people/{{ d.person_id }}">{{ d.person_name }}</a><div class="muted sm">{{ [d.person_dept, d.person_phone] | select | join(' · ') }}{% if d.still_held %} · still with them{% endif %}</div>{% else %}<span class="muted">Not out at the time</span>{% endif %}</td>
+      <td class="mono muted">{{ d.flagged_at or '' }}</td>
+      <td class="muted">{{ [d.flagged_site, d.flagged_by] | select | join(' · ') }}</td></tr>
+    {% endfor %}
+    {% if not rows %}<tr><td colspan="5" class="empty">{{ empty }}</td></tr>{% endif %}</tbody>
+  </table></div></div>
+{% endfor %}
+{% endif %}
+
+{% if eos.by_type %}
+<div class="panel report"><div class="panel-head"><h2>By type</h2></div>
+  <h2 class="print-title">By type</h2>
+  <div class="table-wrap full"><table>
+    <thead><tr><th>Type</th>{% if show != 'damaged' %}<th class="num">Still out</th>{% endif %}{% if show != 'out' %}<th class="num">Damaged</th><th class="num">Lost</th>{% endif %}{% if show == 'both' %}<th class="num">Not in stock</th>{% endif %}</tr></thead>
+    <tbody>{% for t in eos.by_type %}{% set n = (t.n_out if show != 'damaged' else 0) + (t.n_damaged + t.n_lost if show != 'out' else 0) %}{% if n %}<tr><td>{{ t.type_name }}</td>{% if show != 'damaged' %}<td class="num">{{ t.n_out or '' }}</td>{% endif %}{% if show != 'out' %}<td class="num">{{ t.n_damaged or '' }}</td><td class="num">{{ t.n_lost or '' }}</td>{% endif %}{% if show == 'both' %}<td class="num"><b>{{ n }}</b></td>{% endif %}</tr>{% endif %}{% endfor %}</tbody>
+  </table></div></div>
+{% endif %}
 {% endblock %}

@@ -21,7 +21,20 @@ def prepared(client):
 
 def test_reports_pages_and_csv(client):
     r = client.get("/admin/reports")
-    assert r.status_code == 200 and "Outstanding" in r.text and "Night 3" in r.text
+    assert r.status_code == 200 and "End of show" in r.text and "Night 3" in r.text
+    assert "Broken boom arm" in r.text and "No audio on channel B" in r.text and "Damaged · 2" in r.text
+    r = client.get("/admin/reports?format=csv&report=endofshow")
+    lines = r.text.splitlines()
+    assert lines[0].startswith("Section,") and any(l.startswith("Still out,") for l in lines)
+    assert any(l.startswith("Damaged,") and "Broken boom arm" in l for l in lines)
+    r = client.get("/admin/reports?show=out")
+    assert "Still out" in r.text and "Broken boom arm" not in r.text
+    r = client.get("/admin/reports?show=damaged")
+    assert "Broken boom arm" in r.text and "Signed out</th>" not in r.text
+    lines = client.get("/admin/reports?format=csv&report=endofshow&show=out").text.splitlines()
+    assert any(l.startswith("Still out,") for l in lines) and not any(l.startswith("Damaged,") for l in lines)
+    lines = client.get("/admin/reports?format=csv&report=endofshow&show=damaged").text.splitlines()
+    assert any(l.startswith("Damaged,") for l in lines) and not any(l.startswith("Still out,") for l in lines)
     assert "Bolero ID" in client.get("/admin/reports?format=csv&report=endofevent").text
     r = client.get("/admin/reports?format=csv&report=stock")
     assert r.headers["content-type"].startswith("text/csv") and "Shared in" in r.text

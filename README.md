@@ -386,7 +386,7 @@ devices, per-event archives, multi-event history.
 |---|---|
 | ![Phone](docs/screenshots/16-phone.png) | ![Trust](docs/screenshots/17-trust.png) |
 
-| Admin dashboard | Reports (end of event) | Device types |
+| Admin dashboard | End of show report | Device types |
 |---|---|---|
 | ![Dashboard](docs/screenshots/06-admin-dashboard.png) | ![Reports](docs/screenshots/13-admin-reports.png) | ![Types](docs/screenshots/18-admin-types.png) |
 

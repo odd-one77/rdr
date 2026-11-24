@@ -86,7 +86,7 @@ def activity_by_site(db: sqlite3.Connection) -> list[sqlite3.Row]:
     ).fetchall()
 
 
-def end_of_event(db: sqlite3.Connection) -> list[dict]:
+def end_of_event(db: sqlite3.Connection, statuses: tuple[str, ...] = ("out", "lost", "damaged")) -> list[dict]:
     """Who still has what: one entry per person holding devices, with contact details,
     when they were last seen at a counter, and when/where each device was issued."""
     rows = db.execute(
@@ -101,9 +101,10 @@ def end_of_event(db: sqlite3.Connection) -> list[dict]:
         LEFT JOIN transactions x ON x.id = (SELECT MAX(id) FROM transactions WHERE device_id = d.id AND action IN ('out','out_reassign','swap_in'))
         LEFT JOIN sites s ON s.id = x.site_id
         LEFT JOIN techs tc ON tc.id = x.tech_id
-        WHERE d.status <> 'in'
+        WHERE d.status IN ({})
         ORDER BY COALESCE(NULLIF(p.dept,''), 'zzz'), p.name, t.sort_order, d.label
-        """
+        """.format(",".join("?" * len(statuses))),
+        statuses,
     ).fetchall()
     people: dict[int, dict] = {}
     for r in rows:
@@ -113,3 +114,55 @@ def end_of_event(db: sqlite3.Connection) -> list[dict]:
         })
         entry["items"].append({k: r[k] for k in ("device_id", "si", "label", "status", "type_name", "issued_at", "issued_site", "issued_by")})
     return list(people.values())
+
+
+def flagged(db: sqlite3.Connection, status: str) -> list[dict]:
+    """Devices currently damaged or lost, with the reason and note from when they were flagged,
+    who last had them and which tech and site reported it."""
+    rows = db.execute(
+        """
+        SELECT d.id AS device_id, d.si, d.label, d.status, d.linked_id, t.name AS type_name, hs.name AS home_site,
+               x.ts AS flagged_at, x.reason, x.note, s.name AS flagged_site, tc.display_name AS flagged_by,
+               COALESCE(p.id, xp.id) AS person_id, COALESCE(p.name, xp.name) AS person_name,
+               COALESCE(p.dept, xp.dept) AS person_dept, COALESCE(p.phone, xp.phone) AS person_phone,
+               (d.holder_id IS NOT NULL) AS still_held
+        FROM devices d
+        JOIN device_types t ON t.id = d.type_id
+        LEFT JOIN sites hs ON hs.id = d.site_id
+        LEFT JOIN people p ON p.id = d.holder_id
+        LEFT JOIN transactions x ON x.id = (SELECT MAX(id) FROM transactions WHERE device_id = d.id AND action = d.status)
+        LEFT JOIN people xp ON xp.id = x.person_id
+        LEFT JOIN sites s ON s.id = x.site_id
+        LEFT JOIN techs tc ON tc.id = x.tech_id
+        WHERE d.status = ?
+        ORDER BY t.sort_order, t.name, d.label, d.si
+        """,
+        (status,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def by_type(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Counts of devices not in stock, per type, for the end of show summary."""
+    return db.execute(
+        """
+        SELECT t.name AS type_name, COUNT(d.id) AS total,
+               SUM(CASE WHEN d.status = 'out' THEN 1 ELSE 0 END) AS n_out,
+               SUM(CASE WHEN d.status = 'damaged' THEN 1 ELSE 0 END) AS n_damaged,
+               SUM(CASE WHEN d.status = 'lost' THEN 1 ELSE 0 END) AS n_lost
+        FROM device_types t JOIN devices d ON d.type_id = t.id
+        GROUP BY t.id HAVING n_out + n_damaged + n_lost > 0 ORDER BY t.sort_order, t.name
+        """
+    ).fetchall()
+
+
+def end_of_show(db: sqlite3.Connection) -> dict:
+    """Everything the end of show handover needs: who still has what, and what came back damaged or went missing."""
+    still_out = end_of_event(db, statuses=("out",))
+    return {
+        "still_out": still_out,
+        "n_out": sum(len(p["items"]) for p in still_out),
+        "damaged": flagged(db, "damaged"),
+        "lost": flagged(db, "lost"),
+        "by_type": by_type(db),
+    }

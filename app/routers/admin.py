@@ -1002,11 +1002,26 @@ def settings_https(action: str = Form("enable"), https_port: int = Form(8443), e
 # -- reports ------------------------------------------------------------------
 
 @router.get("/reports", dependencies=[Depends(require_admin)])
-def reports_page(request: Request, format: str = "html", report: str = "outstanding"):
+def reports_page(request: Request, format: str = "html", report: str = "outstanding", show: str = "both"):
+    show = show if show in ("both", "out", "damaged") else "both"
     with get_db() as db:
         if format == "csv":
             buf = io.StringIO(); w = csv.writer(buf)
-            if report == "endofevent":
+            if report == "endofshow":
+                eos = reports.end_of_show(db)
+                w.writerow(["Section", "Person", "Department", "Role", "Phone", "Bolero ID", "Device", "SI", "Type",
+                            "Reason", "Note", "When", "Site", "Tech", "Last seen"])
+                for person in (eos["still_out"] if show != "damaged" else []):
+                    for d in person["items"]:
+                        w.writerow(["Still out", person["name"], person["dept"], person["role"], person["phone"], person["bolero_id"],
+                                    d["label"], d["si"], d["type_name"], "", "", d["issued_at"], d["issued_site"], d["issued_by"], person["last_seen"]])
+                for section, rows in ((("Damaged", eos["damaged"]), ("Lost", eos["lost"])) if show != "out" else ()):
+                    for d in rows:
+                        w.writerow([section, d["person_name"] or "", d["person_dept"] or "", "", d["person_phone"] or "", d["linked_id"] or "",
+                                    d["label"], d["si"], d["type_name"], d["reason"] or "", d["note"] or "", d["flagged_at"] or "",
+                                    d["flagged_site"] or "", d["flagged_by"] or "", ""])
+                name = {"both": "rdr-end-of-show.csv", "out": "rdr-outstanding.csv", "damaged": "rdr-damaged-lost.csv"}[show]
+            elif report == "endofevent":
                 w.writerow(["Person", "Department", "Role", "Phone", "Bolero ID", "Last seen", "Device", "SI", "Type", "Status", "Issued at", "Issued at site", "Issued by"])
                 for person in reports.end_of_event(db):
                     for d in person["items"]:
@@ -1026,8 +1041,7 @@ def reports_page(request: Request, format: str = "html", report: str = "outstand
                 name = "rdr-outstanding.csv"
             buf.seek(0)
             return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{name}"'})
-        ctx = {"end_of_event": reports.end_of_event(db), "outstanding": reports.outstanding(db),
-               "now": datetime.now().strftime("%d %b %Y %H:%M")}
+        ctx = {"eos": reports.end_of_show(db), "show": show, "now": datetime.now().strftime("%d %b %Y %H:%M")}
     return render(request, "admin/reports.html", active="reports", **ctx)
 
 
