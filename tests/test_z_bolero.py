@@ -16,6 +16,7 @@ SAMPLE_CHARGERS = {"items": [{"id": 7, "name": "Charger A", "bays": [{"bay": 1, 
 
 class FakeAntenna(BaseHTTPRequestHandler):
     posts: list = []
+    gets: list = []
     charger_resource = "chargers"
 
     def log_message(self, *a):  # quiet
@@ -26,6 +27,7 @@ class FakeAntenna(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("/rest/", 1)[-1]
+        FakeAntenna.gets.append(path)
         data = {"bp": SAMPLE_BP, "nodeStatus": SAMPLE_STATUS, "audioPorts": SAMPLE_PORTS, self.charger_resource: SAMPLE_CHARGERS}.get(path)
         if data is None:
             self.send_response(404); self.end_headers(); return
@@ -119,3 +121,78 @@ def test_several_hosts_merge(antenna, monkeypatch):
     assert st["ok"] and len(st["packs"]) == 3 and "127.0.0.1:1" in st["error"]   # one antenna down, the other carries the system
     assert bolero.settings()["hosts"] == [antenna, "127.0.0.1:1"] and bolero.settings()["mode"] == "artist"
     assert bolero.identify("65", seconds=0)["ok"]
+
+
+def _reset():
+    """Forget what was read, without starting the background poller (it would race the counts)."""
+    bolero.stop()
+    bolero._fetched.clear()
+    bolero._state.update(raw={}, charger_probe_at=0.0, fails=0, charger_resource=None)
+
+
+def test_read_only_guard():
+    """Nothing but Identify (a POST to .../locate) can ever be sent to the system, whatever the caller."""
+    for method, res in (("POST", "bp/60"), ("PUT", "bp/60/locate"), ("DELETE", "partyline/1"), ("POST", "nodeConfig"), ("PATCH", "bp")):
+        with pytest.raises(ValueError, match="only reads"):
+            bolero._request("127.0.0.1:1", res, method=method, body={})
+    assert all(r.endswith("/locate") for r, _ in bolero._locate_forms({"charger": {"id": 7, "bay": 1}}, 0, True))
+
+
+def test_gentle_polling(antenna, monkeypatch):
+    cfg = {"bolero_host": antenna, "bolero_enabled": True, "bolero_admin_password": "secret", "bolero_charger_resource": ""}
+    monkeypatch.setattr(bolero, "load_config", lambda: dict(cfg))
+    _reset()
+    clock = [1_000_000.0]
+    monkeypatch.setattr(bolero.time, "time", lambda: clock[0])
+    FakeAntenna.gets.clear()
+    bolero.poll_now()   # forced: everything once
+    assert sorted(FakeAntenna.gets) == ["audioPorts", "bp", "chargers", "nodeStatus"]
+    FakeAntenna.gets.clear(); bolero._poll_once()
+    assert FakeAntenna.gets == []                       # nothing due yet: no requests at all
+    clock[0] += 6; bolero._poll_once()
+    assert FakeAntenna.gets == ["nodeStatus"]           # live status only
+    FakeAntenna.gets.clear(); clock[0] += 61; bolero._poll_once()
+    assert sorted(FakeAntenna.gets) == ["audioPorts", "bp", "chargers", "nodeStatus"]
+    assert bolero.pack_info("61")["known"]              # answers still come from the cache
+
+    # without a charger licence the charger names are looked for rarely, not every poll
+    monkeypatch.setattr(FakeAntenna, "charger_resource", "none-here")
+    _reset()
+    FakeAntenna.gets.clear(); bolero.poll_now()
+    probes = [g for g in FakeAntenna.gets if g in bolero.CHARGER_RESOURCES]
+    assert len(probes) == 4
+    for _ in range(20):
+        clock[0] += 15; bolero._poll_once()
+    assert len([g for g in FakeAntenna.gets if g in bolero.CHARGER_RESOURCES]) == 4   # 5 minutes on: no new probes
+    clock[0] += bolero.CHARGER_PROBE_EVERY; bolero._poll_once()
+    assert len([g for g in FakeAntenna.gets if g in bolero.CHARGER_RESOURCES]) == 8
+
+
+def test_idle_and_backoff(monkeypatch):
+    clock = [2_000_000.0]
+    monkeypatch.setattr(bolero.time, "time", lambda: clock[0])
+    monkeypatch.setitem(bolero._state, "fails", 0)
+    bolero._touch()
+    assert bolero._next_wait() == bolero.POLL_SECONDS
+    clock[0] += bolero.IDLE_AFTER + 1
+    assert bolero._next_wait() == bolero.IDLE_POLL_SECONDS   # nobody looking: slow down
+    bolero._state["fails"] = 1
+    assert bolero._next_wait() == bolero.POLL_SECONDS * 2
+    bolero._state["fails"] = 50
+    assert bolero._next_wait() == bolero.MAX_BACKOFF          # antenna down: at most one try every two minutes
+
+
+def test_identify_once_and_off_after_undock(antenna, monkeypatch):
+    cfg = {"bolero_host": antenna, "bolero_enabled": True, "bolero_admin_password": "secret", "bolero_charger_resource": ""}
+    monkeypatch.setattr(bolero, "load_config", lambda: dict(cfg))
+    monkeypatch.setattr(FakeAntenna, "charger_resource", "chargers")
+    _reset(); bolero.poll_now()
+    n = len(FakeAntenna.posts)
+    assert bolero.identify("65", seconds=60)["ok"]
+    assert bolero.identify("65", seconds=60).get("already")     # a second kiosk picking the same person: no second write
+    assert len(FakeAntenna.posts) == n + 1
+    # the pack is taken out of the charger before the timer ends: flashing is still turned off at the same bay
+    bolero._state["chargers"] = []
+    bolero._identify_timers["65"].cancel(); bolero._safe_off("65")
+    assert FakeAntenna.posts[-1] == ("chargers/7/bays/1/locate", {"active": 0})
+    assert "65" not in bolero._identify_timers

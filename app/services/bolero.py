@@ -10,6 +10,9 @@ not a Riedel-supported interface and a firmware update may change it, so every
 read is tolerant of unknown field names and the raw answers can be inspected
 from Admin > Settings > Bolero.
 
+Read only: every request is a GET with the read-only account, except Identify (a POST to a
+.../locate resource). ``_request`` refuses anything else, so no code path can change the system.
+
 What RDR uses it for:
   * status of the pack carrying a person's Bolero ID: online / offline, battery, antenna
   * where a docked pack is: charger and bay (reported only with the Charger Monitoring
@@ -32,14 +35,31 @@ from typing import Any, Optional
 from ..config import load_config, save_config
 
 READ_AUTH = ("user", "userPass")          # the read-only account the Bolero web page uses
-POLL_SECONDS = 3
 IDENTIFY_SECONDS = 10
 CHARGER_RESOURCES = ("chargers", "charger", "chargerStatus", "chargerList")   # tried in turn until one answers
+
+# Load on the antenna. RDR is a guest on the show network, so it reads gently: one request at a time,
+# each resource only as often as it is useful, much slower when no kiosk is looking at pack data,
+# and backing off when the antenna is slow or not answering.
+POLL_SECONDS = 5                          # base tick while a kiosk is using pack data
+IDLE_AFTER = 120                          # seconds without a kiosk asking before slowing down
+IDLE_POLL_SECONDS = 30
+MAX_BACKOFF = 120                         # longest wait after repeated failures
+INTERVALS = {"nodeStatus": 5, "chargers": 10, "audioPorts": 15, "bp": 60}   # pack names and numbers rarely change
+CHARGER_PROBE_EVERY = 600                 # without the charger licence, look for charger data only this often
+MAX_BYTES = 4_000_000                     # an answer bigger than this is cut off rather than held in memory
+TIMEOUT = 4.0
+
 _lock = threading.Lock()
-_state: dict[str, Any] = {"ok": False, "error": "not configured", "packs": {}, "chargers": [], "raw": {}, "updated": 0.0, "charger_resource": None, "locate_form": {}}
+_state: dict[str, Any] = {"ok": False, "error": "not configured", "packs": {}, "chargers": [], "raw": {}, "updated": 0.0,
+                          "charger_resource": None, "charger_probe_at": 0.0, "locate_form": {}, "fails": 0, "requests": 0}
+_fetched: dict[tuple[str, str], float] = {}   # (host, resource) -> when it was last read
 _thread: Optional[threading.Thread] = None
 _stop = threading.Event()
+_wake = threading.Event()
+_last_demand = 0.0
 _identify_timers: dict[str, threading.Timer] = {}
+_identify_off: dict[str, tuple[str, str, dict]] = {}   # pack -> (host, resource, body) that turns its flashing off
 
 
 # -- config -------------------------------------------------------------------
@@ -95,9 +115,14 @@ def _is_private(host: str) -> bool:
 
 # -- http -----------------------------------------------------------------------
 
-def _request(host: str, resource: str, method: str = "GET", body: Optional[dict] = None, auth: tuple[str, str] = READ_AUTH, timeout: float = 4.0) -> Any:
+def _request(host: str, resource: str, method: str = "GET", body: Optional[dict] = None, auth: tuple[str, str] = READ_AUTH, timeout: float = TIMEOUT) -> Any:
     if not _is_private(host):
         raise ValueError("Antenna address must be on the show network (10.x, 172.16-31.x, 192.168.x)")
+    # Read only, with one exception: Identify (locate). Nothing else may ever be written to the system.
+    if method != "GET" and not (method == "POST" and resource.rstrip("/").endswith("/locate")):
+        raise ValueError(f"RDR only reads from the Bolero system; refusing {method} {resource}")
+    with _lock:
+        _state["requests"] = _state.get("requests", 0) + 1
     url = f"http://{host}/rest/{resource.lstrip('/')}"
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers={"Accept": "application/json", "User-Agent": "RDR"})
@@ -105,7 +130,7 @@ def _request(host: str, resource: str, method: str = "GET", body: Optional[dict]
         req.add_header("Content-Type", "application/json")
     req.add_header("Authorization", "Basic " + base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode())
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read()
+        raw = resp.read(MAX_BYTES)
     if not raw:
         return None
     try:
@@ -224,28 +249,63 @@ def parse_chargers(payload: Any) -> list[dict]:
 
 # -- poller -------------------------------------------------------------------------
 
-def _poll_host(host: str, charger_resource: str, raw: dict) -> tuple[dict[str, dict], list[dict], Optional[str]]:
-    bp = _request(host, "bp")
-    node_status = _request(host, "nodeStatus")
-    try:
-        audio_ports = _request(host, "audioPorts")
-    except Exception:  # noqa: BLE001 - optional
-        audio_ports = None
-    raw[host] = {"bp": bp, "nodeStatus": node_status, "audioPorts": audio_ports}
-    packs = parse_packs(bp, node_status, audio_ports)
-    chargers: list[dict] = []
-    found: Optional[str] = None
-    for res in ([charger_resource] if charger_resource else list(CHARGER_RESOURCES)):
+def _due(host: str, resource: str, now: float, force: bool) -> bool:
+    return force or now - _fetched.get((host, resource), 0.0) >= INTERVALS.get(resource, INTERVALS["chargers"])
+
+
+def _poll_host(host: str, charger_resource: Optional[str], raw: dict, force: bool = False) -> tuple[dict[str, dict], list[dict], Optional[str]]:
+    """Read what is due from one antenna; anything not due is taken from the last answer."""
+    now = time.time()
+    with _lock:
+        last = dict((_state.get("raw") or {}).get(host) or {})
+    got = dict(last)
+
+    def fetch(resource: str, key: str, optional: bool = False) -> None:
+        if key in last and not _due(host, resource, now, force):
+            return
         try:
-            payload = _request(host, res)
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                continue
-            raise
-        raw[host]["chargers"] = payload
-        chargers = parse_chargers(payload)
-        found = res
-        break
+            got[key] = _request(host, resource)
+        except Exception:  # noqa: BLE001
+            if not optional:
+                raise
+            got[key] = None
+        _fetched[(host, resource)] = now
+
+    fetch("nodeStatus", "nodeStatus")
+    fetch("bp", "bp")
+    fetch("audioPorts", "audioPorts", optional=True)
+    found: Optional[str] = None
+    if charger_resource:
+        if "chargers" not in last or _due(host, "chargers", now, force):
+            try:
+                got["chargers"] = _request(host, charger_resource)
+                found = charger_resource
+            except urllib.error.HTTPError as e:
+                if e.code != 404:
+                    raise
+                got["chargers"] = None   # the resource went away (firmware change): look again later
+            _fetched[(host, "chargers")] = now
+        else:
+            found = charger_resource
+    else:
+        with _lock:
+            probe = force or now - _state.get("charger_probe_at", 0.0) >= CHARGER_PROBE_EVERY
+            if probe:
+                _state["charger_probe_at"] = now
+        if probe:   # no charger licence is normal: look for a charger resource rarely, not on every poll
+            for res in CHARGER_RESOURCES:
+                try:
+                    got["chargers"] = _request(host, res)
+                except urllib.error.HTTPError as e:
+                    if e.code == 404:
+                        continue
+                    raise
+                found = res
+                _fetched[(host, "chargers")] = now
+                break
+    raw[host] = got
+    packs = parse_packs(got.get("bp"), got.get("nodeStatus"), got.get("audioPorts"))
+    chargers = parse_chargers(got.get("chargers")) if found else []
     return packs, chargers, found
 
 
@@ -262,7 +322,7 @@ def _merge_packs(into: dict[str, dict], more: dict[str, dict]) -> None:
             cur["online"] = True
 
 
-def _poll_once() -> None:
+def _poll_once(force: bool = False) -> None:
     st = settings()
     if not st["enabled"] or not st["hosts"]:
         with _lock:
@@ -277,7 +337,7 @@ def _poll_once() -> None:
     found: Optional[str] = None
     for host in st["hosts"]:
         try:
-            p, c, f = _poll_host(host, resource, raw)
+            p, c, f = _poll_host(host, resource, raw, force)
         except Exception as e:  # noqa: BLE001
             errors.append(f"{host}: {type(e).__name__}: {e}")
             continue
@@ -286,16 +346,36 @@ def _poll_once() -> None:
         chargers += [x for x in c if x["name"] not in seen]
         found = found or f
     with _lock:
-        if found:
-            _state["charger_resource"] = found
+        _state["charger_resource"] = found if (found or not st["charger_resource"]) else _state.get("charger_resource")
         if packs or not errors:
-            _state.update(ok=True, error="; ".join(errors), packs=packs, chargers=chargers, raw=raw, updated=time.time())
+            _state.update(ok=True, error="; ".join(errors), packs=packs, chargers=chargers, raw=raw, updated=time.time(), fails=0)
         else:
-            _state.update(ok=False, error="; ".join(errors), updated=time.time(), raw=raw)
+            _state.update(ok=False, error="; ".join(errors), updated=time.time(), fails=_state.get("fails", 0) + 1)
+
+
+def _touch() -> None:
+    """A kiosk wants pack data: poll at the normal pace again (and right away after a quiet spell)."""
+    global _last_demand
+    idle = time.time() - _last_demand > IDLE_AFTER
+    _last_demand = time.time()
+    if idle:
+        _wake.set()
+
+
+def _next_wait() -> float:
+    with _lock:
+        fails = _state.get("fails", 0)
+    if fails:
+        return min(MAX_BACKOFF, POLL_SECONDS * 2 ** min(fails, 6))
+    return IDLE_POLL_SECONDS if time.time() - _last_demand > IDLE_AFTER else POLL_SECONDS
 
 
 def _loop() -> None:
-    while not _stop.wait(POLL_SECONDS):
+    while not _stop.is_set():
+        _wake.wait(_next_wait())
+        _wake.clear()
+        if _stop.is_set():
+            break
         try:
             _poll_once()
         except Exception:  # noqa: BLE001
@@ -308,24 +388,30 @@ def start() -> None:
         _stop.clear()
         _thread = threading.Thread(target=_loop, daemon=True, name="rdr-bolero")
         _thread.start()
-        threading.Thread(target=_poll_once, daemon=True).start()
+        threading.Thread(target=_poll_once, kwargs={"force": True}, daemon=True).start()
 
 
 def stop() -> None:
     _stop.set()
+    _wake.set()
 
 
 def restart() -> None:
     stop()
     time.sleep(0.05)
     _stop.clear()
+    _wake.clear()
+    _fetched.clear()
+    with _lock:
+        _state.update(raw={}, charger_probe_at=0.0, fails=0)
     global _thread
     _thread = None
     start()
 
 
 def poll_now() -> dict:
-    _poll_once()
+    """An admin pressed Poll now or saved the settings: read everything once."""
+    _poll_once(force=True)
     return status()
 
 
@@ -338,6 +424,7 @@ def pack_names() -> dict[str, str]:
     """Pack number to the name set on the pack, from the last good poll (empty when the link is off or down)."""
     if not settings()["enabled"]:
         return {}
+    _touch()
     with _lock:
         if not _state["ok"]:
             return {}
@@ -354,6 +441,7 @@ def raw() -> dict:
 def pack_info(number: str) -> dict:
     """Everything the kiosk shows beside a Bolero ID: online, battery, antenna, charger bay."""
     number = str(number or "").strip().lstrip("0") or str(number)
+    _touch()
     with _lock:
         ok, err = _state["ok"], _state["error"]
         p = dict(_state["packs"].get(number) or {})
@@ -383,7 +471,6 @@ def _locate_forms(info: dict, bp_id, on: bool) -> list[tuple[str, dict]]:
         (f"{res}/{cid}/bays/{bay}/locate", {"active": act}),
         (f"{res}/{cid}/bay/{bay}/locate", {"active": act}),
         (f"{res}/locate", {"active": act, "chargers": [{"id": cid, "bays": [{"id": bay}]}]}),
-        (f"{res}/{cid}/bays/{bay}", {"locate": act}),
     ]
 
 
@@ -401,6 +488,8 @@ def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> d
         if not info.get("charger_data"):
             raise ValueError(f"Bolero {number} is not seen in a networked charger (no charger data from the system), so it is not flashed")
         raise ValueError(f"Bolero {number} is not in a charger, so it is not flashed")
+    if on and info["number"] in _identify_timers:   # already flashing (another kiosk, or picked again): no second write
+        return {"ok": True, "number": info["number"], "on": True, "seconds": seconds, "via": "charger", "charger": info["charger"], "resource": None, "already": True}
     with _lock:
         bp_id = _state["packs"].get(info["number"], {}).get("id")
         remembered = dict(_state.get("locate_form") or {})
@@ -411,11 +500,12 @@ def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> d
     auth = ("admin", pw)
     last_err: Optional[Exception] = None
     used = None
+    used_host = None
     for host in host_list:
         for resource, payload in forms:
             try:
                 _request(host, resource, method="POST", body=payload, auth=auth)
-                used = resource
+                used, used_host = resource, host
                 last_err = None
                 break
             except urllib.error.HTTPError as e:
@@ -434,6 +524,8 @@ def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> d
         _state.setdefault("locate_form", {})[kind] = used
     key = info["number"]
     if on:
+        off_body = next(b for r, b in _locate_forms(info, bp_id, False) if r == used)
+        _identify_off[key] = (used_host, used, off_body)
         t = _identify_timers.pop(key, None)
         if t:
             t.cancel()
@@ -446,7 +538,16 @@ def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> d
 
 
 def _safe_off(number: str) -> None:
-    try:
-        identify(number, on=False)
-    except Exception:  # noqa: BLE001
-        pass
+    """Turn flashing off with the same request that turned it on, even if the pack has left the charger since."""
+    _identify_timers.pop(number, None)
+    target = _identify_off.pop(number, None)
+    pw = load_config().get("bolero_admin_password") or ""
+    if not target or not pw:
+        return
+    host, resource, body = target
+    for attempt in range(2):
+        try:
+            _request(host, resource, method="POST", body=body, auth=("admin", pw))
+            return
+        except Exception:  # noqa: BLE001
+            time.sleep(1)

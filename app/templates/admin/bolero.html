@@ -25,6 +25,8 @@
         <dt>Flash</dt><dd>Selecting a person flashes their pack for ten seconds through its charger bay, when it is docked in a networked, licensed charger. Needs the admin password. A pack that is not in a charger is never flashed.</dd>
         <dt>Charger bay</dt><dd>With Riedel's Charger Monitoring licence on networked chargers the kiosk shows which charger and bay a docked pack is in. {% if bolero.ok %}{% if bolero.charger_resource %}Reading from <span class="mono">/rest/{{ bolero.charger_resource }}</span>: {{ bolero.chargers | length }} charger(s).{% else %}No charger data found on this system yet: look for it with the explorer below and enter the resource name.{% endif %}{% endif %}</dd>
         <dt>Pack names</dt><dd>With Use Bolero pack names on, the kiosk also finds people by the name set on their pack, and asks the tech when that name differs from the imported one: use the Bolero name, or keep the RDR name. A name cut short on the pack screen, or with an initial, counts as the same. Default names like Bolero 61 are ignored.</dd>
+        <dt>Read only</dt><dd>RDR only reads, with the read-only account the Bolero web page uses. The one thing it ever sends is Identify, to flash a docked pack. It never changes names, keys, partylines or settings.</dd>
+        <dt>Network load</dt><dd>One request at a time. Pack status every 5 seconds while a kiosk is using it, every 30 seconds when nobody is, pack names once a minute. It backs off to one try every two minutes when the antenna does not answer.</dd>
         <dt>No match</dt><dd>The kiosk says so when the person's ID is not on the system, or when they have no Bolero ID.</dd>
       </dl>
     </div></div>
