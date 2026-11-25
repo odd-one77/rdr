@@ -115,11 +115,27 @@ def _is_private(host: str) -> bool:
 
 # -- http -----------------------------------------------------------------------
 
+def _charger_locate(method: str, resource: str, body: Optional[dict]) -> bool:
+    """The one write RDR may send: Identify addressed to a charger resource. The antenna's own
+    `locate` and `bp/<id>/locate` flash a pack wherever it is (it may be on someone's belt), so
+    they are refused here, as is any body that names packs (`nodes`) rather than charger bays."""
+    if method != "POST":
+        return False
+    parts = resource.strip("/").split("/")
+    with _lock:
+        known = set(CHARGER_RESOURCES) | {_state.get("charger_resource") or ""}
+    known |= {(load_config().get("bolero_charger_resource") or "").strip("/")}
+    known.discard("")
+    if len(parts) < 2 or parts[-1] != "locate" or parts[0] not in known:
+        return False
+    return not (isinstance(body, dict) and any(str(k).lower() in ("nodes", "node", "bp", "bpid", "bps") for k in body))
+
+
 def _request(host: str, resource: str, method: str = "GET", body: Optional[dict] = None, auth: tuple[str, str] = READ_AUTH, timeout: float = TIMEOUT) -> Any:
     if not _is_private(host):
         raise ValueError("Antenna address must be on the show network (10.x, 172.16-31.x, 192.168.x)")
-    # Read only, with one exception: Identify (locate). Nothing else may ever be written to the system.
-    if method != "GET" and not (method == "POST" and resource.rstrip("/").endswith("/locate")):
+    # Read only, with one exception: Identify through a charger bay. Nothing else may ever be written.
+    if method != "GET" and not _charger_locate(method, resource, body):
         raise ValueError(f"RDR only reads from the Bolero system; refusing {method} {resource}")
     with _lock:
         _state["requests"] = _state.get("requests", 0) + 1
@@ -450,12 +466,37 @@ def pack_info(number: str) -> dict:
     info = {"configured": settings()["enabled"], "ok": ok, "error": err, "number": number, "known": bool(p), "can_identify": settings()["has_password"]}
     info.update({k: p.get(k) for k in ("name", "online", "battery", "antenna", "charging")})
     info["charger"] = None
-    for c in chargers:
-        for b in c["bays"]:
-            if b["number"] and b["number"].lstrip("0") == number:
-                info["charger"] = {"id": c.get("id"), "name": c["name"], "bay": b["bay"], "state": b["state"]}
+    bays = [(c, b) for c in chargers for b in c["bays"] if b["number"] and b["number"].lstrip("0") == number]
+    if bays:
+        c, b = bays[0]
+        info["charger"] = {"id": c.get("id"), "name": c["name"], "bay": b["bay"], "state": b["state"]}
     info["charger_data"] = has_charger_data
+    info["flash_block"] = _flash_block(info, len(bays))
+    info["can_flash"] = info["can_identify"] and not info["flash_block"]
     return info
+
+
+EMPTY_BAY = re.compile(r"^(empty|free|none|removed|vacant|no ?pack|absent|unplugged|out|0)$", re.I)
+
+
+def _flash_block(info: dict, n_bays: int) -> str:
+    """Why this pack must not be flashed, or "" when it is safely docked. A pack out of a charger
+    may be on someone's belt mid-show, so anything short of a clear, single, occupied bay with the
+    pack off air is a no."""
+    n = info["number"]
+    if not info.get("known"):
+        return f"No Bolero {n} on the system"
+    if not info.get("charger"):
+        if not info.get("charger_data"):
+            return f"Bolero {n} is not seen in a networked charger (no charger data from the system), so it is not flashed"
+        return f"Bolero {n} is not in a charger, so it is not flashed"
+    if n_bays > 1:
+        return f"Bolero {n} shows in more than one charger bay, so it is not flashed"
+    if EMPTY_BAY.match(str(info["charger"].get("state") or "").strip()):
+        return f"The charger bay for Bolero {n} reads as empty, so it is not flashed"
+    if info.get("online") or info.get("antenna"):
+        return f"Bolero {n} is on air, so it is not flashed even though a charger lists it"
+    return ""
 
 
 def _locate_forms(info: dict, bp_id, on: bool) -> list[tuple[str, dict]]:
@@ -482,14 +523,24 @@ def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> d
     if not host_list or not pw:
         raise ValueError("Set the antenna address and admin password on the Bolero link page first")
     info = pack_info(number)
-    if not info["known"]:
-        raise ValueError(f"No Bolero {number} on the system")
-    if not info.get("charger"):
-        if not info.get("charger_data"):
-            raise ValueError(f"Bolero {number} is not seen in a networked charger (no charger data from the system), so it is not flashed")
-        raise ValueError(f"Bolero {number} is not in a charger, so it is not flashed")
     if on and info["number"] in _identify_timers:   # already flashing (another kiosk, or picked again): no second write
         return {"ok": True, "number": info["number"], "on": True, "seconds": seconds, "via": "charger", "charger": info["charger"], "resource": None, "already": True}
+    if on:
+        # Never flash from cached data: the pack may have left the charger since the last read.
+        _poll_once(force=True)
+        info = pack_info(number)
+        with _lock:
+            fresh = _state.get("ok") and not _state.get("error")
+        if not fresh:
+            raise ValueError(f"Could not read every antenna just now, so Bolero {number} is not flashed")
+    if not on and info["number"] in _identify_off:   # stop flashing with the request that started it
+        t = _identify_timers.pop(info["number"], None)
+        if t:
+            t.cancel()
+        _safe_off(info["number"])
+        return {"ok": True, "number": info["number"], "on": False, "seconds": 0, "via": "charger", "charger": info["charger"], "resource": None}
+    if info["flash_block"]:
+        raise ValueError(info["flash_block"])
     with _lock:
         bp_id = _state["packs"].get(info["number"], {}).get("id")
         remembered = dict(_state.get("locate_form") or {})

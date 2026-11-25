@@ -668,13 +668,13 @@
       let txt;
       if (!i.ok) txt = `<span class="dim">Bolero link: ${esc(i.error)}</span>`;
       else if (!i.known) txt = `<span class="amber">No Bolero ${esc(n)} on the system</span>`;
-      else if (i.charger) txt = `Bolero ${esc(n)} is in <b>${esc(i.charger.name)}, bay ${esc(String(i.charger.bay))}</b>${i.battery != null ? ` · ${esc(String(i.battery))}%` : ''}${i.can_identify ? ` <button class="btn sm" id="btnFlash">Flash it</button>` : ''}`;
+      else if (i.charger) txt = `Bolero ${esc(n)} is in <b>${esc(i.charger.name)}, bay ${esc(String(i.charger.bay))}</b>${i.battery != null ? ` · ${esc(String(i.battery))}%` : ''}${i.can_flash ? ` <button class="btn sm" id="btnFlash">Flash it</button>` : (i.can_identify && i.flash_block ? ` <span class="amber">· not flashed</span>` : '')}`;
       else if (i.online) txt = `Bolero ${esc(n)} is <b class="green">on</b>${i.battery != null ? ` · ${esc(String(i.battery))}%` : ''}${i.antenna ? ` · ${esc(String(i.antenna))}` : ''} <span class="dim">· not in a charger</span>`;
       else if (i.online === false) txt = `Bolero ${esc(n)} is <b>off</b>${i.charging ? ' (charging)' : ''}${!i.charger_data ? ' · not seen in a networked charger' : ' · not in a charger'}`;
       else txt = `<span class="dim">Bolero ${esc(n)}: no status yet</span>`;
       el.innerHTML = txt;
       // First look at a newly selected person: flash their pack straight away so the tech can find it.
-      if (i.ok && i.known && i.charger && i.can_identify && el.dataset.flashed !== '1') {
+      if (i.ok && i.can_flash && el.dataset.flashed !== '1') {
         el.dataset.flashed = '1';
         try { const r = await post(`/api/bolero/pack/${encodeURIComponent(n)}/identify`, {}); toast('ok', `Flashing Bolero ${n}`, `in ${i.charger.name}, bay ${i.charger.bay} for ${r.seconds} seconds`); } catch (e) { toast('err', 'Could not flash', e.message); }
       }

@@ -233,7 +233,10 @@ bay a docked pack sits in. The kiosk shows this under the person's details, so
 the tech can find the pack. With the admin password saved, selecting the person flashes their pack for ten
 seconds through its charger bay (a **Flash it** button repeats it), when the
 pack is docked in a networked charger with the Charger Monitoring licence. A
-pack that is not in a charger is never flashed. The
+pack that is not in a charger is never flashed: RDR reads the antennas again
+right before each flash and refuses if the pack is on air, its bay reads empty,
+it shows in two bays or an antenna does not answer, and it never sends the
+antenna's own pack locate. The
 exact charger resource differs by firmware; the explorer on the same page shows
 the raw answers so it can be found and set on site. Unofficial interface: a firmware
 update may change it.

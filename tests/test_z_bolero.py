@@ -120,7 +120,8 @@ def test_several_hosts_merge(antenna, monkeypatch):
     st = bolero.poll_now()
     assert st["ok"] and len(st["packs"]) == 3 and "127.0.0.1:1" in st["error"]   # one antenna down, the other carries the system
     assert bolero.settings()["hosts"] == [antenna, "127.0.0.1:1"] and bolero.settings()["mode"] == "artist"
-    assert bolero.identify("65", seconds=0)["ok"]
+    with pytest.raises(ValueError, match="Could not read every antenna"):   # one antenna silent: it may hear the pack on air
+        bolero.identify("65", seconds=0)
 
 
 def _reset():
@@ -132,9 +133,12 @@ def _reset():
 
 def test_read_only_guard():
     """Nothing but Identify (a POST to .../locate) can ever be sent to the system, whatever the caller."""
-    for method, res in (("POST", "bp/60"), ("PUT", "bp/60/locate"), ("DELETE", "partyline/1"), ("POST", "nodeConfig"), ("PATCH", "bp")):
+    for method, res, body in (("POST", "bp/60", {}), ("PUT", "bp/60/locate", {}), ("DELETE", "partyline/1", {}), ("POST", "nodeConfig", {}), ("PATCH", "bp", {}),
+                              # Identify that is not addressed to a charger bay could flash a pack on someone's belt
+                              ("POST", "locate", {"active": 1, "nodes": [{"id": 60}]}), ("POST", "bp/60/locate", {"active": 1}),
+                              ("POST", "chargers/locate", {"active": 1, "nodes": [{"id": 60}]}), ("POST", "audioPorts/1/locate", {"active": 1})):
         with pytest.raises(ValueError, match="only reads"):
-            bolero._request("127.0.0.1:1", res, method=method, body={})
+            bolero._request("127.0.0.1:1", res, method=method, body=body)
     assert all(r.endswith("/locate") for r, _ in bolero._locate_forms({"charger": {"id": 7, "bay": 1}}, 0, True))
 
 
@@ -196,3 +200,49 @@ def test_identify_once_and_off_after_undock(antenna, monkeypatch):
     bolero._identify_timers["65"].cancel(); bolero._safe_off("65")
     assert FakeAntenna.posts[-1] == ("chargers/7/bays/1/locate", {"active": 0})
     assert "65" not in bolero._identify_timers
+
+
+def test_never_flash_a_pack_out_of_a_charger(antenna, monkeypatch):
+    """A pack that is not clearly docked is never flashed: not from stale data, not when on air, not from an empty bay."""
+    import sys; me = sys.modules[__name__]   # the module the fake antenna reads its answers from
+    chargers0, status0 = SAMPLE_CHARGERS, SAMPLE_STATUS
+    cfg = {"bolero_host": antenna, "bolero_enabled": True, "bolero_admin_password": "secret", "bolero_charger_resource": ""}
+    monkeypatch.setattr(bolero, "load_config", lambda: dict(cfg))
+    monkeypatch.setattr(FakeAntenna, "charger_resource", "chargers")
+    _reset(); bolero._identify_timers.clear(); bolero._identify_off.clear(); bolero.poll_now()
+    assert bolero.pack_info("65")["can_flash"] and not bolero.pack_info("61")["can_flash"]
+    n = len(FakeAntenna.posts)
+
+    # pulled from the charger since the last read: the flash reads again first and refuses
+    monkeypatch.setattr(me, "SAMPLE_CHARGERS", {"items": [{"id": 7, "name": "Charger A", "bays": [{"bay": 1, "bpNumber": None}]}]})
+    assert bolero.pack_info("65")["charger"]          # the cache still says docked
+    with pytest.raises(ValueError, match="not in a charger"):
+        bolero.identify("65", seconds=0)
+
+    # a charger still lists it but the pack is on air: on someone's belt, so no
+    monkeypatch.setattr(me, "SAMPLE_CHARGERS", chargers0)
+    monkeypatch.setattr(me, "SAMPLE_STATUS", status0[:2] + [{"bpId": 64, "online": True, "battery": 90}])
+    with pytest.raises(ValueError, match="on air"):
+        bolero.identify("65", seconds=0)
+
+    # the bay reads empty even though it still carries the number
+    monkeypatch.setattr(me, "SAMPLE_STATUS", status0)
+    monkeypatch.setattr(me, "SAMPLE_CHARGERS", {"items": [{"id": 7, "name": "Charger A", "bays": [{"bay": 1, "bpNumber": 65, "state": "empty"}]}]})
+    with pytest.raises(ValueError, match="empty"):
+        bolero.identify("65", seconds=0)
+
+    # the same number in two bays: ambiguous, so no
+    monkeypatch.setattr(me, "SAMPLE_CHARGERS", {"items": [{"id": 7, "name": "Charger A", "bays": [{"bay": 1, "bpNumber": 65, "state": "charging"}, {"bay": 2, "bpNumber": 65, "state": "charging"}]}]})
+    with pytest.raises(ValueError, match="more than one"):
+        bolero.identify("65", seconds=0)
+
+    # the antenna is not answering: nothing is flashed from what was read before
+    monkeypatch.setattr(me, "SAMPLE_CHARGERS", chargers0)
+    cfg["bolero_host"] = "127.0.0.1:1"
+    with pytest.raises(ValueError):
+        bolero.identify("65", seconds=0)
+    assert len(FakeAntenna.posts) == n                # not one write in all of that
+
+    # docked, off air, one bay: flashes
+    cfg["bolero_host"] = antenna
+    assert bolero.identify("65", seconds=0)["ok"] and len(FakeAntenna.posts) == n + 1
