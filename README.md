@@ -241,6 +241,12 @@ exact charger resource differs by firmware; the explorer on the same page shows
 the raw answers so it can be found and set on site. Unofficial interface: a firmware
 update may change it.
 
+**Pack names** (Bolero link page): Off, Ask or Always. With Ask, the kiosk finds
+people by the name on their pack too, marks a result whose pack carries a
+different name, and asks the tech which name is right. With Always, people take
+the name on their pack without a prompt. Their imported name is kept, so they are
+still found by it, re-imports still match them, and it can be restored.
+
 ## Remote access through a reverse proxy
 
 RDR is built for the room network and answers only there until you open it up. Anything that comes through a proxy or tunnel, or from a public address, gets a "Remote access is off" page.

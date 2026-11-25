@@ -517,12 +517,14 @@ def _person_row(row, mapping, fills=None) -> dict:
 
 
 def _analyze_people(db, rows, mapping, row_fills=None) -> list[dict]:
-    people = db.execute("SELECT id, external_id, name, dept, phone FROM people").fetchall()
+    people = db.execute("SELECT id, external_id, name, import_name, dept, phone FROM people").fetchall()
     by_ext = {p["external_id"]: p for p in people if p["external_id"]}
     by_name: dict[str, list] = {}
     by_phone: dict[str, list] = {}
     for p in people:
         by_name.setdefault(p["name"].lower(), []).append(p)
+        if p["import_name"] and p["import_name"].lower() != p["name"].lower():   # renamed from Bolero: still the same person
+            by_name.setdefault(p["import_name"].lower(), []).append(p)
         ph = norm_phone(p["phone"])
         if ph:
             by_phone.setdefault(ph, []).append(p)
@@ -675,6 +677,8 @@ def _commit_people(db, items, decisions, tech) -> dict:
                 (d["external_id"], d["name"], d["dept"], d["dept"], d["role"], d["role"], d["phone"], d["phone"], d["bolero_id"], d["bolero_id"],
                  d.get("faceplate", ""), d.get("faceplate", ""), d.get("allocation", ""), d.get("allocation", ""), d["notes"], d["notes"], ts, existing),
             )
+            # a person renamed from Bolero keeps the newest imported name to restore
+            db.execute("UPDATE people SET import_name = ? WHERE id = ? AND import_name <> ''", (d["name"], existing))
             updated += 1
         else:
             skipped += 1

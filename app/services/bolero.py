@@ -59,6 +59,7 @@ _stop = threading.Event()
 _wake = threading.Event()
 _last_demand = 0.0
 _identify_timers: dict[str, threading.Timer] = {}
+_after_poll: list = []   # callbacks run after a good poll (Always use Bolero names)
 _identify_off: dict[str, tuple[str, str, dict]] = {}   # pack -> (host, resource, body) that turns its flashing off
 
 
@@ -77,11 +78,20 @@ def settings() -> dict:
         "mode": cfg.get("bolero_mode") or "standalone",
         "has_password": bool(cfg.get("bolero_admin_password")),
         "charger_resource": cfg.get("bolero_charger_resource") or "",
-        "names": bool(cfg.get("bolero_names")),
+        "names": names_mode(cfg) != "off",
+        "names_mode": names_mode(cfg),
     }
 
 
-def configure(host: str, enabled: bool, admin_password: Optional[str], clear_password: bool = False, charger_resource: str = "", mode: str = "standalone", names: bool = False) -> None:
+def names_mode(cfg: dict) -> str:
+    """Pack names: off, ask (prompt when they differ) or always (use the Bolero name without asking)."""
+    v = cfg.get("bolero_names")
+    if v is True:
+        return "ask"
+    return v if v in ("ask", "always") else "off"
+
+
+def configure(host: str, enabled: bool, admin_password: Optional[str], clear_password: bool = False, charger_resource: str = "", mode: str = "standalone", names: str = "off") -> None:
     cfg = load_config()
     for h in hosts(host):
         if not _is_private(h):
@@ -90,7 +100,7 @@ def configure(host: str, enabled: bool, admin_password: Optional[str], clear_pas
     cfg["bolero_mode"] = "artist" if mode == "artist" else "standalone"
     cfg["bolero_enabled"] = bool(enabled and hosts(host))
     cfg["bolero_charger_resource"] = charger_resource.strip().strip("/")
-    cfg["bolero_names"] = bool(names)
+    cfg["bolero_names"] = names if names in ("ask", "always") else ("ask" if names is True else "off")
     if clear_password:
         cfg.pop("bolero_admin_password", None)
     elif admin_password:
@@ -367,6 +377,12 @@ def _poll_once(force: bool = False) -> None:
             _state.update(ok=True, error="; ".join(errors), packs=packs, chargers=chargers, raw=raw, updated=time.time(), fails=0)
         else:
             _state.update(ok=False, error="; ".join(errors), updated=time.time(), fails=_state.get("fails", 0) + 1)
+            return
+    for fn in list(_after_poll):
+        try:
+            fn()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _touch() -> None:

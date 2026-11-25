@@ -54,6 +54,7 @@ def people_search(q: str = "", tech: dict = Depends(require_tech)):
     with get_db() as db:
         if not bolero_names.enabled():
             return {"results": [dict(r) for r in inventory.search_people(db, q)], "packs": []}
+        bolero_names.apply_all(db)   # Always use Bolero names: rename first, so nobody is shown as different
         found = {r["id"] for r in inventory.search_people(db, q)}
         by_pack, loose = bolero_names.search(db, q, found)
         packs = bolero_names.names()
@@ -72,6 +73,8 @@ def person_detail(person_id: int, tech: dict = Depends(require_tech)):
         p = inventory.person_by_id(db, person_id)
         if p is None:
             raise HTTPException(404, "Unknown person")
+        if bolero_names.always() and bolero_names.apply_all(db):
+            p = inventory.person_by_id(db, person_id)
         return {
             "person": dict(p),
             "holdings": [dict(r) for r in inventory.person_holdings(db, person_id)],

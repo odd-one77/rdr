@@ -36,13 +36,20 @@
   function closeModal() { $('#modalRoot').innerHTML = ''; }
 
   // ---- person --------------------------------------------------------------
+  const idOf = v => String(v || '').replace(/^bolero\s*/i, '');
+  // Under a search result: the pack name when it differs, or the imported name when RDR took the pack's name.
+  function nameNote(p) {
+    if (p.bolero_differs) return `<div class="bname differs"><span class="tag">Name differs</span>Bolero ${esc(idOf(p.bolero_id))} is named <b>${esc(p.bolero_name)}</b></div>`;
+    if (p.import_name && p.import_name !== p.name) return `<div class="bname">Name from Bolero ${esc(idOf(p.bolero_id))} · imported as ${esc(p.import_name)}</div>`;
+    return '';
+  }
   const searchEl = $('#personSearch'), resultsEl = $('#personResults');
   let timer = null;
   searchEl.addEventListener('input', () => { clearTimeout(timer); const q = searchEl.value.trim(); if (!q) { resultsEl.classList.add('hidden'); return; } timer = setTimeout(() => search(q), 150); });
   searchEl.addEventListener('blur', () => setTimeout(() => resultsEl.classList.add('hidden'), 150));
   async function search(q) {
     const d = await api(`/api/people/search?q=${encodeURIComponent(q)}`);
-    resultsEl.innerHTML = d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)}</div><div class="meta">${esc([p.dept, p.role].filter(Boolean).join(' · '))}${p.bolero_differs ? `${p.dept || p.role ? ' · ' : ''}<span class="amber">on Bolero as ${esc(p.bolero_name)}</span>` : ''}</div></div><div class="counts">${p.held_count ? p.held_count + ' out' : ''}</div></div>`).join('') + (d.packs || []).map(k => `<div class="empty"><span>Bolero ${esc(k.number)} is named <b>${esc(k.pack_name)}</b>. Nobody in RDR has this ID.</span><button class="btn sm" data-pack="${esc(k.number)}" data-pack-name="${esc(k.pack_name)}">Create</button></div>`).join('') + `<div class="empty"><span>${d.results.length ? '' : 'No match'}</span><button class="btn sm" data-new>New person</button></div>`;
+    resultsEl.innerHTML = d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)}</div><div class="meta">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div>${nameNote(p)}</div><div class="counts">${p.held_count ? p.held_count + ' out' : ''}</div></div>`).join('') + (d.packs || []).map(k => `<div class="empty"><span>Bolero ${esc(k.number)} is named <b>${esc(k.pack_name)}</b>. Nobody in RDR has this ID.</span><button class="btn sm" data-pack="${esc(k.number)}" data-pack-name="${esc(k.pack_name)}">Create</button></div>`).join('') + `<div class="empty"><span>${d.results.length ? '' : 'No match'}</span><button class="btn sm" data-new>New person</button></div>`;
     resultsEl.classList.remove('hidden');
     resultsEl.querySelectorAll('.item').forEach(el => el.onmousedown = () => selectPerson(+el.dataset.id));
     resultsEl.querySelector('[data-new]').onmousedown = () => openNewPerson(q);

@@ -204,6 +204,7 @@ MIGRATIONS = [
     ("devices", "linked_id", "TEXT NOT NULL DEFAULT ''"),
     ("people", "faceplate", "TEXT NOT NULL DEFAULT ''"),
     ("people", "allocation", "TEXT NOT NULL DEFAULT ''"),
+    ("people", "import_name", "TEXT NOT NULL DEFAULT ''"),   # the name before Always use Bolero names renamed them
 ]
 # types added to the defaults after a database may already exist: offered once, then the list is the user's
 ADDED_DEVICE_TYPES = {"0.9.5": ["Hytera PD682 Radio", "Moto R7 Radio", "TS2 Headset", "Hytera TS2 Headset", "Moto R7 TS2 Headset"]}

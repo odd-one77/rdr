@@ -928,14 +928,15 @@ def bolero_page(request: Request, path: str = "", host: str = ""):
     st = bolero.status()
     with get_db() as db:
         diffs = bolero_names.differences(db)
+        renamed = bolero_names.renamed(db)
     polled = datetime.fromtimestamp(st["updated"]).strftime("%H:%M:%S") if st.get("updated") else ""
-    return render(request, "admin/bolero.html", bolero=st, diffs=diffs, polled=polled, path=path, host=host, text=text, err=err, active="bolero")
+    return render(request, "admin/bolero.html", bolero=st, diffs=diffs, renamed=renamed, polled=polled, path=path, host=host, text=text, err=err, active="bolero")
 
 
 @router.post("/bolero/settings", dependencies=[Depends(require_admin)])
-def bolero_save(bolero_host: str = Form(""), bolero_enabled: str = Form(""), bolero_admin_password: str = Form(""), clear_password: str = Form(""), bolero_charger_resource: str = Form(""), bolero_mode: str = Form("standalone"), bolero_names_on: str = Form("")):
+def bolero_save(bolero_host: str = Form(""), bolero_enabled: str = Form(""), bolero_admin_password: str = Form(""), clear_password: str = Form(""), bolero_charger_resource: str = Form(""), bolero_mode: str = Form("standalone"), bolero_names_mode: str = Form("off")):
     try:
-        bolero.configure(bolero_host, bool(bolero_enabled), bolero_admin_password.strip() or None, clear_password=bool(clear_password), charger_resource=bolero_charger_resource, mode=bolero_mode, names=bool(bolero_names_on))
+        bolero.configure(bolero_host, bool(bolero_enabled), bolero_admin_password.strip() or None, clear_password=bool(clear_password), charger_resource=bolero_charger_resource, mode=bolero_mode, names=bolero_names_mode)
     except ValueError as e:
         return _redirect("/admin/bolero", err=str(e))
     if bolero_enabled and bolero_host.strip():
@@ -964,6 +965,16 @@ def bolero_names_apply(request: Request, person_id: int = Form(...), pack_name: 
             return _redirect("/admin/bolero#names", msg=f"{p['name']} is now {pack_name}")
         bolero_names.keep(db, person_id, pack_name)
     return _redirect("/admin/bolero#names", msg=f"Kept {p['name']}")
+
+
+@router.post("/bolero/names/restore", dependencies=[Depends(require_admin)])
+def bolero_names_restore(person_id: int = Form(0)):
+    """Put back the imported names (one person, or everyone with person_id 0)."""
+    with get_db() as db:
+        n = bolero_names.restore(db, person_id or None)
+    if bolero.settings()["names_mode"] == "always":
+        return _redirect("/admin/bolero#renamed", msg=f"Restored {n} imported name{'s' if n != 1 else ''}. Set Pack names to Ask or Off first, or the next read renames them again.")
+    return _redirect("/admin/bolero#renamed", msg=f"Restored {n} imported name{'s' if n != 1 else ''}")
 
 
 @router.get("/bolero/rest", dependencies=[Depends(require_admin)])

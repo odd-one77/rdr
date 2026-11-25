@@ -13,7 +13,8 @@
           <div class="field"><label>Admin password</label><input type="password" name="bolero_admin_password" placeholder="{{ 'Saved. Leave blank to keep.' if bolero.settings.has_password else 'Only needed to flash packs' }}" autocomplete="new-password"></div>
           <div class="field"><label>Charger resource</label><input name="bolero_charger_resource" value="{{ bolero.settings.charger_resource }}" placeholder="auto"><div class="help">Leave on auto unless the explorer shows a different name.</div></div>
         </div>
-        <div class="row wrap"><label class="check"><input type="checkbox" name="bolero_enabled" value="1" {{ 'checked' if bolero.settings.enabled }}> Link enabled</label><label class="check"><input type="checkbox" name="bolero_names_on" value="1" {{ 'checked' if bolero.settings.names }}> Use Bolero pack names</label>{% if bolero.settings.has_password %}<label class="check"><input type="checkbox" name="clear_password" value="1"> Remove saved password</label>{% endif %}</div>
+        <div class="field"><label>Pack names</label><select name="bolero_names_mode">{% for k, label in [('off', 'Off'), ('ask', 'Ask when they differ'), ('always', 'Always use Bolero names')] %}<option value="{{ k }}" {{ 'selected' if bolero.settings.names_mode == k }}>{{ label }}</option>{% endfor %}</select><div class="help">Always renames people to the name on their pack without asking. Imported names are kept and can be restored.</div></div>
+        <div class="row wrap"><label class="check"><input type="checkbox" name="bolero_enabled" value="1" {{ 'checked' if bolero.settings.enabled }}> Link enabled</label>{% if bolero.settings.has_password %}<label class="check"><input type="checkbox" name="clear_password" value="1"> Remove saved password</label>{% endif %}</div>
       {% if bolero.settings.enabled and not bolero.ok %}<p class="red mt-s">{{ bolero.error }}</p>{% endif %}
     </div>
     <div class="panel-foot"><button class="btn primary">Save and test</button></div></form>
@@ -24,7 +25,7 @@
         <dt>Pack status</dt><dd>Under the selected person: whether the pack with their Bolero ID is on, its battery and antenna.</dd>
         <dt>Flash</dt><dd>Selecting a person flashes their pack for ten seconds through its charger bay, when it is docked in a networked, licensed charger. Needs the admin password. A pack that is not in a charger is never flashed: before each flash RDR reads the antennas again, and says no if the pack is on air, its bay reads empty, it shows in two bays, or any antenna does not answer.</dd>
         <dt>Charger bay</dt><dd>With Riedel's Charger Monitoring licence on networked chargers the kiosk shows which charger and bay a docked pack is in. {% if bolero.ok %}{% if bolero.charger_resource %}Reading from <span class="mono">/rest/{{ bolero.charger_resource }}</span>: {{ bolero.chargers | length }} charger(s).{% else %}No charger data found on this system yet: look for it with the explorer below and enter the resource name.{% endif %}{% endif %}</dd>
-        <dt>Pack names</dt><dd>With Use Bolero pack names on, the kiosk also finds people by the name set on their pack, and asks the tech when that name differs from the imported one: use the Bolero name, or keep the RDR name. A name cut short on the pack screen, or with an initial, counts as the same. Default names like Bolero 61 are ignored.</dd>
+        <dt>Pack names</dt><dd>With Pack names on, the kiosk also finds people by the name set on their pack. Ask: the tech is asked when that name differs from the imported one, and chooses the Bolero name or the RDR name. Always: people take the name on their pack without a prompt, and can still be found by their imported name. A name cut short on the pack screen, or with an initial, counts as the same. Default names like Bolero 61 are ignored.</dd>
         <dt>Read only</dt><dd>RDR only reads, with the read-only account the Bolero web page uses. The one thing it ever sends is Identify, addressed to a charger bay. RDR refuses to send the antenna's own pack locate, which would flash a pack on someone's belt. It never changes names, keys, partylines or settings.</dd>
         <dt>Network load</dt><dd>One request at a time. Pack status every 5 seconds while a kiosk is using it, every 30 seconds when nobody is, pack names once a minute. It backs off to one try every two minutes when the antenna does not answer.</dd>
         <dt>No match</dt><dd>The kiosk says so when the person's ID is not on the system, or when they have no Bolero ID.</dd>
@@ -33,13 +34,23 @@
 </div>
 
 {% if bolero.settings.enabled %}
-{% if bolero.settings.names %}
+{% if bolero.settings.names_mode == 'ask' %}
 <div class="panel mt" id="names"><div class="panel-head"><h2>Names that differ · {{ diffs | length }}</h2><span class="muted sm">Matched by Bolero ID</span></div>
   <div class="table-wrap short"><table>
     <thead><tr><th>Pack</th><th>Name on the pack</th><th>Name in RDR</th><th></th></tr></thead>
     <tbody>{% for d in diffs %}<tr><td class="mono">{{ d.number }}</td><td><b>{{ d.pack_name }}</b></td><td><a href="/admin/people/{{ d.id }}">{{ d.name }}</a>{% if d.dept %}<div class="muted sm">{{ d.dept }}</div>{% endif %}</td>
       <td class="num"><form method="post" action="/admin/bolero/names" class="row end"><input type="hidden" name="person_id" value="{{ d.id }}"><input type="hidden" name="pack_name" value="{{ d.pack_name }}"><button class="btn sm ghost" name="action" value="keep">Keep RDR name</button><button class="btn sm" name="action" value="use">Use Bolero name</button></form></td></tr>
     {% else %}<tr><td colspan="4" class="empty">{{ 'Every named pack matches the person with its ID.' if bolero.ok else 'Waiting for the antenna.' }}</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+{% endif %}
+
+{% if renamed %}
+<div class="panel mt" id="renamed"><div class="panel-head"><h2>Names from Bolero · {{ renamed | length }}</h2>
+  <form method="post" action="/admin/bolero/names/restore"><input type="hidden" name="person_id" value="0"><button class="btn sm ghost" data-confirm="Put back the imported name for all {{ renamed | length }} people?">Restore all imported names</button></form></div>
+  <div class="table-wrap short"><table>
+    <thead><tr><th>Pack</th><th>Name now</th><th>Imported as</th><th></th></tr></thead>
+    <tbody>{% for r in renamed %}<tr><td class="mono">{{ r.number }}</td><td><a href="/admin/people/{{ r.id }}"><b>{{ r.name }}</b></a>{% if r.dept %}<div class="muted sm">{{ r.dept }}</div>{% endif %}</td><td>{{ r.import_name }}</td>
+      <td class="num"><form method="post" action="/admin/bolero/names/restore" class="row end"><input type="hidden" name="person_id" value="{{ r.id }}"><button class="btn sm ghost">Restore</button></form></td></tr>{% endfor %}</tbody>
   </table></div></div>
 {% endif %}
 

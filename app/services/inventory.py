@@ -110,6 +110,7 @@ def search_people(db: sqlite3.Connection, q: str, limit: int = 12, extra_ids: It
                  WHERE a.person_id = p.id AND (d.holder_id IS NULL OR d.holder_id <> p.id)) AS assigned_count
         FROM people p
         WHERE p.name LIKE ? COLLATE NOCASE
+           OR p.import_name LIKE ? COLLATE NOCASE
            OR p.external_id LIKE ? COLLATE NOCASE
            OR p.dept LIKE ? COLLATE NOCASE
            OR p.role LIKE ? COLLATE NOCASE
@@ -119,7 +120,7 @@ def search_people(db: sqlite3.Connection, q: str, limit: int = 12, extra_ids: It
         ORDER BY CASE WHEN p.name LIKE ? COLLATE NOCASE THEN 0 WHEN p.bolero_id = ? COLLATE NOCASE THEN 0 WHEN p.role LIKE ? COLLATE NOCASE THEN 1 ELSE 2 END, p.name
         LIMIT ?
         """.replace("{extra}", ",".join("?" * len(extra)) or "NULL"),
-        (like, like, like, like, like, phone_like, phone_like, *extra, f"{q}%", q, f"{q}%", limit),
+        (like, like, like, like, like, like, phone_like, phone_like, *extra, f"{q}%", q, f"{q}%", limit),
     ).fetchall()
     return rows
 

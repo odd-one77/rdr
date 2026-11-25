@@ -12,6 +12,12 @@
   const isRadio = n => /radio/i.test(n || '') && !/adapter/i.test(n || '');
   const isHeadset = n => /headset/i.test(n || '') && !/adapter/i.test(n || '');
   // What sits beside a name: Bolero (person's ID or the held pack), Radio (held radio), both, or nothing.
+  // Under a search result: the pack name when it differs, or the imported name when RDR took the pack's name.
+  function nameNote(p) {
+    if (p.bolero_differs) return `<div class="bname differs"><span class="tag">Name differs</span>Bolero ${esc(idOf(p.bolero_id))} is named <b>${esc(p.bolero_name)}</b></div>`;
+    if (p.import_name && p.import_name !== p.name) return `<div class="bname">Name from Bolero ${esc(idOf(p.bolero_id))} · imported as ${esc(p.import_name)}</div>`;
+    return '';
+  }
   function chips(p, holdings) {
     const out = [];
     const pack = (holdings || []).find(isPack);
@@ -143,7 +149,7 @@
       const d = await api(`/api/people/search?q=${encodeURIComponent(q)}`);
       lastResults = d.results; activeIdx = d.results.length ? 0 : -1;
       resultsEl.innerHTML = (state.collector ? `<div class="empty top"><span>${esc(state.collector.name)} is collecting. Pick who these devices are for.</span></div>` : '') +
-        d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)} ${chips(p, null)}</div><div class="meta">${esc([p.dept, p.role, p.phone].filter(Boolean).join(' · '))}${p.bolero_differs ? `${p.dept || p.role || p.phone ? ' · ' : ''}<span class="amber">on Bolero as ${esc(p.bolero_name)}</span>` : ''}</div></div><div class="counts">${p.held_count ? `${p.held_count} out` : ''}</div></div>`).join('') +
+        d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)} ${chips(p, null)}</div><div class="meta">${esc([p.dept, p.role, p.phone].filter(Boolean).join(' · '))}</div>${nameNote(p)}</div><div class="counts">${p.held_count ? `${p.held_count} out` : ''}</div></div>`).join('') +
         (d.packs || []).map(k => `<div class="empty"><span>Bolero ${esc(k.number)} is named <b>${esc(k.pack_name)}</b>. Nobody in RDR has this ID.</span><button class="btn sm" data-pack="${esc(k.number)}" data-pack-name="${esc(k.pack_name)}">Create</button></div>`).join('') +
         `<div class="empty"><span>${d.results.length ? 'Not listed?' : 'No match for “' + esc(q) + '”'}</span><button class="btn sm" data-new>+ Create “${esc(q)}”</button></div>`;
       resultsEl.classList.remove('hidden'); paintActive();
