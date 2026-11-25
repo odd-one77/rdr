@@ -101,12 +101,14 @@
     clearTimeout(pushTimer);
     pushTimer = setTimeout(() => {
       const brief = d => ({ si: d.si, label: d.label, type: d.type_name || d.type, linked_id: d.linked_id || '' });
+      // a pack coming back keeps showing the ID it has; a pack being handed over takes the person's ID
+      const back = d => Object.assign(brief(d), { back: d.status === 'out' && (!state.person || d.holder_id === state.person.id) });
       post('/api/kiosk/state', { state: {
         person: state.person ? { name: state.person.name, dept: state.person.dept, role: state.person.role, bolero_id: state.person.bolero_id, faceplate: state.person.faceplate || '', radio: (state.holdings.find(d => /radio/i.test(d.type_name)) || {}).label || '' } : null,
         // Someone collecting for others: the mirror stays on the collector and lists each person's devices under their name.
         collect: state.collector ? { name: state.collector.name, people: state.recipients.map(r => ({ name: r.name, bolero_id: r.bolero_id || '', faceplate: r.faceplate || '', items: state.basket.filter(x => x.for && x.for.id === r.id).map(brief) })) } : null,
         holdings: state.holdings.map(brief),
-        basket: state.basket.map(brief),
+        basket: state.basket.map(back),
         result: state.result,
       } }).catch(() => {});
     }, 150);
@@ -433,7 +435,7 @@
       }
       if (d.assigned_person_name && (!p || d.assigned_person_id !== p.id)) note += (note ? ' · ' : '') + `reserved for ${d.assigned_person_name}`;
       return `<li class="${cls}${d.id === justAdded ? ' new' : ''}"><span class="idx">${i + 1}</span>
-        <span class="txt"><div class="label">${esc(d.label || d.si)}${d.for && state.collector ? ` <span class="for${p && d.for.id === p.id ? ' active' : ''}">for ${esc(d.for.name.split(' ')[0])}</span>` : ''}</div><div class="sub">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${note ? ` · <span class="${cls === 'conflict' ? 'red' : 'amber'}">${esc(note)}</span>` : ''}</div></span>
+        <span class="txt"><div class="label">${esc(d.label || d.si)}${isPack && d.linked_id ? ` <span class="bolero">ID ${esc(d.linked_id)}</span>` : ''}${d.for && state.collector ? ` <span class="for${p && d.for.id === p.id ? ' active' : ''}">for ${esc(d.for.name.split(' ')[0])}</span>` : ''}</div><div class="sub">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${note ? ` · <span class="${cls === 'conflict' ? 'red' : 'amber'}">${esc(note)}</span>` : ''}</div></span>
         <span class="badge ${esc(d.status)}">${esc(d.status)}</span>
         <span class="remove" data-rm="${d.id}" title="Remove">&#10005;</span></li>`;
     }).join('');

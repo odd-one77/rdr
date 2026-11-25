@@ -48,17 +48,24 @@
     } catch (e) {}
   }
   let stagger = 0;
-  // The customer side shows what, not which: types with counts, and the person's Bolero ID on their pack.
+  // The customer side shows what, not which: one line per device with each pack's Bolero ID; only headsets are counted together.
+  const isHeadsetType = t => /headset/i.test(t || '') && !/adapter/i.test(t || '');
   function group(items, person, incoming) {
-    const out = [];
+    const out = [], seen = {};
     for (const i of items || []) {
       const isBolero = /bolero/i.test(i.type) && !/antenna/i.test(i.type);
-      // packs being handed over take this person's ID; packs already out show the ID they were linked with
-      const id = isBolero ? (incoming ? ((person && person.bolero_id) || '') : (i.linked_id || (person && person.bolero_id) || '')) : '';
-      const key = i.type + '|' + id;
-      let g = out.find(x => x.key === key);
-      if (!g) { g = { key, type: i.type, id, n: 0 }; out.push(g); }
-      g.n++;
+      // packs being handed over take this person's ID; packs coming back or already out show the ID they have
+      const mine = (person && person.bolero_id) || '';
+      const id = isBolero ? (incoming && !i.back ? (mine || i.linked_id || '') : (i.linked_id || mine)) : '';
+      const base = i.type + '|' + id;
+      if (isHeadsetType(i.type)) {
+        let g = out.find(x => x.key === base);
+        if (!g) { g = { key: base, type: i.type, id, n: 0 }; out.push(g); }
+        g.n++;
+      } else {
+        seen[base] = (seen[base] || 0) + 1;   // repeat lines get a stable key so only the new one animates
+        out.push({ key: base + '|' + seen[base], type: i.type, id, n: 1 });
+      }
     }
     return out;
   }

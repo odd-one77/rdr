@@ -109,7 +109,7 @@
       let cls = '', note = '';
       if (d.status === 'out') { if (p && d.holder_id === p.id) { cls = 'warn'; note = 'already with this person'; } else { cls = 'conflict'; note = `out to ${d.holder_name}`; } }
       else if (d.status !== 'in') { cls = 'warn'; note = d.status; }
-      return `<li class="${cls}"><span class="idx">${i + 1}</span><span><div class="label">${esc(d.label || d.si)}</div><div class="sub">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${note ? ` · <span class="${cls === 'conflict' ? 'red' : 'amber'}">${esc(note)}</span>` : ''}</div></span><span class="badge ${esc(d.status)}">${esc(d.status)}</span><span class="remove" data-rm="${d.id}">&#10005;</span></li>`;
+      return `<li class="${cls}"><span class="idx">${i + 1}</span><span><div class="label">${esc(d.label || d.si)}${/bolero/i.test(d.type_name) && !/antenna/i.test(d.type_name) && d.linked_id ? ` <span class="bolero">ID ${esc(d.linked_id)}</span>` : ''}</div><div class="sub">${esc(d.type_name)} · <span class="si">${esc(d.si)}</span>${note ? ` · <span class="${cls === 'conflict' ? 'red' : 'amber'}">${esc(note)}</span>` : ''}</div></span><span class="badge ${esc(d.status)}">${esc(d.status)}</span><span class="remove" data-rm="${d.id}">&#10005;</span></li>`;
     }).join('');
     $('#basket').querySelectorAll('[data-rm]').forEach(el => el.onclick = () => { state.basket = state.basket.filter(x => x.id !== +el.dataset.rm); renderBasket(); });
     const n = state.basket.length;
