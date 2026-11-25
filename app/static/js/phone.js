@@ -42,10 +42,11 @@
   searchEl.addEventListener('blur', () => setTimeout(() => resultsEl.classList.add('hidden'), 150));
   async function search(q) {
     const d = await api(`/api/people/search?q=${encodeURIComponent(q)}`);
-    resultsEl.innerHTML = d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)}</div><div class="meta">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div></div><div class="counts">${p.held_count ? p.held_count + ' out' : ''}</div></div>`).join('') + `<div class="empty"><span>${d.results.length ? '' : 'No match'}</span><button class="btn sm" data-new>New person</button></div>`;
+    resultsEl.innerHTML = d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)}</div><div class="meta">${esc([p.dept, p.role].filter(Boolean).join(' · '))}${p.bolero_differs ? `${p.dept || p.role ? ' · ' : ''}<span class="amber">on Bolero as ${esc(p.bolero_name)}</span>` : ''}</div></div><div class="counts">${p.held_count ? p.held_count + ' out' : ''}</div></div>`).join('') + (d.packs || []).map(k => `<div class="empty"><span>Bolero ${esc(k.number)} is named <b>${esc(k.pack_name)}</b>. Nobody in RDR has this ID.</span><button class="btn sm" data-pack="${esc(k.number)}" data-pack-name="${esc(k.pack_name)}">Create</button></div>`).join('') + `<div class="empty"><span>${d.results.length ? '' : 'No match'}</span><button class="btn sm" data-new>New person</button></div>`;
     resultsEl.classList.remove('hidden');
     resultsEl.querySelectorAll('.item').forEach(el => el.onmousedown = () => selectPerson(+el.dataset.id));
     resultsEl.querySelector('[data-new]').onmousedown = () => openNewPerson(q);
+    resultsEl.querySelectorAll('[data-pack]').forEach(el => el.onmousedown = () => openNewPerson(el.dataset.packName, el.dataset.pack));
   }
   async function selectPerson(id, opts = {}) {
     resultsEl.classList.add('hidden');
@@ -54,6 +55,18 @@
     if (opts.auto) state.autoPerson = true; else if (!state.person || state.person.id !== id) state.autoPerson = false;
     state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; searchEl.value = '';
     renderPerson(); renderBasket();
+    if (d.name_check && !opts.auto) askBoleroName(d.person, d.name_check);
+  }
+  function askBoleroName(person, c) {
+    const choose = async use => {
+      try {
+        const r = await post(`/api/people/${person.id}/bolero-name`, { use, pack_name: c.pack_name });
+        closeModal();
+        if (use) { toast('ok', 'Name updated', `${person.name} is now ${r.person.name}`); if (state.person && state.person.id === person.id) { state.person = r.person; renderPerson(); } }
+      } catch (e) { closeModal(); toast('err', 'Could not save', e.message); }
+    };
+    modal('Name differs on Bolero', `<p>Bolero ${esc(c.number)} is named <b>${esc(c.pack_name)}</b> on the Bolero system.</p><p class="help">RDR has <b>${esc(person.name)}</b> from the import.</p>`,
+      [{ label: 'Keep RDR name', onClick: () => choose(false) }, { label: 'Use Bolero name', cls: 'primary', onClick: () => choose(true) }]);
   }
   function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; state.autoPerson = false; renderPerson(); renderBasket(); }
   function renderPerson() {
@@ -66,9 +79,9 @@
     const ra = el.querySelector('[data-return-all]'); if (ra) ra.onclick = () => state.holdings.forEach(d => addToBasket(d, true));
     const aa = el.querySelector('[data-add-all]'); if (aa) aa.onclick = () => state.assignments.forEach(d => addToBasket(d, true));
   }
-  function openNewPerson(prefill) {
-    modal('New person', `<div class="field"><label>Full name</label><input id="np_name" value="${esc(prefill)}"></div><div class="grid cols-2"><div class="field"><label>Department</label><input id="np_dept"></div><div class="field"><label>Role</label><input id="np_role"></div></div><div class="field"><label>Phone</label><input id="np_phone"></div>`,
-      [{ label: 'Cancel' }, { label: 'Create', cls: 'primary', onClick: async root => { try { const d = await post('/api/people', { name: $('#np_name', root).value, dept: $('#np_dept', root).value, role: $('#np_role', root).value, phone: $('#np_phone', root).value }); closeModal(); selectPerson(d.person.id); } catch (e) { toast('err', 'Could not create', e.message); } } }]);
+  function openNewPerson(prefill, boleroId = '') {
+    modal('New person', `<div class="field"><label>Full name</label><input id="np_name" value="${esc(prefill)}"></div><div class="grid cols-2"><div class="field"><label>Department</label><input id="np_dept"></div><div class="field"><label>Role</label><input id="np_role"></div></div><div class="grid cols-2"><div class="field"><label>Phone</label><input id="np_phone"></div><div class="field"><label>Bolero ID</label><input id="np_bolero" value="${esc(boleroId)}" inputmode="numeric"></div></div>`,
+      [{ label: 'Cancel' }, { label: 'Create', cls: 'primary', onClick: async root => { try { const d = await post('/api/people', { name: $('#np_name', root).value, dept: $('#np_dept', root).value, role: $('#np_role', root).value, phone: $('#np_phone', root).value, bolero_id: $('#np_bolero', root).value }); closeModal(); selectPerson(d.person.id); } catch (e) { toast('err', 'Could not create', e.message); } } }]);
   }
 
   // ---- basket ----------------------------------------------------------------

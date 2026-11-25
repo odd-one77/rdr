@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import is_admin, live_tech
 from ..db import get_db, get_setting, now_iso
-from ..services import away, bolero, inventory, liveconfig, quotes, streams
+from ..services import away, bolero, bolero_names, inventory, liveconfig, quotes, streams
 
 router = APIRouter(prefix="/api")
 
@@ -52,7 +52,18 @@ def _row(r) -> Optional[dict]:
 @router.get("/people/search")
 def people_search(q: str = "", tech: dict = Depends(require_tech)):
     with get_db() as db:
-        return {"results": [dict(r) for r in inventory.search_people(db, q)]}
+        if not bolero_names.enabled():
+            return {"results": [dict(r) for r in inventory.search_people(db, q)], "packs": []}
+        found = {r["id"] for r in inventory.search_people(db, q)}
+        by_pack, loose = bolero_names.search(db, q, found)
+        packs = bolero_names.names()
+        results = []
+        for r in inventory.search_people(db, q, limit=12 + len(by_pack), extra_ids=[x["id"] for x in by_pack]):
+            d = dict(r)
+            d["bolero_name"] = bolero_names.label(r, packs)
+            d["bolero_differs"] = bool(d["bolero_name"]) and not bolero_names.same_name(r["name"], d["bolero_name"])
+            results.append(d)
+        return {"results": results, "packs": loose}
 
 
 @router.get("/people/{person_id}")
@@ -66,7 +77,30 @@ def person_detail(person_id: int, tech: dict = Depends(require_tech)):
             "holdings": [dict(r) for r in inventory.person_holdings(db, person_id)],
             "assignments": [dict(r) for r in inventory.person_assignments(db, person_id)],
             "recent": [dict(r) for r in inventory.transactions(db, limit=15, person_id=person_id)],
+            "name_check": bolero_names.check(db, p) if bolero_names.enabled() else None,
         }
+
+
+class BoleroNameChoice(BaseModel):
+    use: bool
+    pack_name: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/people/{person_id}/bolero-name")
+def person_bolero_name(person_id: int, body: BoleroNameChoice, tech: dict = Depends(require_tech)):
+    """The tech's answer when the name on the person's pack differs: use it, or keep the RDR name."""
+    with get_db() as db:
+        p = inventory.person_by_id(db, person_id)
+        if p is None:
+            raise HTTPException(404, "Unknown person")
+        c = bolero_names.check(db, p)
+        if c is None or c["pack_name"] != body.pack_name:
+            raise HTTPException(409, "The names no longer differ. Search again.")
+        if body.use:
+            p = inventory.update_person(db, person_id, name=c["pack_name"])
+        else:
+            bolero_names.keep(db, person_id, c["pack_name"])
+        return {"person": dict(p)}
 
 
 class PersonIn(BaseModel):

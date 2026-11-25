@@ -57,10 +57,11 @@ def settings() -> dict:
         "mode": cfg.get("bolero_mode") or "standalone",
         "has_password": bool(cfg.get("bolero_admin_password")),
         "charger_resource": cfg.get("bolero_charger_resource") or "",
+        "names": bool(cfg.get("bolero_names")),
     }
 
 
-def configure(host: str, enabled: bool, admin_password: Optional[str], clear_password: bool = False, charger_resource: str = "", mode: str = "standalone") -> None:
+def configure(host: str, enabled: bool, admin_password: Optional[str], clear_password: bool = False, charger_resource: str = "", mode: str = "standalone", names: bool = False) -> None:
     cfg = load_config()
     for h in hosts(host):
         if not _is_private(h):
@@ -69,6 +70,7 @@ def configure(host: str, enabled: bool, admin_password: Optional[str], clear_pas
     cfg["bolero_mode"] = "artist" if mode == "artist" else "standalone"
     cfg["bolero_enabled"] = bool(enabled and hosts(host))
     cfg["bolero_charger_resource"] = charger_resource.strip().strip("/")
+    cfg["bolero_names"] = bool(names)
     if clear_password:
         cfg.pop("bolero_admin_password", None)
     elif admin_password:
@@ -330,6 +332,16 @@ def poll_now() -> dict:
 def status() -> dict:
     with _lock:
         return {k: (dict(v) if isinstance(v, dict) and k == "packs" else v) for k, v in _state.items() if k != "raw"} | {"settings": settings()}
+
+
+def pack_names() -> dict[str, str]:
+    """Pack number to the name set on the pack, from the last good poll (empty when the link is off or down)."""
+    if not settings()["enabled"]:
+        return {}
+    with _lock:
+        if not _state["ok"]:
+            return {}
+        return {n: (p.get("name") or "").strip() for n, p in _state["packs"].items()}
 
 
 def raw() -> dict:

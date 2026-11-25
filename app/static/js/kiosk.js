@@ -143,11 +143,13 @@
       const d = await api(`/api/people/search?q=${encodeURIComponent(q)}`);
       lastResults = d.results; activeIdx = d.results.length ? 0 : -1;
       resultsEl.innerHTML = (state.collector ? `<div class="empty top"><span>${esc(state.collector.name)} is collecting. Pick who these devices are for.</span></div>` : '') +
-        d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)} ${chips(p, null)}</div><div class="meta">${esc([p.dept, p.role, p.phone].filter(Boolean).join(' · '))}</div></div><div class="counts">${p.held_count ? `${p.held_count} out` : ''}</div></div>`).join('') +
+        d.results.map(p => `<div class="item" data-id="${p.id}"><div><div class="name">${esc(p.name)} ${chips(p, null)}</div><div class="meta">${esc([p.dept, p.role, p.phone].filter(Boolean).join(' · '))}${p.bolero_differs ? `${p.dept || p.role || p.phone ? ' · ' : ''}<span class="amber">on Bolero as ${esc(p.bolero_name)}</span>` : ''}</div></div><div class="counts">${p.held_count ? `${p.held_count} out` : ''}</div></div>`).join('') +
+        (d.packs || []).map(k => `<div class="empty"><span>Bolero ${esc(k.number)} is named <b>${esc(k.pack_name)}</b>. Nobody in RDR has this ID.</span><button class="btn sm" data-pack="${esc(k.number)}" data-pack-name="${esc(k.pack_name)}">Create</button></div>`).join('') +
         `<div class="empty"><span>${d.results.length ? 'Not listed?' : 'No match for “' + esc(q) + '”'}</span><button class="btn sm" data-new>+ Create “${esc(q)}”</button></div>`;
       resultsEl.classList.remove('hidden'); paintActive();
       resultsEl.querySelectorAll('.item').forEach(el => el.onmousedown = () => selectPerson(+el.dataset.id));
       resultsEl.querySelector('[data-new]').onmousedown = () => openNewPerson(q);
+      resultsEl.querySelectorAll('[data-pack]').forEach(el => el.onmousedown = () => openNewPerson(el.dataset.packName, el.dataset.pack));
     } catch (e) { toast('err', 'Search failed', e.message); }
   }
 
@@ -174,7 +176,26 @@
       }
       renderPerson(); renderBasket(); pushState(); updatePrev();
       if (state.collector) searchEl.focus(); else focusScan();
+      if (d.name_check && !opts.auto) askBoleroName(d.person, d.name_check);
     } catch (e) { toast('err', 'Could not load person', e.message); }
+  }
+  // The name on their pack differs from the imported one: the tech decides which is right.
+  function askBoleroName(person, c) {
+    const choose = async use => {
+      try {
+        const r = await post(`/api/people/${person.id}/bolero-name`, { use, pack_name: c.pack_name });
+        closeModal();
+        if (use) {
+          toast('ok', 'Name updated', `${person.name} is now ${r.person.name}`, 2500);
+          if (state.person && state.person.id === person.id) { state.person = r.person; renderPerson(); pushState(); }
+          const rec = state.recipients.find(x => x.id === person.id); if (rec) { rec.name = r.person.name; renderBasket(); pushState(); }
+        }
+      } catch (e) { closeModal(); toast('err', 'Could not save', e.message); }
+    };
+    modal('Name differs on Bolero', `
+      <p>Bolero ${esc(c.number)} is named <b>${esc(c.pack_name)}</b> on the Bolero system.</p>
+      <p class="help">RDR has <b>${esc(person.name)}</b> from the import.</p>`,
+      [{ label: 'Keep RDR name', onClick: () => choose(false) }, { label: 'Use Bolero name', cls: 'primary', onClick: () => choose(true) }]);
   }
   function clearPerson() {
     if (state.person) state.lastPerson = { id: state.person.id, name: state.person.name };
@@ -300,11 +321,11 @@
   }
   $('#btnAddAssigned').onclick = () => state.assignments.forEach(d => addToBasket(d, true));
 
-  function openNewPerson(prefill = '') {
+  function openNewPerson(prefill = '', boleroId = '') {
     modal('New person', `
       <div class="field"><label>Full name</label><input id="np_name" value="${esc(prefill)}"></div>
       <div class="grid cols-2"><div class="field"><label>Department</label><input id="np_dept"></div><div class="field"><label>Role</label><input id="np_role"></div></div>
-      <div class="grid cols-2"><div class="field"><label>Phone</label><input id="np_phone"></div><div class="field"><label>Bolero ID (optional)</label><input id="np_bolero" placeholder="61"></div></div>
+      <div class="grid cols-2"><div class="field"><label>Phone</label><input id="np_phone"></div><div class="field"><label>Bolero ID (optional)</label><input id="np_bolero" placeholder="61" value="${esc(boleroId)}"></div></div>
       <div class="field"><label>Unique ID (optional)</label><input id="np_ext"></div>`,
       [{ label: 'Cancel' }, { label: 'Create and select', cls: 'primary', onClick: async root => {
         try {

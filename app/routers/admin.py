@@ -20,7 +20,7 @@ from .. import security
 from ..config import DATA_DIR, IMPORT_DIR, UPLOAD_DIR, load_config, save_config
 from ..db import ACTION_LABELS, get_db, get_setting, now_iso, reset_db, set_setting
 from ..main import lan_addresses, render
-from ..services import away, backup, bolero, certs, importer, inventory, quotes, reports, snapshots, streams, updater
+from ..services import away, backup, bolero, bolero_names, certs, importer, inventory, quotes, reports, snapshots, streams, updater
 
 router = APIRouter(prefix="/admin")
 
@@ -926,14 +926,16 @@ def bolero_page(request: Request, path: str = "", host: str = ""):
             except Exception as e:  # noqa: BLE001
                 err = f"{type(e).__name__}: {e}"
     st = bolero.status()
+    with get_db() as db:
+        diffs = bolero_names.differences(db)
     polled = datetime.fromtimestamp(st["updated"]).strftime("%H:%M:%S") if st.get("updated") else ""
-    return render(request, "admin/bolero.html", bolero=st, polled=polled, path=path, host=host, text=text, err=err, active="bolero")
+    return render(request, "admin/bolero.html", bolero=st, diffs=diffs, polled=polled, path=path, host=host, text=text, err=err, active="bolero")
 
 
 @router.post("/bolero/settings", dependencies=[Depends(require_admin)])
-def bolero_save(bolero_host: str = Form(""), bolero_enabled: str = Form(""), bolero_admin_password: str = Form(""), clear_password: str = Form(""), bolero_charger_resource: str = Form(""), bolero_mode: str = Form("standalone")):
+def bolero_save(bolero_host: str = Form(""), bolero_enabled: str = Form(""), bolero_admin_password: str = Form(""), clear_password: str = Form(""), bolero_charger_resource: str = Form(""), bolero_mode: str = Form("standalone"), bolero_names_on: str = Form("")):
     try:
-        bolero.configure(bolero_host, bool(bolero_enabled), bolero_admin_password.strip() or None, clear_password=bool(clear_password), charger_resource=bolero_charger_resource, mode=bolero_mode)
+        bolero.configure(bolero_host, bool(bolero_enabled), bolero_admin_password.strip() or None, clear_password=bool(clear_password), charger_resource=bolero_charger_resource, mode=bolero_mode, names=bool(bolero_names_on))
     except ValueError as e:
         return _redirect("/admin/bolero", err=str(e))
     if bolero_enabled and bolero_host.strip():
@@ -948,6 +950,20 @@ def bolero_save(bolero_host: str = Form(""), bolero_enabled: str = Form(""), bol
 def bolero_poll():
     st = bolero.poll_now()
     return _redirect("/admin/bolero", msg=f"Polled: {len(st['packs'])} packs" if st["ok"] else None, err=None if st["ok"] else st["error"])
+
+
+@router.post("/bolero/names", dependencies=[Depends(require_admin)])
+def bolero_names_apply(request: Request, person_id: int = Form(...), pack_name: str = Form(...), action: str = Form("use")):
+    with get_db() as db:
+        p = inventory.person_by_id(db, person_id)
+        c = bolero_names.check(db, p) if p else None
+        if c is None or c["pack_name"] != pack_name:
+            return _redirect("/admin/bolero#names", err="Those names no longer differ.")
+        if action == "use":
+            inventory.update_person(db, person_id, name=pack_name)
+            return _redirect("/admin/bolero#names", msg=f"{p['name']} is now {pack_name}")
+        bolero_names.keep(db, person_id, pack_name)
+    return _redirect("/admin/bolero#names", msg=f"Kept {p['name']}")
 
 
 @router.get("/bolero/rest", dependencies=[Depends(require_admin)])

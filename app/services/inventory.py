@@ -89,8 +89,10 @@ def person_assignments(db: sqlite3.Connection, person_id: int) -> list[sqlite3.R
     ).fetchall()
 
 
-def search_people(db: sqlite3.Connection, q: str, limit: int = 12) -> list[sqlite3.Row]:
+def search_people(db: sqlite3.Connection, q: str, limit: int = 12, extra_ids: Iterable[int] = ()) -> list[sqlite3.Row]:
+    """People matching q on name, IDs, department, role or phone, plus ``extra_ids`` (found another way)."""
     q = (q or "").strip()
+    extra = [int(i) for i in extra_ids]
     if not q:
         return []
     like = f"%{q}%"
@@ -113,10 +115,11 @@ def search_people(db: sqlite3.Connection, q: str, limit: int = 12) -> list[sqlit
            OR p.role LIKE ? COLLATE NOCASE
            OR p.bolero_id LIKE ? COLLATE NOCASE
            OR (? IS NOT NULL AND REPLACE(REPLACE(p.phone,' ',''),'-','') LIKE ?)
+           OR p.id IN ({extra})
         ORDER BY CASE WHEN p.name LIKE ? COLLATE NOCASE THEN 0 WHEN p.bolero_id = ? COLLATE NOCASE THEN 0 WHEN p.role LIKE ? COLLATE NOCASE THEN 1 ELSE 2 END, p.name
         LIMIT ?
-        """,
-        (like, like, like, like, like, phone_like, phone_like, f"{q}%", q, f"{q}%", limit),
+        """.replace("{extra}", ",".join("?" * len(extra)) or "NULL"),
+        (like, like, like, like, like, phone_like, phone_like, *extra, f"{q}%", q, f"{q}%", limit),
     ).fetchall()
     return rows
 
