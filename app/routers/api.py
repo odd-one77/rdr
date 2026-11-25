@@ -63,6 +63,7 @@ def people_search(q: str = "", tech: dict = Depends(require_tech)):
             d = dict(r)
             d["bolero_name"] = bolero_names.label(r, packs)
             d["bolero_differs"] = bool(d["bolero_name"]) and not bolero_names.same_name(r["name"], d["bolero_name"])
+            d["bolero_expected"] = bolero_names.pack_style(r["name"]) if d["bolero_differs"] else ""
             results.append(d)
         return {"results": results, "packs": loose}
 

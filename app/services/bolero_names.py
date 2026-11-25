@@ -1,8 +1,10 @@
 """Compare the names people were imported with against the names set on their Bolero packs.
 
 Off unless "Use Bolero pack names" is ticked on the Bolero link page. A pack's name is matched to a
-person through their Bolero ID (pack number). Pack screens are short, so a name whose words each start
-the person's words ("J Carter", "Sam P", "Jamal Car") counts as the same person. Default pack names
+person through their Bolero ID (pack number). Pack names hold 8 characters, set as the first 6 letters
+of the first name and the last name's initial ("Jonath S" for Jonathan Smith), so that form, with or
+without the space, counts as the same person, as does any name whose words each start the person's
+words ("J Carter", "Sam P"). Default pack names
 like "Bolero 61" or "BP 61" are ignored. A tech can keep the RDR name, which is remembered until the
 pack is renamed again.
 
@@ -47,12 +49,35 @@ def real_name(pack_name: str) -> bool:
     return bool((pack_name or "").strip()) and not _DEFAULT.match(pack_name.strip())
 
 
+PACK_LEN, FIRST_LEN = 8, 6   # Bolero pack names: 8 characters, first 6 of the first name + last initial
+
+
+def pack_style(name: str) -> str:
+    """The name as it would be set on a pack: "Jonathan Smith" -> "Jonath S"."""
+    w = (name or "").split()
+    if not w:
+        return ""
+    return (w[0][:FIRST_LEN] + (" " + w[-1][0].upper() if len(w) > 1 else ""))[:PACK_LEN]
+
+
 def same_name(rdr_name: str, pack_name: str) -> bool:
     a, b = _words(rdr_name), _words(pack_name)
     if not a or not b:
         return True
     # each word on the pack starts the matching word in RDR: "Sam P", "J Carter", or cut off on the pack screen
-    return len(b) <= len(a) and all(x.startswith(y) for x, y in zip(a, b))
+    if len(b) <= len(a) and all(x.startswith(y) for x, y in zip(a, b)):
+        return True
+    first, last = a[0], (a[-1] if len(a) > 1 else "")
+    # first name (cut short) and last initial, skipping middle names: "Mary W" for Mary Jane Watson
+    if len(b) == 2 and last and first.startswith(b[0]) and last.startswith(b[1]):
+        return True
+    # the same with no space: "JonathS", "HannahW"
+    c = "".join(b)
+    if len(b) == 1 and last:
+        for k in range(1, min(len(first), len(c) - 1) + 1):
+            if c[:k] == first[:k] and last.startswith(c[k:]):
+                return True
+    return False
 
 
 def names() -> dict[str, str]:
@@ -86,7 +111,7 @@ def check(db: sqlite3.Connection, person, packs: Optional[dict[str, str]] = None
         return None
     if not always() and _kept(db).get(str(person["id"])) == pack_name:
         return None
-    return {"number": number, "pack_name": pack_name}
+    return {"number": number, "pack_name": pack_name, "expected": pack_style(person["name"])}
 
 
 def label(person, packs: dict[str, str]) -> str:
@@ -102,7 +127,9 @@ def search(db: sqlite3.Connection, q: str, exclude: set[int], limit: int = 8) ->
     words = _words(q)
     if not packs or not words:
         return [], []
-    hits = {n: nm for n, nm in packs.items() if all(any(w.startswith(x) for w in _words(nm)) for x in words)}
+    # a pack word cut to 6 letters still matches the full word typed ("Jonathan" finds "Jonath S")
+    hits = {n: nm for n, nm in packs.items()
+            if all(any(w.startswith(x) or (len(w) >= FIRST_LEN and x.startswith(w)) for w in _words(nm)) for x in words)}
     if not hits:
         return [], []
     people, claimed = [], set()

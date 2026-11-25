@@ -14,6 +14,13 @@ def test_same_name_rules():
     assert not s("Sam Price", "Samantha Price")
     assert not s("Dana Whitfield", "Morgan Hale")
     assert not s("Rafael Okonkwo", "T Okonkwo")
+    # Bolero's 8 characters: first 6 of the first name, then the last initial, with or without the space
+    assert s("Jonathan Smith", "Jonath S") and s("Jonathan Smith", "JonathS") and s("Hannah Weiss", "HannahW")
+    assert s("Mary Jane Watson", "Mary W") and s("Bartholomew de Vries", "Bartho V") and s("Al Kerr", "Al K")
+    assert not s("Hannah Weiss", "Hannah P") and not s("Hannah Weiss", "HannahP") and not s("Jonathan Smith", "Jonath T")
+    assert not s("Jonathan Smith", "Joanna S")
+    p = bolero_names.pack_style
+    assert p("Jonathan Smith") == "Jonath S" and p("Al Kerr") == "Al K" and p("Mary Jane watson") == "Mary W" and p("Cher") == "Cher"
     assert not bolero_names.real_name("Bolero 61") and not bolero_names.real_name("BP 7") and not bolero_names.real_name("")
     assert bolero_names.real_name("Alex") and bolero_names.id_of("Bolero 061") == "61"
 
@@ -36,7 +43,7 @@ def test_prompt_search_and_choices(names_on, client):
     assert d["name_check"] is None
     assert client.get(f"/api/people/{ids['Rafael Okonkwo']}").json()["name_check"] is None   # initial counts as the same
     c = client.get(f"/api/people/{ids['Morgan Hale']}").json()["name_check"]
-    assert c == {"number": "805", "pack_name": "Quinn Lavelle"}
+    assert c == {"number": "805", "pack_name": "Quinn Lavelle", "expected": "Morgan H"}
 
     # search by the pack name finds the person holding that ID, flagged as different
     r = client.get("/api/people/search?q=quinn").json()
@@ -110,3 +117,14 @@ def test_names_mode_setting(monkeypatch):
         bolero.configure("192.168.1.20", True, None, names=mode)
         assert bolero.settings()["names_mode"] == mode and bolero.settings()["names"] == (mode != "off")
     assert bolero.names_mode({"bolero_names": True}) == "ask"   # saved by the earlier tick box
+
+
+def test_search_finds_cut_pack_names(monkeypatch):
+    monkeypatch.setattr(bolero_names, "enabled", lambda: True)
+    monkeypatch.setattr(bolero, "pack_names", lambda: {"831": "Jonath S", "832": "Hannah P"})
+    from app.db import get_db
+    with get_db() as db:
+        _, loose = bolero_names.search(db, "jonathan", set())
+        assert [x["number"] for x in loose] == ["831"]
+        _, loose = bolero_names.search(db, "hannah p", set())
+        assert [x["number"] for x in loose] == ["832"]

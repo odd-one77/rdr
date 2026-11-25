@@ -241,7 +241,9 @@ exact charger resource differs by firmware; the explorer on the same page shows
 the raw answers so it can be found and set on site. Unofficial interface: a firmware
 update may change it.
 
-**Pack names** (Bolero link page): Off, Ask or Always. With Ask, the kiosk finds
+**Pack names** (Bolero link page): Off, Ask or Always. Pack names hold 8 characters, the
+first 6 letters of the first name and the last initial ("Jonath S"), and that
+form counts as the same person. With Ask, the kiosk finds
 people by the name on their pack too, marks a result whose pack carries a
 different name, and asks the tech which name is right. With Always, people take
 the name on their pack without a prompt. Their imported name is kept, so they are

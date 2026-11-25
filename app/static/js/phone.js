@@ -39,7 +39,7 @@
   const idOf = v => String(v || '').replace(/^bolero\s*/i, '');
   // Under a search result: the pack name when it differs, or the imported name when RDR took the pack's name.
   function nameNote(p) {
-    if (p.bolero_differs) return `<div class="bname differs"><span class="tag">Name differs</span>Bolero ${esc(idOf(p.bolero_id))} is named <b>${esc(p.bolero_name)}</b></div>`;
+    if (p.bolero_differs) return `<div class="bname differs"><span class="tag">Name differs</span>Bolero ${esc(idOf(p.bolero_id))} is named <b>${esc(p.bolero_name)}</b>${p.bolero_expected ? `, not ${esc(p.bolero_expected)}` : ''}</div>`;
     if (p.import_name && p.import_name !== p.name) return `<div class="bname">Name from Bolero ${esc(idOf(p.bolero_id))} · imported as ${esc(p.import_name)}</div>`;
     return '';
   }
@@ -72,7 +72,7 @@
         if (use) { toast('ok', 'Name updated', `${person.name} is now ${r.person.name}`); if (state.person && state.person.id === person.id) { state.person = r.person; renderPerson(); } }
       } catch (e) { closeModal(); toast('err', 'Could not save', e.message); }
     };
-    modal('Name differs on Bolero', `<p>Bolero ${esc(c.number)} is named <b>${esc(c.pack_name)}</b> on the Bolero system.</p><p class="help">RDR has <b>${esc(person.name)}</b> from the import.</p>`,
+    modal('Name differs on Bolero', `<p>Bolero ${esc(c.number)} is named <b>${esc(c.pack_name)}</b> on the Bolero system.</p><p class="help">RDR has <b>${esc(person.name)}</b> from the import${c.expected ? `, which would be ${esc(c.expected)} on a pack` : ''}.</p>`,
       [{ label: 'Keep RDR name', onClick: () => choose(false) }, { label: 'Use Bolero name', cls: 'primary', onClick: () => choose(true) }]);
   }
   function clearPerson() { state.person = null; state.holdings = []; state.assignments = []; state.autoPerson = false; renderPerson(); renderBasket(); }
