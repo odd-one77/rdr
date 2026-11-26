@@ -81,3 +81,13 @@ def save_config(cfg: dict) -> None:
     with _cache_lock:
         write_private(CONFIG_PATH, json.dumps(cfg, indent=2))
         _cache = None
+
+
+def is_hub() -> bool:
+    """This server is the hub (many events, offsite copy of every site node) rather than an RDR for one event."""
+    role = (os.environ.get("RDR_ROLE") or load_config().get("role") or "").strip().lower()
+    return role == "hub"
+
+
+HUB_DIR = DATA_DIR / "hub"            # hub: hub.db and one folder per event
+NODE_DIR = DATA_DIR / "node"          # site node: the copy last agreed with the hub, and the sync state

@@ -1,10 +1,12 @@
 """SQLite access layer: connection handling, schema and seed data."""
 from __future__ import annotations
 
+import contextvars
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Iterator
+from pathlib import Path
+from typing import Iterator, Optional
 
 from .config import DB_PATH, ensure_dirs
 
@@ -171,18 +173,50 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def connect() -> sqlite3.Connection:
-    ensure_dirs()
-    conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
+# Which database this request works on. A site node and a standalone RDR always use DB_PATH; the hub
+# keeps one database per event and points each request at the event it is working on.
+_db_path: contextvars.ContextVar[Optional[Path]] = contextvars.ContextVar("rdr_db_path", default=None)
+_machine_db: Optional[Path] = None   # hub only: where machine settings (the admin password) live
+
+
+def current_db_path() -> Path:
+    return _db_path.get() or DB_PATH
+
+
+@contextmanager
+def using_db(path) -> Iterator[None]:
+    token = _db_path.set(Path(path))
+    try:
+        yield
+    finally:
+        _db_path.reset(token)
+
+
+def set_db_path(path) -> None:
+    """Point the rest of this request (or thread) at another database."""
+    _db_path.set(Path(path) if path else None)
+
+
+def set_machine_db(path) -> None:
+    global _machine_db
+    _machine_db = Path(path) if path else None
+
+
+def open_db(path) -> sqlite3.Connection:
+    conn = sqlite3.connect(path, timeout=10, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA synchronous = FULL")   # every commit reaches the disk before we answer
+    conn.execute("PRAGMA synchronous = FULL")
     try:
         conn.execute("PRAGMA journal_mode = WAL")
     except sqlite3.OperationalError:
-        # Some network file systems cannot lock for WAL; the default journal still works.
         pass
     return conn
+
+
+def connect() -> sqlite3.Connection:
+    ensure_dirs()
+    return open_db(current_db_path())   # every commit reaches the disk before we answer (synchronous=FULL)
 
 
 @contextmanager
@@ -205,7 +239,42 @@ MIGRATIONS = [
     ("people", "faceplate", "TEXT NOT NULL DEFAULT ''"),
     ("people", "allocation", "TEXT NOT NULL DEFAULT ''"),
     ("people", "import_name", "TEXT NOT NULL DEFAULT ''"),   # the name before Always use Bolero names renamed them
-]
+] + [(t, "uid", "TEXT") for t in ("sites", "device_types", "techs", "people", "devices", "assignments", "transactions")]
+
+# -- sync with a hub -------------------------------------------------------------
+# Every row that can be merged between a site node and the hub carries a uid that is the same in every copy.
+# Integer ids differ between copies; the uid does not. A counter records that the data changed at all.
+SYNCED_TABLES = ("sites", "device_types", "techs", "people", "devices", "assignments", "transactions")
+# settings that belong to the machine, not the event: never synced, kept when an event is pulled
+LOCAL_SETTING_KEYS = ("admin_password_hash",)
+LOCAL_SETTING_PREFIXES = ("away:", "hub_")
+_LOCAL_SQL = " AND ".join([f"{{row}}.key <> '{k}'" for k in LOCAL_SETTING_KEYS] + [f"{{row}}.key NOT LIKE '{p}%'" for p in LOCAL_SETTING_PREFIXES])
+
+
+def is_local_setting(key: str) -> bool:
+    return key in LOCAL_SETTING_KEYS or key.startswith(LOCAL_SETTING_PREFIXES)
+
+
+def _sync_setup(db: sqlite3.Connection) -> None:
+    db.execute("CREATE TABLE IF NOT EXISTS sync_state (id INTEGER PRIMARY KEY CHECK (id = 1), changes INTEGER NOT NULL DEFAULT 0)")
+    db.execute("INSERT OR IGNORE INTO sync_state (id, changes) VALUES (1, 0)")
+    bump = "UPDATE sync_state SET changes = changes + 1 WHERE id = 1;"
+    for t in SYNCED_TABLES:
+        db.execute(f"UPDATE {t} SET uid = lower(hex(randomblob(16))) WHERE uid IS NULL OR uid = ''")
+        db.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {t}_uid ON {t}(uid)")
+        db.execute(f"CREATE TRIGGER IF NOT EXISTS {t}_uid_fill AFTER INSERT ON {t} WHEN NEW.uid IS NULL OR NEW.uid = '' "
+                   f"BEGIN UPDATE {t} SET uid = lower(hex(randomblob(16))) WHERE rowid = NEW.rowid; END")
+    for t in SYNCED_TABLES + ("event",):
+        for op in ("INSERT", "UPDATE", "DELETE"):
+            db.execute(f"CREATE TRIGGER IF NOT EXISTS {t}_chg_{op.lower()} AFTER {op} ON {t} BEGIN {bump} END")
+    for op, row in (("INSERT", "NEW"), ("UPDATE", "NEW"), ("DELETE", "OLD")):
+        db.execute(f"CREATE TRIGGER IF NOT EXISTS settings_chg_{op.lower()} AFTER {op} ON settings WHEN {_LOCAL_SQL.format(row=row)} BEGIN {bump} END")
+
+
+def changes(db: sqlite3.Connection) -> int:
+    """How many times the event data has changed (rows in synced tables, the event, shared settings)."""
+    row = db.execute("SELECT changes FROM sync_state WHERE id = 1").fetchone()
+    return int(row[0]) if row else 0
 # types added to the defaults after a database may already exist: offered once, then the list is the user's
 ADDED_DEVICE_TYPES = {"0.9.5": ["Hytera PD682 Radio", "Moto R7 Radio", "TS2 Headset", "Hytera TS2 Headset", "Moto R7 TS2 Headset"]}
 DROPPED_TABLES = ["plans"]   # short-lived 0.3.0 feature, replaced by the person's Bolero ID alone
@@ -220,6 +289,7 @@ def migrate(db: sqlite3.Connection) -> None:
         db.execute(f"DROP TABLE IF EXISTS {table}")
     # faceplate colours end up in style attributes: anything but six hex digits from older versions goes
     db.execute("UPDATE people SET faceplate = '' WHERE faceplate <> '' AND (length(faceplate) <> 6 OR faceplate GLOB '*[^0-9A-Fa-f]*')")
+    _sync_setup(db)
 
 
 def init_db() -> None:
@@ -279,12 +349,34 @@ def reset_db() -> None:
 
 # -- settings helpers -------------------------------------------------------
 
+MACHINE_SETTING_KEYS = ("admin_password_hash",)   # on the hub these live in the hub database, not an event's
+
+
 def get_setting(db: sqlite3.Connection, key: str, default: str | None = None) -> str | None:
+    if _machine_db is not None and key in MACHINE_SETTING_KEYS:
+        own = open_db(_machine_db)
+        try:
+            row = own.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        finally:
+            own.close()
+        return row["value"] if row else default
     row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     return row["value"] if row else default
 
 
 def set_setting(db: sqlite3.Connection, key: str, value: str | None) -> None:
+    if _machine_db is not None and key in MACHINE_SETTING_KEYS:
+        own = open_db(_machine_db)
+        try:
+            with own:
+                _write_setting(own, key, value)
+        finally:
+            own.close()
+        return
+    _write_setting(db, key, value)
+
+
+def _write_setting(db: sqlite3.Connection, key: str, value: str | None) -> None:
     if value is None:
         db.execute("DELETE FROM settings WHERE key = ?", (key,))
     else:
