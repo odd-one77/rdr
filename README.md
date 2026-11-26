@@ -115,6 +115,61 @@ In this mode *Update and restart* uses `git pull`.
 | `/trust` | Phone setup: install the local certificate once |
 | `/admin` | Admin: event, people, devices, imports, reports, settings, backup |
 
+## Hub and site nodes
+
+The hub is RDR on an Ubuntu 24.04 (or Debian 12+) container, run as an
+offsite overview. It holds many events, each with its own sites, devices,
+people and history, and keeps the copy of every site node as the offsite
+backup. A site node is an ordinary RDR at the venue: it takes an event from
+the hub and then works on its own, so the show carries on when the internet
+drops.
+
+**Installing the hub** (as root in the container):
+
+```
+apt-get update && apt-get install -y curl
+curl -fsSL https://raw.githubusercontent.com/odd-one77/rdr/main/installer/get_debian.sh | RDR_ROLE=hub RDR_DOMAIN=hub.example.com bash
+```
+
+- With a domain, Caddy is installed in front of RDR and fetches a Let's
+  Encrypt certificate, so iPhones can scan against the hub with nothing to
+  install. The domain must point at the container, with ports 80 and 443
+  forwarded to it. Ubuntu needs its universe sources for Caddy.
+- Without `RDR_DOMAIN` (site nodes reach the hub over the site to site VPN on
+  the routers), RDR uses its own certificate on port 8443. Site nodes trust it
+  by the fingerprint shown under Settings, Server; phones install it once from
+  `/trust`.
+
+Set the admin password from the local network first. For phones and Admin from
+outside, set an access code and turn remote access on under Settings, Remote
+access. Site nodes do not need that: they use their own keys.
+
+**On the hub:** New event (blank, or starting from another event's sites,
+device types, techs and devices), Site nodes (one key per machine), the
+overview (every event, its sites, the node running it, online or offline, out,
+in, damaged and lost, last scan), and All events (totals for every event, with
+CSV). Manage opens an event in the normal admin pages, so people, devices,
+imports and the End of show report all work per event. Techs and phones pick an
+event first.
+
+**On a site node:** Admin, Hub link. Enter the hub's address and the node's
+key, then Run this event here. The hub's copy replaces the node's data (a
+snapshot is kept). From then on:
+
+- the node sends its copy within 30 seconds of a change. The hub keeps the
+  previous copy each time, plus an hourly copy of changes made on the hub;
+- people, devices and sites changed on the hub are merged into the node;
+- the hub's copy cannot be scanned while a node runs the event;
+- if the hub could not be reached and the event changed on the hub meanwhile,
+  nothing is sent until the admin chooses **Merge** (both sides' changes; a
+  value changed on both sides keeps the node's, and is listed), **Overwrite the
+  hub** (the node's copy wins) or **Pull from the hub** (the hub's copy wins;
+  the node's data is kept as a snapshot). If only the node changed, its copy is
+  sent without asking;
+- Hand back to hub sends the final copy and makes the hub's copy scannable
+  again. If a node is lost, Release on the hub's event page does the same, and
+  the node is asked what to do if it comes back.
+
 ## Everyday use
 
 - **Sign out**: type the person's name (or phone / ID), pick them, scan devices,

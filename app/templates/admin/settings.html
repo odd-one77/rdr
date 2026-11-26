@@ -81,6 +81,7 @@
           <dt>Address</dt><dd class="mono">{% for ip in lan %}https://{{ ip }}:{{ https.port }}<br>{% endfor %}{% if not lan %}https://&lt;this-pc-ip&gt;:{{ https.port }}{% endif %}</dd>
           <dt>Valid for</dt><dd class="mono">{{ https.cert.hosts | join(', ') }}</dd>
           <dt>Expires</dt><dd>{{ https.cert.expires or 'unknown' }}</dd>
+          {% if https.cert.fingerprint %}<dt>Fingerprint</dt><dd class="mono">{{ https.cert.fingerprint }}</dd>{% endif %}
         </dl>
         {% if https.log and not https.listening %}<div class="code mt-s">{{ https.log | join('\n') }}</div>{% endif %}
         <p class="help">Phones still can't connect? {% if on_windows %}Allow <span class="mono">python.exe</span> through Windows Firewall for private networks, or open port {{ https.port }}.{% else %}Check that port {{ https.port }} is open on the server's firewall.{% endif %}</p></div>

@@ -121,6 +121,8 @@ def status() -> dict:
             san = crt.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
             info["hosts"] = [str(v) for v in san.get_values_for_type(x509.DNSName)] + [str(v) for v in san.get_values_for_type(x509.IPAddress)]
             info["expires"] = crt.not_valid_after_utc.date().isoformat()
+            from cryptography.hazmat.primitives import hashes as _h
+            info["fingerprint"] = crt.fingerprint(_h.SHA256()).hex()   # what a site node pins to trust this hub
         except Exception:  # noqa: BLE001
             pass
     return info

@@ -64,6 +64,29 @@ jobs:
           for image in debian:12 debian:13; do
             docker run --rm -v "$PWD/dist:/dist:ro" -v "$RUNNER_TEMP/check.sh:/check.sh:ro" "$image" bash /check.sh
           done
+      - name: Install the hub in a clean Ubuntu container
+        run: |
+          cat > "$RUNNER_TEMP/hub.sh" <<'EOF'
+          set -euo pipefail
+          tar -xzf /dist/rdr-debian-*.tar.gz -C /tmp
+          bash /tmp/rdr-debian-*/installer/install_debian.sh --hub
+          grep -q '"role": "hub"' /var/lib/rdr/config.json
+          test -f /var/lib/rdr/certs/server.crt
+          setpriv --reuid=rdr --regid=rdr --init-groups env RDR_DATA_DIR=/var/lib/rdr /opt/rdr/.venv/bin/python /opt/rdr/run.py --no-browser &
+          PID=$!
+          for i in $(seq 1 60); do
+            if python3 -c 'import urllib.request; assert b"Pick the event" in urllib.request.urlopen("http://127.0.0.1:8080/", timeout=2).read()' 2>/dev/null; then
+              test -f /var/lib/rdr/hub/hub.db
+              kill -TERM "$PID"; wait "$PID"
+              echo "== The hub answered on $(. /etc/os-release; echo "$PRETTY_NAME")"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "The hub did not answer" >&2
+          exit 1
+          EOF
+          docker run --rm -v "$PWD/dist:/dist:ro" -v "$RUNNER_TEMP/hub.sh:/hub.sh:ro" ubuntu:24.04 bash /hub.sh
       - name: Pull the latest release from GitHub in a clean container, without a token
         env:
           GH_TOKEN: ${{ github.token }}

@@ -17,6 +17,7 @@ EVENT_COOKIE = "rdr_event"
 NO_EVENT = ("/hub", "/static/", "/access", "/admin/login", "/admin/logout", "/admin/settings", "/favicon.ico", "/api/ping", "/trust")
 UNSAFE = ("POST", "PUT", "PATCH", "DELETE")
 HUB_ELSEWHERE = ("/admin/backup", "/admin/settings/reset")
+NEEDS_EVENT = ("/admin/settings/demo",)   # loads demo data into an event, never into the hub's own database
 
 
 def picked_event(scope) -> int | None:
@@ -64,7 +65,7 @@ class HubMiddleware:
         else:
             set_db_path(hub.HUB_DB)
             scope.setdefault("state", {})["hub_event"] = None
-            if not path.startswith(NO_EVENT):
+            if not path.startswith(NO_EVENT) or path.startswith(NEEDS_EVENT):
                 if path.startswith("/api/"):
                     await _json(send, 409, "Pick an event first")
                     return

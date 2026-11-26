@@ -9,6 +9,9 @@
 # A public repo needs nothing else. For a private repo set GH_TOKEN to a GitHub
 # fine-grained token with "Contents: read" on it (or type it when asked).
 #
+# RDR_ROLE=hub installs the hub, and RDR_DOMAIN=hub.example.com puts it on that public name with a
+# Let's Encrypt certificate (see install_debian.sh). Ubuntu 24.04 works as well as Debian.
+#
 # RDR_DOWNLOAD_ONLY=1 saves rdr-debian-<version>.tar.gz in the current folder
 # and installs nothing. RDR_REPO picks another repo (owner/name).
 set -euo pipefail
