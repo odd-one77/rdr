@@ -105,3 +105,31 @@ def test_local_settings_are_not_merged(tmp_path):
     assert _row(node, "SELECT value FROM settings WHERE key = 'admin_password_hash'")[0] == "node-secret"
     assert _row(node, "SELECT value FROM settings WHERE key = 'mirror_title'")[0] == "Welcome"
     assert n >= 0
+
+
+def test_scan_during_merge_is_not_lost(tmp_path):
+    """A scan committed while a merge runs waits for it, and is still there afterwards."""
+    import threading
+    base, node_p, hub_p = _setup(tmp_path)
+    hub = open_db(hub_p)
+    with hub:
+        hub.execute("UPDATE people SET dept = 'Rigging' WHERE name = 'Casey Orme'")
+    node = open_db(node_p)
+    node.execute("BEGIN IMMEDIATE")
+    p = merge.plan(merge.load(open_db(base)), merge.load(node), merge.load(hub))
+    done = []
+
+    def scan():
+        other = open_db(node_p)
+        with other:
+            other.execute("INSERT INTO transactions (ts, action) VALUES ('2027-06-01 12:00:00', 'note')")
+        done.append(True)
+
+    t = threading.Thread(target=scan); t.start()
+    t.join(0.3)
+    assert not done            # held back by the merge's lock
+    merge.apply(node, p["result"]); node.commit()
+    t.join(5)
+    assert done
+    assert node.execute("SELECT COUNT(*) FROM transactions WHERE action = 'note'").fetchone()[0] == 1
+    assert node.execute("SELECT dept FROM people WHERE name = 'Casey Orme'").fetchone()[0] == "Rigging"

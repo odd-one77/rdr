@@ -213,14 +213,31 @@ def hello() -> dict:
 
 # -- the agreed copy ---------------------------------------------------------------------
 
-def _set_base(rev: int) -> None:
+# The agreed copy must be exactly a copy the hub has: the file that was sent, or the file that was
+# received. Never a fresh copy of the live database, which may already hold a scan the hub has not seen;
+# a later merge would read that scan as deleted on the hub.
+
+def _set_base(path: Path, rev: int) -> None:
     NODE_DIR.mkdir(parents=True, exist_ok=True)
     tmp = BASE_PATH.with_suffix(".part")
-    eventfile.copy_db(DB_PATH, tmp)
+    eventfile.copy_db(path, tmp)
+    con = open_db(tmp)
+    try:
+        n = changes(con)
+    finally:
+        con.close()
+    _cleanup(BASE_PATH)
     tmp.replace(BASE_PATH)
-    with get_db() as db:
-        n = changes(db)
     _update(base_rev=rev, base_changes=n, pending=None, last_agreed=_now())
+
+
+def _snap_local() -> Path:
+    """A consistent copy of the live database: what is sent, and then the agreed copy."""
+    NODE_DIR.mkdir(parents=True, exist_ok=True)
+    out = NODE_DIR / "outgoing.db"
+    _cleanup(out)
+    eventfile.copy_db(DB_PATH, out)
+    return out
 
 
 def _now() -> str:
@@ -239,9 +256,17 @@ def _download(eid: int, dest: Path) -> tuple[int, dict]:
 
 
 def _push(eid: int, base_rev: int, force: bool = False, reason: str = "node") -> int:
-    blob = eventfile.pack(DB_PATH, UPLOAD_DIR)
-    _, _, data = call("PUT", f"/hub/api/events/{eid}/copy?base={base_rev}&force={1 if force else 0}&reason={reason}", blob, "application/zip", timeout=180)
-    return int(json.loads(data)["rev"])
+    """Send this node's copy; on success it becomes the agreed copy."""
+    out = _snap_local()
+    try:
+        blob = eventfile.pack(out, UPLOAD_DIR)
+        _, _, data = call("PUT", f"/hub/api/events/{eid}/copy?base={base_rev}&force={1 if force else 0}&reason={reason}", blob, "application/zip", timeout=180)
+        new = int(json.loads(data)["rev"])
+        _set_base(out, new)
+        _update(last_push=_now())
+        return new
+    finally:
+        _cleanup(out)
 
 
 def take_event(eid: int) -> dict:
@@ -255,13 +280,13 @@ def take_event(eid: int) -> dict:
             rev, manifest = _download(eid, tmp)
             snapshots.snapshot("beforehub")
             eventfile.replace_live(DB_PATH, tmp, UPLOAD_DIR, manifest.get("logo"))
+            _set_base(tmp, rev)
         finally:
             _cleanup(tmp)
         cfg = load_config()
         cfg["hub_event_id"] = eid
         cfg["hub_event_name"] = manifest.get("event") or ""
         save_config(cfg)
-        _set_base(rev)
         _update(last_ok=time.time(), offline_since=None, last_error="", last_pull=_now(), released=False)
     return {"rev": rev, "event": manifest.get("event")}
 
@@ -337,8 +362,7 @@ def sync_once(manual: bool = False) -> dict:
                 _merge_from_hub(eid, st)
                 return _update(**now_ok, last_merge=_now())
             if local_changed:
-                new = _push(eid, st.get("base_rev", 0))
-                _set_base(new)
+                _push(eid, st.get("base_rev", 0))
                 return _update(**now_ok, last_push=_now(), back_online=_now() if was_offline else st.get("back_online"))
             return _update(**now_ok)
         except HubError as e:
@@ -355,19 +379,25 @@ def _merge_from_hub(eid: int, st: dict) -> dict:
     tmp = NODE_DIR / "hub-copy.db"
     try:
         rev, manifest = _download(eid, tmp)
-        local_changed = _local_changes() != st.get("base_changes")   # before the merge writes anything
-        p = preview_plan(tmp)
         from . import snapshots
         snapshots.snapshot("beforemerge")
-        with get_db() as db:
-            merge.apply(db, p["result"])
+        base = open_db(BASE_PATH) if BASE_PATH.exists() else open_db(tmp)
+        hubc = open_db(tmp)
+        try:
+            with get_db() as db:
+                # read and write this node's data in one locked step, so a scan made meanwhile waits
+                # for the merge instead of being missed by it
+                db.execute("BEGIN IMMEDIATE")
+                p = merge.plan(merge.load(base), merge.load(db), merge.load(hubc))
+                merge.apply(db, p["result"])
+        finally:
+            base.close(); hubc.close()
         if manifest.get("logo"):
             for old in UPLOAD_DIR.glob("event-logo.*"):
                 old.unlink(missing_ok=True)
             UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
             (UPLOAD_DIR / manifest["logo"][0]).write_bytes(manifest["logo"][1])
-        new = _push(eid, rev, reason="merged") if local_changed else rev
-        _set_base(new)
+        _push(eid, rev, reason="merged")   # the hub gets the merged copy, which becomes the agreed one
         _update(last_conflicts=[_conflict_text(c) for c in p["conflicts"]][:50])
         return p
     finally:
@@ -419,8 +449,7 @@ def decide(choice: str) -> str:
             p = _merge_from_hub(eid, st)
             out = f"Merged. {len(p['conflicts'])} conflicts, this node's values kept." if p["conflicts"] else "Merged."
         elif choice == "overwrite":
-            new = _push(eid, st.get("base_rev", 0), force=True)
-            _set_base(new)
+            _push(eid, st.get("base_rev", 0), force=True)
             out = "The hub now has this node's copy. Its previous copy was kept on the hub."
         elif choice == "pull":
             tmp = NODE_DIR / "incoming.db"
@@ -428,9 +457,9 @@ def decide(choice: str) -> str:
                 rev, manifest = _download(eid, tmp)
                 snapshots.snapshot("beforepull")
                 eventfile.replace_live(DB_PATH, tmp, UPLOAD_DIR, manifest.get("logo"))
+                _set_base(tmp, rev)
             finally:
                 _cleanup(tmp)
-            _set_base(rev)
             out = "This node now has the hub's copy. Its previous data was kept as a snapshot under Backup."
         else:
             raise ValueError("Choose merge, overwrite or pull")

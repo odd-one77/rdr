@@ -195,7 +195,8 @@ def plan(base: dict, node: dict, hub: dict) -> dict:
 def apply(db: sqlite3.Connection, result: dict) -> dict:
     """Write the merged copy into the node's live database, keeping the ids it already uses."""
     counts = {"inserted": 0, "updated": 0, "deleted": 0}
-    db.execute("PRAGMA foreign_keys = OFF")
+    db.execute("PRAGMA foreign_keys = OFF")        # takes effect only outside a transaction
+    db.execute("PRAGMA defer_foreign_keys = ON")   # inside one: references are checked at commit
     try:
         local = {t: {r["uid"]: r["id"] for r in db.execute(f"SELECT id, uid FROM {t}")} for t in SYNCED_TABLES}
         for t in reversed(SYNCED_TABLES):

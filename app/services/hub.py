@@ -501,6 +501,8 @@ def upload(eid: int, node: dict, blob: bytes, base_rev: int, force: bool = False
         try:
             manifest = eventfile.unpack(blob, tmp)
             save_version(eid, "beforenode" if not force else "beforeoverwrite")
+            if not force and _sync_rev(eid) != current:   # an edit on the hub landed meanwhile: it must not be lost
+                raise RuntimeError("The hub's copy changed while the node's copy arrived")
             eventfile.replace_live(event_db_path(eid), tmp, event_dir(eid) / "uploads", manifest.get("logo"))
         finally:
             tmp.unlink(missing_ok=True)
