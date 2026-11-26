@@ -51,6 +51,7 @@ ACCESS_REFRESH_SECONDS = 7 * 86400   # a browser in daily use never reaches the 
 MB = 1024 * 1024
 BODY_LIMITS = (   # first matching prefix wins
     ("/admin/backup", 512 * MB),
+    ("/hub/api/", 256 * MB),   # a site node sending its copy of an event
     ("/admin/import", 32 * MB),
     ("/admin", 8 * MB),
     ("/api/kiosk/state", 64 * 1024),
@@ -472,6 +473,10 @@ class SecurityMiddleware:
                            f"RDR does not answer to the name {origin.host or 'in this request'}.",
                            "Open RDR by its IP address, or add this name under Settings, Remote access.",
                            api=api), None
+        if path.startswith("/hub/api/"):
+            # site nodes: no browser and no cookies; every call carries the node's own key, checked (and
+            # counted for wrong tries) by the hub router, so the access code and Origin checks do not apply
+            return None, None
         if origin.remote and not (cfg.get("remote_access") and cfg.get("access_code_hash")):
             return refusal(403, "Remote access is off",
                            "This RDR only answers on its local network.",

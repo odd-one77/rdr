@@ -1,0 +1,19 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}All events{% endblock %}
+{% block admin %}
+<div class="page-head"><div><h1>All events</h1><div class="sub">Totals per event. Each event's End of show report has the detail.</div></div>
+  <div class="row"><a class="btn" href="/hub/reports?format=csv">CSV</a><button class="btn primary" type="button" data-print>Print</button></div></div>
+<div class="panel report">
+  <div class="table-wrap full"><table>
+    <thead><tr><th>Event</th><th>Dates</th><th>Sites</th><th>Running on</th><th class="num">People</th><th class="num">Out</th><th class="num">In</th><th class="num">Damaged</th><th class="num">Lost</th><th>Last scan</th><th></th></tr></thead>
+    <tbody>{% for e in events %}{% set i = e.info %}{% set c = i.counts %}<tr>
+      <td><a href="/hub/events/{{ e.id }}"><b>{{ i.name or e.name }}</b></a>{% if i.show_name %}<div class="muted sm">{{ i.show_name }}</div>{% endif %}{% if e.archived %} <span class="badge neutral">Archived</span>{% endif %}</td>
+      <td class="mono muted nowrap">{{ i.starts_on or '' }}{% if i.ends_on %} to {{ i.ends_on }}{% endif %}</td>
+      <td>{{ i.sites | map(attribute='name') | join(', ') }}</td><td>{{ e.node_name or '' }}</td>
+      <td class="num">{{ i.people }}</td><td class="num red">{{ c.out or 0 }}</td><td class="num green">{{ c['in'] or 0 }}</td><td class="num amber">{{ c.damaged or '' }}</td><td class="num amber">{{ c.lost or '' }}</td>
+      <td class="mono muted">{{ i.last_scan[5:16] if i.last_scan else '' }}</td>
+      <td class="actions">{% if not e.archived %}<a class="btn sm ghost" href="/hub/events/{{ e.id }}/open?to=reports">End of show</a>{% endif %}</td>
+    </tr>{% else %}<tr><td colspan="11" class="empty">No events yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endblock %}

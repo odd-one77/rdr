@@ -9,6 +9,15 @@
 {% block content %}
 <div class="admin">
   <aside class="sidenav">
+    {% if hub_mode %}
+    <div class="group">Hub</div>
+    <a href="/hub" class="{{ 'on' if active == 'hub' }}">Overview</a>
+    <a href="/hub/events/new" class="{{ 'on' if active == 'hub-events' }}">New event</a>
+    <a href="/hub/nodes" class="{{ 'on' if active == 'hub-nodes' }}">Site nodes</a>
+    <a href="/hub/reports" class="{{ 'on' if active == 'hub-reports' }}">All events</a>
+    {% endif %}
+    {% if not hub_mode or hub_event %}
+    {% if hub_mode %}<div class="group">{{ hub_event.name }}</div>{% endif %}
     <a href="/admin" class="{{ 'on' if active == 'dashboard' }}">Dashboard</a>
     <div class="group">Event</div>
     <a href="/admin/event" class="{{ 'on' if active == 'event' }}">Event and sites</a>
@@ -22,12 +31,18 @@
     <div class="group">Records</div>
     <a href="/admin/transactions" class="{{ 'on' if active == 'transactions' }}">Transactions</a>
     <a href="/admin/reports" class="{{ 'on' if active == 'reports' }}">End of show</a>
+    {% endif %}
     <div class="group">System</div>
     <a href="/admin/settings" class="{{ 'on' if active == 'settings' }}">Settings</a>
+    {% if not hub_mode %}
     <a href="/admin/bolero" class="{{ 'on' if active == 'bolero' }}">Bolero link</a>
+    <a href="/admin/hub" class="{{ 'on' if active == 'hub' }}">Hub link{% if hub_link and hub_link.running %} <span class="link-dot {{ 'on' if hub_link.online and not hub_link.pending else 'off' }}"></span>{% endif %}</a>
     <a href="/admin/backup" class="{{ 'on' if active == 'backup' }}">Backup and restore</a>
+    {% endif %}
   </aside>
   <main class="content">
+    {% if hub_mode and hub_event and hub_event.node_id %}<div class="panel flag mb"><div class="panel-body"><b>{{ hub_event.node_name }}</b> is running this event on site{{ '' if hub_event.node_online else ' (offline)' }}. Scanning here is off until it hands the event back. People, devices and sites can still be changed; they reach the node when it next syncs.</div></div>{% endif %}
+    {% if hub_link and hub_link.pending and active != 'hub' %}<div class="panel flag mb"><div class="panel-body row wrap"><div class="grow"><b>Back in touch with the hub.</b> Choose how to bring this node and the hub back in step.</div><a class="btn sm primary" href="/admin/hub">Choose</a></div></div>{% endif %}
     {% block admin %}{% endblock %}
   </main>
 </div>

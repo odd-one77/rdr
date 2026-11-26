@@ -1,0 +1,92 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Hub link{% endblock %}
+{% block admin %}
+<div class="page-head"><div><h1>Hub link</h1><div class="sub">Run an event from the hub on this RDR. It keeps working when the internet drops, and sends its copy to the hub as the offsite backup.</div></div></div>
+
+{% if st.pending %}{% set kind = st.pending.kind %}
+<div class="panel flag mb" id="choose">
+  <div class="panel-head"><h2>{{ {'reconnect': 'Back in touch with the hub', 'released': 'The hub released this event', 'gone': 'The hub no longer has this event'}.get(kind, 'Choose') }}</h2></div>
+  <div class="panel-body">
+    {% if kind == 'reconnect' %}<p>The hub could not be reached from {{ st.pending.outage or 'earlier' }}, and the event changed on the hub meanwhile{{ ', and here' if st.pending.local_changed else '' }}. Nothing is sent until you choose.</p>
+    {% elif kind == 'released' %}<p>The hub released this event from this node{% if st.holder %} and {{ st.holder }} now has it{% endif %}. Choosing takes it back{{ '' if not st.holder else ', which only works once ' ~ st.holder ~ ' hands it back' }}.</p>
+    {% else %}<p>The event was deleted on the hub. This node's data is safe. Unlink to keep working on your own.</p>{% endif %}
+    {% if preview %}
+      {% if preview.lines %}<div class="lines mt-s">{% for l in preview.lines %}<div>{{ l }}</div>{% endfor %}</div>{% else %}<p class="muted">Merging changes nothing here.</p>{% endif %}
+      {% if preview.conflicts %}<p class="mt"><b>{{ preview.n_conflicts }} changed on both sides.</b> Merge keeps this node's value:</p><ul class="conflict-list">{% for c in preview.conflicts %}<li>{{ c }}</li>{% endfor %}</ul>{% endif %}
+    {% endif %}
+  </div>
+  {% if kind != 'gone' %}
+  <div class="panel-foot">
+    <form method="post" action="/admin/hub/decide"><input type="hidden" name="choice" value="merge"><button class="btn primary">Merge</button></form>
+    <form method="post" action="/admin/hub/decide"><input type="hidden" name="choice" value="overwrite"><button class="btn" data-confirm="Send this node's copy to the hub, replacing the hub's? The hub keeps its previous copy.">Overwrite the hub</button></form>
+    <form method="post" action="/admin/hub/decide"><input type="hidden" name="choice" value="pull"><button class="btn" data-confirm="Replace this node's data with the hub's copy? Scans made here since the last sync are kept only in a snapshot under Backup.">Pull from the hub</button></form>
+  </div>
+  <div class="panel-note">Merge keeps both sides' changes. Overwrite makes the hub match this node. Pull makes this node match the hub. A copy of whatever is replaced is always kept.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if hub_err %}
+<div class="panel flag mb"><div class="panel-body">
+  <p><b>{{ hub_err }}</b></p>
+  {% if fingerprint %}<p class="help">The hub uses its own certificate (normal over the site to site VPN). Check this fingerprint matches the one on the hub's Settings, Server page before trusting it.</p>
+  <div class="key-box">{{ fingerprint }}</div>
+  <form class="mt-s" method="post" action="/admin/hub/trust"><input type="hidden" name="fingerprint" value="{{ fingerprint }}"><button class="btn primary">Trust this certificate</button></form>{% endif %}
+</div></div>
+{% endif %}
+
+<div class="grid cols-2 top">
+  {% if s.event_id %}
+  <div class="panel">
+    <div class="panel-head"><h2>{{ s.event_name or 'Event' }}</h2>{% if badge %}<span class="conn {{ 'wait' if badge.pending else ('on' if badge.online else 'off') }}">{{ 'Waiting for your choice' if badge.pending else ('Connected' if badge.online else 'Offline') }}</span>{% endif %}</div>
+    <div class="panel-body">
+      <div class="lines">
+        <div><span class="muted">Hub</span> {{ s.url }}{% if s.node_name %} · as {{ s.node_name }}{% endif %}</div>
+        <div><span class="muted">Last in touch</span> {{ st.last_seen_hub or 'not yet' }}</div>
+        {% if st.offline_since %}<div class="amber">No connection since {{ st.offline_since }}. Everything keeps working here.</div>{% endif %}
+        <div><span class="muted">Last sent</span> {{ st.last_push or 'nothing yet' }}</div>
+        {% if st.last_merge %}<div><span class="muted">Last merge</span> {{ st.last_merge }}</div>{% endif %}
+        {% if st.last_error and not hub_err %}<div class="amber">{{ st.last_error }}</div>{% endif %}
+      </div>
+      {% if st.last_conflicts %}<p class="mt"><b>Last merge kept this node's value for:</b></p><ul class="conflict-list">{% for c in st.last_conflicts[:10] %}<li>{{ c }}</li>{% endfor %}</ul>{% endif %}
+      <p class="help mt">Changes go to the hub within 30 seconds while connected. Changes made on the hub come back here the same way.</p>
+    </div>
+    <div class="panel-foot">
+      <form method="post" action="/admin/hub/sync"><button class="btn primary">Sync now</button></form>
+      <form method="post" action="/admin/hub/handback"><button class="btn" data-confirm="Send the final copy and hand this event back to the hub? This node keeps its data but stops sending.">Hand back to hub</button></form>
+    </div>
+  </div>
+  {% elif hub_info %}
+  <div class="panel">
+    <div class="panel-head"><h2>Events on the hub</h2><span class="muted sm">as {{ hub_info.node }}</span></div>
+    <form method="post" action="/admin/hub/take">
+      <div class="panel-body stack">
+        {% for e in hub_info.events %}
+        <label class="check"><input type="radio" name="event_id" value="{{ e.id }}" {{ 'disabled' if e.node and not e.mine }} required> <span><b>{{ e.name }}</b>{% if e.show_name %} · {{ e.show_name }}{% endif %}<span class="muted sm"> · {{ e.sites | join(', ') }} · {{ e.devices }} devices{% if e.node and not e.mine %} · running on {{ e.node }}{% elif e.mine %} · already on this node{% endif %}</span></span></label>
+        {% else %}<p class="muted">The hub has no events yet.</p>{% endfor %}
+        {% if hub_info.events %}<label class="check mt"><input type="checkbox" name="confirm" value="1"> Replace the data on this RDR with the hub's copy (a snapshot is kept)</label>{% endif %}
+      </div>
+      {% if hub_info.events %}<div class="panel-foot"><button class="btn primary">Run this event here</button></div>{% endif %}
+    </form>
+  </div>
+  {% endif %}
+
+  <form class="panel" method="post" action="/admin/hub/link">
+    <div class="panel-head"><h2>Connection</h2></div>
+    <div class="panel-body">
+      <div class="field"><label>Hub address</label><input name="url" value="{{ s.url }}" placeholder="https://hub.example.com"><div class="help">The hub's domain, or its address over the site to site VPN, like https://10.20.0.5:8443.</div></div>
+      <div class="field"><label>Node key</label><input name="key" type="password" autocomplete="off" placeholder="{{ 'Saved. Leave blank to keep.' if s.has_key else 'rdrn_...' }}"><div class="help">Made on the hub under Site nodes.</div></div>
+    </div>
+    <div class="panel-foot"><button class="btn primary">{{ 'Save and check' if s.url else 'Connect' }}</button>
+      {% if s.url %}<a class="btn ghost" href="/admin/hub?check=1">Check</a>{% endif %}</div>
+  </form>
+</div>
+
+{% if s.url %}
+<div class="panel mt danger-zone">
+  <div class="panel-head"><h2>Unlink</h2></div>
+  <div class="panel-body"><p class="help">Stops talking to the hub. The data on this RDR stays as it is. {% if s.event_id %}Hand the event back first if another node or the hub should carry on with it.{% endif %}</p></div>
+  <div class="panel-foot"><form class="lead" method="post" action="/admin/hub/forget"><button class="btn danger" data-confirm="Unlink this RDR from the hub?">Unlink from hub</button></form></div>
+</div>
+{% endif %}
+{% endblock %}

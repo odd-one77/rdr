@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import __version__
 from .auth import is_admin, live_tech
-from .config import APP_DIR, UPLOAD_DIR, ensure_dirs, load_config
+from .config import APP_DIR, UPLOAD_DIR, ensure_dirs, is_hub, load_config
 from .db import ACTION_LABELS, get_db, init_db
 
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
@@ -69,8 +69,12 @@ def base_context(request: Request) -> dict:
             if t and s:
                 tech = {"id": t["id"], "username": t["username"], "display_name": t["display_name"], "role": t["role"],
                         "site_id": s["id"], "site_name": s["name"]}
+    hub_event = getattr(request.state, "hub_event", None) if is_hub() else None
     return {
         "request": request,
+        "hub_mode": is_hub(),
+        "hub_event": hub_event,
+        "hub_link": _hub_link() if not is_hub() else None,
         "event": dict(event) if event else {},
         "sites": [{k: s[k] for k in s.keys() if k != "rtsp_url"} for s in sites],
         "tech": tech,
@@ -81,6 +85,12 @@ def base_context(request: Request) -> dict:
     }
 
 
+def _hub_link() -> dict | None:
+    """A site node linked to a hub: its connection state, for the admin header."""
+    from .services import node
+    return node.badge()
+
+
 def render(request: Request, name: str, **ctx) -> HTMLResponse:
     full = base_context(request)
     full.update(ctx)
@@ -89,6 +99,12 @@ def render(request: Request, name: str, **ctx) -> HTMLResponse:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    if is_hub():
+        from .services import hub
+        hub.start()
+        yield
+        hub.stop()
+        return
     from .services import snapshots
     ok, detail = snapshots.integrity_check()
     if not ok:
@@ -96,7 +112,10 @@ async def _lifespan(app: FastAPI):
     snapshots.start()
     from .services import bolero
     bolero.start()
+    from .services import node
+    node.start()
     yield
+    node.stop()
     from .services.streams import stop_all
     stop_all()
     bolero.stop()
@@ -105,17 +124,33 @@ async def _lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     ensure_dirs()
-    init_db()
+    if is_hub():
+        from .services import hub
+        hub.setup()
+    else:
+        init_db()
     app = FastAPI(title="RDR", version=__version__, docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
     app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
-    app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
     from .services.streams import STREAM_DIR
     STREAM_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/streams", StaticFiles(directory=str(STREAM_DIR)), name="streams")
 
-    from .routers import access, admin, api, kiosk  # noqa: WPS433 (local import keeps startup order simple)
+    from .routers import access, admin, api, hub, kiosk  # noqa: WPS433 (local import keeps startup order simple)
+
+    @app.get("/uploads/{name}")
+    def uploads(name: str):
+        """The event logo. On the hub each event keeps its own, next to its database."""
+        from fastapi import HTTPException
+        from fastapi.responses import FileResponse
+        from .db import current_db_path
+        folder = UPLOAD_DIR if not is_hub() else current_db_path().parent / "uploads"
+        p = (folder / name).resolve()
+        if p.parent != folder.resolve() or not p.is_file():
+            raise HTTPException(404, "Not found")
+        return FileResponse(p)
 
     app.include_router(access.router)
+    app.include_router(hub.router)
     app.include_router(kiosk.router)
     app.include_router(api.router)
     app.include_router(admin.router)
@@ -135,6 +170,9 @@ def create_app() -> FastAPI:
             set_cookie(response, request, ADMIN_COOKIE, admin_token(), 60 * 60 * 12)
         return response
 
+    # on the hub: which event's database this request works on (inside the security checks)
+    from .hubmode import HubMiddleware
+    app.add_middleware(HubMiddleware)
     # outermost, so it runs before everything above (see security.py)
     from .security import SecurityMiddleware
     app.add_middleware(SecurityMiddleware)

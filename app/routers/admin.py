@@ -38,6 +38,15 @@ def _redirect(path: str, msg: str | None = None, err: str | None = None) -> Redi
     return RedirectResponse(path, status_code=303)
 
 
+def _upload_dir() -> Path:
+    """Where the event logo goes: next to the database this request works on (one per event on the hub)."""
+    from ..config import is_hub
+    from ..db import current_db_path
+    folder = UPLOAD_DIR if not is_hub() else current_db_path().parent / "uploads"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
 def _tech(db, request: Request) -> dict | None:
     """Who to credit an admin edit to: the tech session, if its tech and site still exist."""
     return live_tech(db, request, active=False)
@@ -45,7 +54,7 @@ def _tech(db, request: Request) -> dict | None:
 
 def _after_login(target: str) -> str:
     """Where to go after the password: only ever a page inside Admin."""
-    ok = target.startswith("/admin/") and "//" not in target and "\\" not in target and not target.startswith("/admin/log")
+    ok = (target.startswith("/admin/") or target == "/hub" or target.startswith("/hub/")) and "//" not in target and "\\" not in target and not target.startswith("/admin/log")
     return target if ok else "/admin"
 
 
@@ -152,8 +161,9 @@ async def event_save(
             ext = Path(logo.filename).suffix.lower()
             if ext not in (".png", ".jpg", ".jpeg", ".svg", ".webp", ".gif"):
                 return _redirect("/admin/event", err="Logo must be PNG, JPG, SVG, WEBP or GIF")
-            dest = UPLOAD_DIR / f"event-logo{ext}"
-            for old in UPLOAD_DIR.glob("event-logo.*"):
+            folder = _upload_dir()
+            dest = folder / f"event-logo{ext}"
+            for old in folder.glob("event-logo.*"):
                 old.unlink(missing_ok=True)
             with dest.open("wb") as fh:
                 shutil.copyfileobj(logo.file, fh)
@@ -1152,3 +1162,102 @@ def backup_restore(token: str = Form(...), confirm: str = Form(""), restore_conf
     staged.unlink(missing_ok=True)
     updater.schedule_restart()
     return RedirectResponse(f"/admin/settings?restarting=1&msg={quote('Restored ' + info['event'] + '. Restarting.')}", status_code=303)
+
+
+# -- hub link (a site node) ----------------------------------------------------------
+
+@router.get("/hub", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+def hub_link_page(request: Request, check: str = ""):
+    from ..config import is_hub
+    from ..services import node
+    if is_hub():
+        return RedirectResponse("/hub", status_code=303)
+    hub_info, err, fingerprint, preview = None, None, "", None
+    s = node.settings()
+    st = node.state()
+    if node.linked() and (check or not node.running()):
+        try:
+            hub_info = node.hello()
+        except node.HubError as e:
+            err, fingerprint = str(e), e.fingerprint
+    if st.get("pending") and (st["pending"].get("kind") in ("reconnect", "released")):
+        try:
+            preview = node.preview()
+        except node.HubError as e:
+            err, fingerprint = str(e), e.fingerprint
+        except Exception as e:  # noqa: BLE001
+            err = f"Could not work out the merge: {e}"
+    return render(request, "admin/hub_link.html", s=s, st=st, hub_info=hub_info, hub_err=err, fingerprint=fingerprint,
+                  preview=preview, badge=node.badge(), active="hub")
+
+
+@router.post("/hub/link", dependencies=[Depends(require_admin)])
+def hub_link_save(url: str = Form(""), key: str = Form("")):
+    from ..services import node
+    try:
+        node.configure(url, key or None)
+    except ValueError as e:
+        return _redirect("/admin/hub", err=str(e))
+    return _redirect("/admin/hub?check=1")
+
+
+@router.post("/hub/trust", dependencies=[Depends(require_admin)])
+def hub_trust(fingerprint: str = Form("")):
+    from ..services import node
+    if len(fingerprint) != 64 or any(c not in "0123456789abcdef" for c in fingerprint):
+        return _redirect("/admin/hub", err="That fingerprint is not valid")
+    node.trust(fingerprint)
+    return _redirect("/admin/hub?check=1", msg="Certificate trusted")
+
+
+@router.post("/hub/take", dependencies=[Depends(require_admin)])
+def hub_take(event_id: int = Form(...), confirm: str = Form("")):
+    from ..services import node
+    if confirm != "1":
+        return _redirect("/admin/hub", err="Tick the box to confirm this node's data is replaced")
+    try:
+        r = node.take_event(event_id)
+    except node.HubError as e:
+        return _redirect("/admin/hub", err=str(e))
+    except ValueError as e:
+        return _redirect("/admin/hub", err=str(e))
+    node.poke()
+    return _redirect("/admin/hub", msg=f"Running {r['event'] or 'the event'} on this node. It works on its own from now on and sends its copy to the hub.")
+
+
+@router.post("/hub/sync", dependencies=[Depends(require_admin)])
+def hub_sync():
+    from ..services import node
+    st = node.sync_once(manual=True)
+    if st.get("last_error"):
+        return _redirect("/admin/hub", err=st["last_error"])
+    return _redirect("/admin/hub", msg="Waiting for your choice below" if st.get("pending") else "In step with the hub")
+
+
+@router.post("/hub/decide", dependencies=[Depends(require_admin)])
+def hub_decide(choice: str = Form("")):
+    from ..services import node
+    try:
+        out = node.decide(choice)
+    except (node.HubError, ValueError) as e:
+        return _redirect("/admin/hub", err=str(e))
+    node.poke()
+    return _redirect("/admin/hub", msg=out)
+
+
+@router.post("/hub/handback", dependencies=[Depends(require_admin)])
+def hub_handback():
+    from ..services import node
+    try:
+        node.hand_back()
+    except node.HubError as e:
+        return _redirect("/admin/hub", err=str(e))
+    return _redirect("/admin/hub", msg="Handed back. The hub has the final copy and can be scanned again; this node keeps its data.")
+
+
+@router.post("/hub/forget", dependencies=[Depends(require_admin)])
+def hub_forget():
+    from ..services import node
+    node.stop()
+    node.forget()
+    return _redirect("/admin/hub", msg="Unlinked from the hub. The data on this node is unchanged.")

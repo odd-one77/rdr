@@ -9,7 +9,7 @@
     {% if event.show_name %}<div class="muted">{{ event.show_name }}</div>{% endif %}
   </div>
   <form class="panel card" method="post" action="/start" id="startForm" autocomplete="off">
-    <div class="panel-head"><h2>Who is on the counter?</h2><a class="btn sm ghost" href="/admin/login">Admin</a></div>
+    <div class="panel-head"><h2>Who is on the counter?</h2><div class="row">{% if hub_mode %}<a class="btn sm ghost" href="/hub/pick">Change event</a>{% endif %}<a class="btn sm ghost" href="/admin/login">Admin</a></div></div>
     <div class="panel-body stack lg">
       <div>
         <label>Technician</label>

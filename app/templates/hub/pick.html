@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Pick an event{% endblock %}
+{% block body %}
+<div class="start">
+  <img class="logo" src="/static/img/riedel.png" alt="Riedel">
+  <div class="center"><h1>RDR Hub</h1><div class="muted">Pick the event you are working on</div></div>
+  <div class="panel card">
+    <div class="panel-head"><h2>Events</h2><a class="btn sm ghost" href="/admin/login?next=/hub">Admin</a></div>
+    <div class="panel-body stack">
+      {% for e in events %}
+      <form method="post" action="/hub/pick">
+        <input type="hidden" name="event_id" value="{{ e.id }}">
+        <button class="choice wide" {{ 'disabled' if e.node_id }}>{{ e.info.name or e.name }}<small>{% if e.node_id %}Running on {{ e.node_name }}: scan there{% else %}{{ [e.info.show_name, e.info.sites | map(attribute='name') | join(', ')] | select | join(' · ') }}{% endif %}</small></button>
+      </form>
+      {% else %}<p class="help">No events yet. An admin creates them on the hub.</p>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

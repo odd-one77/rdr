@@ -1,0 +1,69 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}{{ info.name or e.name }}{% endblock %}
+{% block admin %}
+<div class="page-head"><div><h1>{{ info.name or e.name }}</h1><div class="sub">{{ [info.show_name, info.starts_on, info.ends_on] | select | join(' · ') }}{% if e.archived %} · Archived{% endif %}</div></div>
+  <div class="row">{% if not e.archived %}<a class="btn" href="/hub/events/{{ e.id }}/open?to=reports">End of show</a><a class="btn" href="/hub/events/{{ e.id }}/open?to=kiosk">Kiosk</a><a class="btn primary" href="/hub/events/{{ e.id }}/open">Manage event</a>{% endif %}</div></div>
+
+<div class="grid cols-4 mb">
+  <div class="panel stat"><div class="label">Out</div><div class="value">{{ info.counts.out or 0 }}</div><div class="sub">{{ info.counts['in'] or 0 }} in</div></div>
+  <div class="panel stat"><div class="label">Damaged or lost</div><div class="value">{{ (info.counts.damaged or 0) + (info.counts.lost or 0) }}</div><div class="sub">{{ info.counts.damaged or 0 }} damaged · {{ info.counts.lost or 0 }} lost</div></div>
+  <div class="panel stat"><div class="label">People</div><div class="value">{{ info.people }}</div><div class="sub">Last scan {{ info.last_scan[5:16] if info.last_scan else 'none yet' }}</div></div>
+  <div class="panel stat"><div class="label">Revision</div><div class="value">{{ e.rev }}</div><div class="sub">{{ versions | length }} copies kept</div></div>
+</div>
+
+<div class="grid cols-2 top">
+  <div class="stack lg">
+    <div class="panel">
+      <div class="panel-head"><h2>Site node</h2></div>
+      <div class="panel-body">
+        {% if e.node_id %}
+          <p><b>{{ e.node_name }}</b> is running this event since {{ e.taken_at }}.</p>
+          <p>{% if e.node_state.pending %}<span class="conn wait">Back online, waiting for a choice on site</span>{% elif e.node_online %}<span class="conn on">Online · {{ e.node_seen_text }}</span>{% else %}<span class="conn off">Offline · last seen {{ e.node_seen_text }}</span>{% endif %}
+            {% if e.node_state.unsent %} · <span class="amber">has changes not sent yet</span>{% endif %}</p>
+          <p class="help">Scanning on the hub is off while a node runs the event. People, devices and sites can still be managed here; the node picks the changes up. If the node is gone for good, release the event: the hub's copy (the node's last copy) can then be scanned, and the node is asked what to do if it comes back.</p>
+        {% else %}
+          <p>Not running on a site node. It can be scanned here, or taken by a node from its Hub link page.</p>
+        {% endif %}
+      </div>
+      {% if e.node_id %}<div class="panel-foot"><form method="post" action="/hub/events/{{ e.id }}/release"><button class="btn danger" data-confirm="Release {{ info.name or e.name }} from {{ e.node_name }}? Anything the node has not sent yet stays on the node until it reconnects.">Release from node</button></form></div>{% endif %}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Sites · {{ info.sites | length }}</h2></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Site</th><th>Stock</th><th class="num">Out</th><th class="num">In</th><th>Last scan</th></tr></thead>
+        <tbody>{% for s in info.sites %}<tr><td><b>{{ s.name }}</b></td><td class="muted">{{ 'Own stock' if s.stock_mode == 'specific' else 'Shared' }}</td><td class="num red">{{ s.counts.out or 0 }}</td><td class="num green">{{ s.counts['in'] or 0 }}</td><td class="mono muted">{{ s.last_scan[5:16] if s.last_scan else '' }}</td></tr>
+        {% else %}<tr><td colspan="5" class="empty">No sites.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div class="stack lg">
+    <div class="panel" id="versions">
+      <div class="panel-head"><h2>Copies kept · {{ versions | length }}</h2><form method="post" action="/hub/events/{{ e.id }}/versions/save"><button class="btn sm">Save a copy now</button></form></div>
+      <div class="table-wrap short"><table>
+        <thead><tr><th>When</th><th>Why</th><th class="num">Revision</th><th></th></tr></thead>
+        <tbody>{% for v in versions %}<tr><td class="mono">{{ v.when }}</td><td class="muted">{{ {'beforenode': 'Before a node copy', 'beforeoverwrite': 'Before an overwrite', 'hourly': 'Hourly', 'manual': 'Saved by hand', 'beforerestore': 'Before a restore'}.get(v.reason, v.reason) }}</td><td class="num mono">{{ v.rev }}</td>
+          <td class="actions nowrap"><a class="btn sm ghost" href="/hub/events/{{ e.id }}/versions/{{ v.name }}">Download</a>{% if not e.node_id %} <form class="inline-form" method="post" action="/hub/events/{{ e.id }}/versions/{{ v.name }}/restore"><button class="btn sm" data-confirm="Put this copy back? The current copy is kept first.">Restore</button></form>{% endif %}</td></tr>
+        {% else %}<tr><td colspan="4" class="empty">None yet. A copy is kept whenever a node's copy replaces the hub's, and every hour the hub's own copy changed.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>History</h2></div>
+      <div class="table-wrap short"><table>
+        <tbody>{% for l in log %}<tr><td class="mono muted nowrap">{{ l.ts[5:16] }}</td><td>{{ l.kind | capitalize }}{% if l.detail %} <span class="muted">{{ l.detail }}</span>{% endif %}</td></tr>{% else %}<tr><td class="empty">Nothing yet.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Archive</h2></div>
+      <div class="panel-body"><p class="help">{{ 'An archived event is out of the lists and cannot be taken by a node. It can be deleted, which moves its folder aside on the server.' if not e.archived else 'Archived. Put it back in the list, or delete it.' }}</p></div>
+      <div class="panel-foot">
+        <form method="post" action="/hub/events/{{ e.id }}/archive"><input type="hidden" name="archived" value="{{ '0' if e.archived else '1' }}"><button class="btn">{{ 'Back in the list' if e.archived else 'Archive' }}</button></form>
+        {% if e.archived %}<form class="lead" method="post" action="/hub/events/{{ e.id }}/delete"><button class="btn danger" data-confirm="Delete {{ info.name or e.name }}? Its folder is moved to hub/deleted on the server.">Delete</button></form>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

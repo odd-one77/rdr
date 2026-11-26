@@ -1,0 +1,22 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}New event{% endblock %}
+{% block admin %}
+<div class="page-head"><h1>New event</h1></div>
+<form class="panel narrow" method="post" action="/hub/events/new">
+  <div class="panel-body">
+    <div class="field"><label>Event name</label><input name="name" required></div>
+    <div class="field"><label>Show / leg</label><input name="show_name" placeholder="Night 1, Manchester"></div>
+    <div class="grid cols-2"><div class="field"><label>Starts</label><input type="date" name="starts_on"></div><div class="field"><label>Ends</label><input type="date" name="ends_on"></div></div>
+    {% if events %}
+    <div class="field"><label>Start from another event</label><select name="copy_from"><option value="">Nothing, a blank event</option>{% for e in events %}<option value="{{ e.id }}">{{ e.info.name or e.name }}{% if e.info.show_name %} · {{ e.info.show_name }}{% endif %}</option>{% endfor %}</select></div>
+    <div class="row wrap">
+      <label class="check"><input type="checkbox" name="copy_setup" value="1" checked> Sites, device types and techs</label>
+      <label class="check"><input type="checkbox" name="copy_devices" value="1" checked> Devices, all back in stock</label>
+      <label class="check"><input type="checkbox" name="copy_people" value="1"> People</label>
+    </div>
+    <p class="help">History and sign-outs are never copied. The new event has its own database.</p>
+    {% endif %}
+  </div>
+  <div class="panel-foot"><button class="btn primary">Create event</button></div>
+</form>
+{% endblock %}

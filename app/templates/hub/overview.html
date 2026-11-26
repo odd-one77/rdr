@@ -1,0 +1,82 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Hub{% endblock %}
+{% block admin %}
+<div class="page-head"><div><h1>Hub</h1><div class="sub">Every event, its sites and the site node running it.</div></div>
+  <div class="row"><a class="btn" href="/hub/reports">All events</a><a class="btn primary" href="/hub/events/new">New event</a></div></div>
+
+<div class="grid cols-4 mb">
+  <div class="panel stat"><div class="label">Events</div><div class="value">{{ events | length }}</div><div class="sub">{{ events | selectattr('node_id') | list | length }} running on site</div></div>
+  <div class="panel stat"><div class="label">Site nodes</div><div class="value">{{ nodes | rejectattr('revoked') | list | length }}</div><div class="sub" id="nodesOnline">{{ nodes | selectattr('online') | list | length }} online</div></div>
+  <div class="panel stat"><div class="label">Devices out</div><div class="value">{{ totals.out }}</div><div class="sub">{{ totals['in'] }} in, across all events</div></div>
+  <div class="panel stat"><div class="label">Damaged or lost</div><div class="value">{{ totals.damaged + totals.lost }}</div><div class="sub">{{ totals.damaged }} damaged · {{ totals.lost }} lost</div></div>
+</div>
+
+<div class="panel mb">
+  <div class="panel-head"><h2>Events · {{ events | length }}</h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Event</th><th>Sites</th><th>Running on</th><th>Connection</th><th class="num">Out</th><th class="num">In</th><th class="num">Damaged / lost</th><th>Last scan</th><th></th></tr></thead>
+    <tbody>{% for e in events %}{% set c = e.info.counts %}
+    <tr data-event="{{ e.id }}">
+      <td><a href="/hub/events/{{ e.id }}"><b>{{ e.info.name or e.name }}</b></a>{% if e.info.show_name %}<div class="muted sm">{{ e.info.show_name }}</div>{% endif %}</td>
+      <td>{{ e.info.sites | map(attribute='name') | join(', ') }}</td>
+      <td>{{ e.node_name or 'The hub' }}</td>
+      <td data-conn>{% if e.node_id %}{% if e.node_state.pending %}<span class="conn wait">Waiting for a choice on site</span>{% elif e.node_online %}<span class="conn on">Online · {{ e.node_seen_text }}</span>{% else %}<span class="conn off">Offline · {{ e.node_seen_text }}</span>{% endif %}{% else %}<span class="muted">Not on a node</span>{% endif %}</td>
+      <td class="num red" data-out>{{ c.out or 0 }}</td><td class="num green" data-in>{{ c['in'] or 0 }}</td><td class="num amber" data-bad>{{ (c.damaged or 0) + (c.lost or 0) or '' }}</td>
+      <td class="mono muted" data-scan>{{ e.info.last_scan or '' }}</td>
+      <td class="actions nowrap"><a class="btn sm" href="/hub/events/{{ e.id }}/open">Manage</a></td>
+    </tr>{% else %}
+    <tr><td colspan="9" class="empty">No events yet. <a href="/hub/events/new">Create the first one</a>.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="grid cols-2 top">
+  <div class="panel">
+    <div class="panel-head"><h2>Site nodes</h2><a class="btn sm ghost" href="/hub/nodes">Manage nodes</a></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Node</th><th>Running</th><th>Connection</th><th>Version</th></tr></thead>
+      <tbody>{% for n in nodes if not n.revoked %}<tr data-node="{{ n.id }}"><td><b>{{ n.name }}</b>{% if n.last_ip %}<div class="muted sm mono">{{ n.last_ip }}</div>{% endif %}</td><td>{{ n.running or '' }}</td>
+        <td data-conn><span class="conn {{ 'on' if n.online else 'off' }}">{{ 'Online' if n.online else 'Offline' }} · {{ n.seen_text }}</span></td><td class="mono muted">{{ n.version }}</td></tr>
+      {% else %}<tr><td colspan="4" class="empty">No site nodes yet. <a href="/hub/nodes">Add one</a> to get its key.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h2>Recent</h2></div>
+    <div class="table-wrap"><table>
+      <tbody>{% for l in log %}<tr><td class="mono muted nowrap">{{ l.ts[5:16] }}</td><td>{{ l.kind | capitalize }}{% if l.detail %} <span class="muted">{{ l.detail }}</span>{% endif %}</td><td class="muted">{{ l.event_name or '' }}{% if l.node_name and l.event_name %} · {% endif %}{{ l.node_name or '' }}</td></tr>
+      {% else %}<tr><td class="empty">Nothing yet.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+</div>
+<script nonce="{{ request.state.csp_nonce }}">
+(() => {
+  // keep connection state fresh without reloading the page; cells change only when the value does
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const set = (el, html) => { if (el && el.innerHTML !== html) el.innerHTML = html; };
+  async function tick() {
+    if (document.hidden) return;
+    try {
+      const r = await fetch('/hub/status', { cache: 'no-store' }); if (!r.ok) return;
+      const d = await r.json();
+      for (const [id, e] of Object.entries(d.events)) {
+        const row = document.querySelector(`tr[data-event="${id}"]`); if (!row) continue;
+        const conn = !e.node ? '<span class="muted">Not on a node</span>' : e.pending ? '<span class="conn wait">Waiting for a choice on site</span>'
+          : `<span class="conn ${e.online ? 'on' : 'off'}">${e.online ? 'Online' : 'Offline'} · ${esc(e.seen)}</span>`;
+        set(row.querySelector('[data-conn]'), conn);
+        set(row.querySelector('[data-out]'), String(e.counts.out || 0));
+        set(row.querySelector('[data-in]'), String(e.counts['in'] || 0));
+        set(row.querySelector('[data-bad]'), String(((e.counts.damaged || 0) + (e.counts.lost || 0)) || ''));
+        set(row.querySelector('[data-scan]'), esc(e.last_scan));
+      }
+      let on = 0;
+      for (const [id, n] of Object.entries(d.nodes)) {
+        if (n.online) on++;
+        const row = document.querySelector(`tr[data-node="${id}"]`); if (!row) continue;
+        set(row.querySelector('[data-conn]'), `<span class="conn ${n.online ? 'on' : 'off'}">${n.online ? 'Online' : 'Offline'} · ${esc(n.seen)}</span>`);
+      }
+      set(document.getElementById('nodesOnline'), `${on} online`);
+    } catch (e) { /* hub busy: try again next time */ }
+  }
+  setInterval(tick, 10000);
+})();
+</script>
+{% endblock %}

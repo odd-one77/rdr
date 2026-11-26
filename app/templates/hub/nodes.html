@@ -1,0 +1,32 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Site nodes{% endblock %}
+{% block admin %}
+<div class="page-head"><div><h1>Site nodes</h1><div class="sub">An RDR on site that runs an event and keeps working when the internet drops.</div></div></div>
+{% if new_key %}
+<div class="panel flag mb"><div class="panel-body">
+  <p><b>Key for {{ key_for }}</b>. Copy it now: it is shown once. On the node, open Admin, Hub link, and paste it with this hub's address.</p>
+  <div class="key-box">{{ new_key }}</div>
+</div></div>
+{% endif %}
+<div class="grid side top">
+  <form class="panel" method="post" action="/hub/nodes">
+    <div class="panel-head"><h2>Add a node</h2></div>
+    <div class="panel-body"><div class="field"><label>Name</label><input name="name" placeholder="Arena RDR" required><div class="help">Shown on the overview. One key per machine.</div></div></div>
+    <div class="panel-foot"><button class="btn primary">Add and show key</button></div>
+  </form>
+  <div class="panel">
+    <div class="panel-head"><h2>Nodes · {{ nodes | rejectattr('revoked') | list | length }}</h2></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Node</th><th>Running</th><th>Connection</th><th>Version</th><th></th></tr></thead>
+      <tbody>{% for n in nodes %}<tr>
+        <td><b>{{ n.name }}</b>{% if n.revoked %} <span class="badge neutral">Removed</span>{% endif %}<div class="muted sm">Added {{ n.created_at[:10] }}{% if n.last_ip %} · <span class="mono">{{ n.last_ip }}</span>{% endif %}</div></td>
+        <td>{{ n.running or '' }}</td>
+        <td>{% if not n.revoked %}<span class="conn {{ 'on' if n.online else 'off' }}">{{ 'Online' if n.online else 'Offline' }} · {{ n.seen_text }}</span>{% if n.state.pending %}<div class="amber sm">Waiting for a choice on site</div>{% endif %}{% endif %}</td>
+        <td class="mono muted">{{ n.version }}</td>
+        <td class="actions nowrap">{% if not n.revoked %}<form class="inline-form" method="post" action="/hub/nodes/{{ n.id }}/key"><button class="btn sm" data-confirm="Make a new key for {{ n.name }}? The old key stops working.">New key</button></form>
+          <form class="inline-form" method="post" action="/hub/nodes/{{ n.id }}/revoke"><button class="btn sm danger" data-confirm="Remove {{ n.name }}? Its key stops working and its events are released.">Remove</button></form>{% else %}<form class="inline-form" method="post" action="/hub/nodes/{{ n.id }}/key"><button class="btn sm">Restore with a new key</button></form>{% endif %}</td>
+      </tr>{% else %}<tr><td colspan="5" class="empty">No nodes yet.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+</div>
+{% endblock %}
