@@ -13,7 +13,7 @@
           <div class="field"><label>Admin password</label><input type="password" name="bolero_admin_password" placeholder="{{ 'Saved. Leave blank to keep.' if bolero.settings.has_password else 'Only needed to flash packs' }}" autocomplete="new-password"></div>
           <div class="field"><label>Charger resource</label><input name="bolero_charger_resource" value="{{ bolero.settings.charger_resource }}" placeholder="auto"><div class="help">Leave on auto unless the explorer shows a different name.</div></div>
         </div>
-        <div class="field"><label>Pack names</label><select name="bolero_names_mode">{% for k, label in [('off', 'Off'), ('ask', 'Ask when they differ'), ('always', 'Always use Bolero names')] %}<option value="{{ k }}" {{ 'selected' if bolero.settings.names_mode == k }}>{{ label }}</option>{% endfor %}</select><div class="help">Always renames people to the name on their pack without asking. Imported names are kept and can be restored.</div></div>
+        <div class="field"><label>Pack names</label><select name="bolero_names_mode">{% for k, label in [('off', 'Off'), ('ask', 'Ask when they differ'), ('always', 'Flag only, never ask')] %}<option value="{{ k }}" {{ 'selected' if bolero.settings.names_mode == k }}>{{ label }}</option>{% endfor %}</select><div class="help">Flag only marks a name that differs and never asks or renames anyone.</div></div>
         <div class="row wrap"><label class="check"><input type="checkbox" name="bolero_enabled" value="1" {{ 'checked' if bolero.settings.enabled }}> Link enabled</label>{% if bolero.settings.has_password %}<label class="check"><input type="checkbox" name="clear_password" value="1"> Remove saved password</label>{% endif %}</div>
       {% if bolero.settings.enabled and not bolero.ok %}<p class="red mt-s">{{ bolero.error }}</p>{% endif %}
     </div>
@@ -25,7 +25,7 @@
         <dt>Pack status</dt><dd>Under the selected person: whether the pack with their Bolero ID is on, its battery and antenna.</dd>
         <dt>Flash</dt><dd>Selecting a person flashes their pack for ten seconds through its charger bay, when it is docked in a networked, licensed charger. Needs the admin password. A pack that is not in a charger is never flashed: before each flash RDR reads the antennas again, and says no if the pack is on air, its bay reads empty, it shows in two bays, or any antenna does not answer.</dd>
         <dt>Charger bay</dt><dd>With Riedel's Charger Monitoring licence on networked chargers the kiosk shows which charger and bay a docked pack is in. {% if bolero.ok %}{% if bolero.charger_resource %}Reading from <span class="mono">/rest/{{ bolero.charger_resource }}</span>: {{ bolero.chargers | length }} charger(s).{% else %}No charger data found on this system yet: look for it with the explorer below and enter the resource name.{% endif %}{% endif %}</dd>
-        <dt>Pack names</dt><dd>With Pack names on, the kiosk also finds people by the name set on their pack. Ask: the tech is asked when that name differs from the imported one, and chooses the Bolero name or the RDR name. Always: people take the name on their pack without a prompt, and can still be found by their imported name. Pack names hold 8 characters: the first 6 letters of the first name and the last name's initial, so Jonath S matches Jonathan Smith, with or without the space. Any other name cut short, or with an initial, counts as the same too. Default names like Bolero 61 are ignored.</dd>
+        <dt>Pack names</dt><dd>With Pack names on, the kiosk also finds people by the name set on their pack. Ask: the tech is asked when that name differs from the imported one, and chooses the Bolero name or the RDR name. Flag only: a name that differs is marked in search results and on the selected person, with no prompt, and nobody is renamed. Pack names hold 8 characters: the first 6 letters of the first name and the last name's initial, so Jonath S matches Jonathan Smith, with or without the space. Any other name cut short, or with an initial, counts as the same too. Default names like Bolero 61 are ignored.</dd>
         <dt>Read only</dt><dd>RDR only reads, with the read-only account the Bolero web page uses. The one thing it ever sends is Identify, addressed to a charger bay. RDR refuses to send the antenna's own pack locate, which would flash a pack on someone's belt. It never changes names, keys, partylines or settings.</dd>
         <dt>Network load</dt><dd>One request at a time. Pack status every 5 seconds while a kiosk is using it, every 30 seconds when nobody is, pack names once a minute. It backs off to one try every two minutes when the antenna does not answer.</dd>
         <dt>No match</dt><dd>The kiosk says so when the person's ID is not on the system, or when they have no Bolero ID.</dd>
@@ -34,7 +34,7 @@
 </div>
 
 {% if bolero.settings.enabled %}
-{% if bolero.settings.names_mode == 'ask' %}
+{% if bolero.settings.names_mode in ('ask', 'always') %}
 <div class="panel mt" id="names"><div class="panel-head"><h2>Names that differ · {{ diffs | length }}</h2><span class="muted sm">Matched by Bolero ID</span></div>
   <div class="table-wrap short"><table>
     <thead><tr><th>Pack</th><th>Name on the pack</th><th>Name in RDR</th><th></th></tr></thead>

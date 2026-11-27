@@ -38,6 +38,8 @@
   // ---- person --------------------------------------------------------------
   const idOf = v => String(v || '').replace(/^bolero\s*/i, '');
   // Under a search result: the pack name when it differs, or the imported name when RDR took the pack's name.
+  // Flag only: the selected person's pack carries a different name. Shown, never asked.
+  const flagNote = c => c ? `<div class="bname differs"><span class="tag">Name differs</span>Bolero ${esc(c.number)} is named <b>${esc(c.pack_name)}</b>${c.expected ? `, not ${esc(c.expected)}` : ''}</div>` : '';
   function nameNote(p) {
     if (p.bolero_differs) return `<div class="bname differs"><span class="tag">Name differs</span>Bolero ${esc(idOf(p.bolero_id))} is named <b>${esc(p.bolero_name)}</b>${p.bolero_expected ? `, not ${esc(p.bolero_expected)}` : ''}</div>`;
     if (p.import_name && p.import_name !== p.name) return `<div class="bname">Name from Bolero ${esc(idOf(p.bolero_id))} · imported as ${esc(p.import_name)}</div>`;
@@ -60,7 +62,7 @@
     const d = await api(`/api/people/${id}`);
     if (opts.auto && (state.person || !state.basket.every(x => x.status === 'out' && x.holder_id === id))) return;   // the list changed while loading
     if (opts.auto) state.autoPerson = true; else if (!state.person || state.person.id !== id) state.autoPerson = false;
-    state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; searchEl.value = '';
+    state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.nameFlag = d.name_flag; searchEl.value = '';
     renderPerson(); renderBasket();
     if (d.name_check && !opts.auto) askBoleroName(d.person, d.name_check);
   }
@@ -79,7 +81,7 @@
   function renderPerson() {
     const p = state.person, el = $('#personPanel');
     if (!p) { el.innerHTML = ''; return; }
-    el.innerHTML = `<div class="row"><div class="grow"><b class="pname">${esc(p.name)}</b><div class="muted sm">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div></div>${p.bolero_id ? `<span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${hex(p.faceplate)}"` : ''}>Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson">&#10005;</button></div>
+    el.innerHTML = `<div class="row"><div class="grow"><b class="pname">${esc(p.name)}</b><div class="muted sm">${esc([p.dept, p.role].filter(Boolean).join(' · '))}</div>${flagNote(state.nameFlag)}</div>${p.bolero_id ? `<span class="bolero${p.faceplate ? ' faced' : ''}"${p.faceplate ? ` style="--face:#${hex(p.faceplate)}"` : ''}>Bolero ${esc(p.bolero_id.replace(/^bolero\s*/i, ''))}</span>` : ''}<button class="btn sm ghost" id="btnClearPerson">&#10005;</button></div>
       ${state.holdings.length ? `<div class="muted sm mt-s">Signed out · ${state.holdings.length}: ${state.holdings.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-return-all>Return all</button></div>` : ''}
       ${state.assignments.length ? `<div class="muted sm mt-s">Reserved: ${state.assignments.map(d => esc(d.label || d.si)).join(', ')} <button class="btn sm" data-add-all>Add all</button></div>` : ''}`;
     $('#btnClearPerson').onclick = clearPerson;

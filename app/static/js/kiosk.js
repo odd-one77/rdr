@@ -13,6 +13,8 @@
   const isHeadset = n => /headset/i.test(n || '') && !/adapter/i.test(n || '');
   // What sits beside a name: Bolero (person's ID or the held pack), Radio (held radio), both, or nothing.
   // Under a search result: the pack name when it differs, or the imported name when RDR took the pack's name.
+  // Flag only: the selected person's pack carries a different name. Shown, never asked.
+  const flagNote = c => c ? `<div class="bname differs"><span class="tag">Name differs</span>Bolero ${esc(c.number)} is named <b>${esc(c.pack_name)}</b>${c.expected ? `, not ${esc(c.expected)}` : ''}</div>` : '';
   function nameNote(p) {
     if (p.bolero_differs) return `<div class="bname differs"><span class="tag">Name differs</span>Bolero ${esc(idOf(p.bolero_id))} is named <b>${esc(p.bolero_name)}</b>${p.bolero_expected ? `, not ${esc(p.bolero_expected)}` : ''}</div>`;
     if (p.import_name && p.import_name !== p.name) return `<div class="bname">Name from Bolero ${esc(idOf(p.bolero_id))} · imported as ${esc(p.import_name)}</div>`;
@@ -168,7 +170,7 @@
       if (opts.auto && (state.person || !state.basket.every(x => x.status === 'out' && x.holder_id === id))) return;   // the list changed while loading
       if (opts.auto) state.autoPerson = true; else if (!state.person || state.person.id !== id) state.autoPerson = false;
       if (state.person && state.person.id !== id) state.lastPerson = { id: state.person.id, name: state.person.name };
-      state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.result = null;
+      state.person = d.person; state.holdings = d.holdings; state.assignments = d.assignments; state.result = null; state.nameFlag = d.name_flag;
       searchEl.value = '';
       if (state.collector && !state.recipients.some(r => r.id === id)) {
         state.recipients.push({ id, name: d.person.name, bolero_id: d.person.bolero_id || '', faceplate: d.person.faceplate || '' });
@@ -302,7 +304,7 @@
     panel.innerHTML = `
       <div class="person-card">
         <div class="row"><div class="name grow">${esc(p.name)}</div>${chips(p, hold)}<button class="btn sm ghost" id="btnEditPerson" title="Edit details">Edit</button><button class="btn sm ghost" id="btnClearPerson" title="Clear">&#10005;</button></div>
-        ${line1 ? `<div class="meta">${line1}</div>` : ''}${line2 ? `<div class="meta">${line2}</div>` : ''}
+        ${line1 ? `<div class="meta">${line1}</div>` : ''}${flagNote(state.nameFlag)}${line2 ? `<div class="meta">${line2}</div>` : ''}
         ${p.allocation ? `<div class="meta alloc">Allocation: <b>${esc(p.allocation)}</b></div>` : ''}
         <div class="meta pack-live" id="packLive" data-number="${p.bolero_id ? esc(idOf(p.bolero_id)) : ''}"></div>
         ${state.collector ? `<div class="meta collector">Scans go to <b>${esc(p.name)}</b>, collected by <b>${esc(state.collector.name)}</b></div>` : ''}

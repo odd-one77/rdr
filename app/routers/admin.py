@@ -982,8 +982,6 @@ def bolero_names_restore(person_id: int = Form(0)):
     """Put back the imported names (one person, or everyone with person_id 0)."""
     with get_db() as db:
         n = bolero_names.restore(db, person_id or None)
-    if bolero.settings()["names_mode"] == "always":
-        return _redirect("/admin/bolero#renamed", msg=f"Restored {n} imported name{'s' if n != 1 else ''}. Set Pack names to Ask or Off first, or the next read renames them again.")
     return _redirect("/admin/bolero#renamed", msg=f"Restored {n} imported name{'s' if n != 1 else ''}")
 
 

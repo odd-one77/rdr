@@ -54,7 +54,6 @@ def people_search(q: str = "", tech: dict = Depends(require_tech)):
     with get_db() as db:
         if not bolero_names.enabled():
             return {"results": [dict(r) for r in inventory.search_people(db, q)], "packs": []}
-        bolero_names.apply_all(db)   # Always use Bolero names: rename first, so nobody is shown as different
         found = {r["id"] for r in inventory.search_people(db, q)}
         by_pack, loose = bolero_names.search(db, q, found)
         packs = bolero_names.names()
@@ -74,14 +73,15 @@ def person_detail(person_id: int, tech: dict = Depends(require_tech)):
         p = inventory.person_by_id(db, person_id)
         if p is None:
             raise HTTPException(404, "Unknown person")
-        if bolero_names.always() and bolero_names.apply_all(db):
-            p = inventory.person_by_id(db, person_id)
+        check = bolero_names.check(db, p) if bolero_names.enabled() else None
+        flag = bolero_names.flag_only()
         return {
             "person": dict(p),
             "holdings": [dict(r) for r in inventory.person_holdings(db, person_id)],
             "assignments": [dict(r) for r in inventory.person_assignments(db, person_id)],
             "recent": [dict(r) for r in inventory.transactions(db, limit=15, person_id=person_id)],
-            "name_check": bolero_names.check(db, p) if bolero_names.enabled() else None,
+            "name_check": None if flag else check,   # Ask: the tech chooses
+            "name_flag": check if flag else None,    # Flag only: shown, never asked or renamed
         }
 
 

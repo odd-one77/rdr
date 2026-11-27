@@ -8,9 +8,10 @@ words ("J Carter", "Sam P"). Default pack names
 like "Bolero 61" or "BP 61" are ignored. A tech can keep the RDR name, which is remembered until the
 pack is renamed again.
 
-With Pack names set to "Always use Bolero names" nobody is asked: after each read of the antenna a
-person whose pack carries a different name takes that name. The imported name is kept in
-`import_name`, so search and re-imports still find them and it can be restored.
+With Pack names set to "Flag only" (saved as "always") nobody is asked and nobody is renamed: a name
+that differs is flagged in search results, on the selected person and on the Bolero link page.
+Version 0.9.17 renamed people in this mode; the name it replaced is in `import_name`, so search and
+re-imports still find them, and it can be restored from the Bolero link page.
 """
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ def enabled() -> bool:
     return st["enabled"] and st["names"]
 
 
-def always() -> bool:
+def flag_only() -> bool:
     st = bolero.settings()
     return st["enabled"] and st["names_mode"] == "always"
 
@@ -109,7 +110,7 @@ def check(db: sqlite3.Connection, person, packs: Optional[dict[str, str]] = None
     pack_name = packs.get(number)
     if not pack_name or same_name(person["name"], pack_name):
         return None
-    if not always() and _kept(db).get(str(person["id"])) == pack_name:
+    if _kept(db).get(str(person["id"])) == pack_name:
         return None
     return {"number": number, "pack_name": pack_name, "expected": pack_style(person["name"])}
 
@@ -156,25 +157,9 @@ def differences(db: sqlite3.Connection) -> list[dict]:
     return sorted(out, key=lambda x: (len(x["number"]), x["number"]))
 
 
-def apply_all(db: sqlite3.Connection) -> list[dict]:
-    """Always use Bolero names: give everyone whose pack name differs that name, keeping the imported one."""
-    if not always():
-        return []
-    packs = names()
-    if not packs:
-        return []
-    changed = []
-    for p in db.execute("SELECT * FROM people WHERE bolero_id <> ''").fetchall():
-        c = check(db, p, packs)
-        if c:
-            db.execute("UPDATE people SET import_name = CASE WHEN import_name = '' THEN name ELSE import_name END, name = ?, updated_at = ? WHERE id = ?",
-                       (c["pack_name"], now_iso(), p["id"]))
-            changed.append({"id": p["id"], "from": p["name"], "to": c["pack_name"]})
-    return changed
-
 
 def renamed(db: sqlite3.Connection) -> list[dict]:
-    """People whose name came from their pack, with the imported name that can be restored."""
+    """People renamed from their pack by version 0.9.17, with the imported name that can be restored."""
     rows = db.execute("SELECT id, name, import_name, dept, bolero_id FROM people WHERE import_name <> '' AND import_name <> name ORDER BY name")
     return [dict(r) | {"number": id_of(r["bolero_id"])} for r in rows]
 
@@ -184,7 +169,7 @@ def restore(db: sqlite3.Connection, person_id: Optional[int] = None) -> int:
     where, args = ("AND id = ?", (person_id,)) if person_id else ("", ())
     rows = db.execute(f"SELECT id, bolero_id FROM people WHERE import_name <> '' {where}", args).fetchall()
     db.execute(f"UPDATE people SET name = import_name, import_name = '', updated_at = ? WHERE import_name <> '' {where}", (now_iso(), *args))
-    # restored on purpose: in Ask mode, do not ask about these names again until the pack is renamed
+    # restored on purpose: do not ask about or flag these names again until the pack is renamed
     packs, kept = names(), _kept(db)
     for r in rows:
         if packs.get(id_of(r["bolero_id"])):
@@ -192,13 +177,3 @@ def restore(db: sqlite3.Connection, person_id: Optional[int] = None) -> int:
     set_setting(db, KEPT_KEY, json.dumps(kept))
     return len(rows)
 
-
-def _sync_after_poll() -> None:
-    if not always():
-        return
-    from ..db import get_db
-    with get_db() as db:
-        apply_all(db)
-
-
-bolero._after_poll.append(_sync_after_poll)
