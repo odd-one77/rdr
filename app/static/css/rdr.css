@@ -191,7 +191,7 @@ td.num, th.num { text-align: right; font-family: var(--mono); }
 .content.page-narrow { max-width: 1000px; margin: 0 auto; }
 td.vtop { vertical-align: top; }
 td.fit { width: 1%; white-space: nowrap; }
-td.sub:first-child { padding-left: var(--s3); }
+td.sub:first-child, td.dev-col:first-child { padding-left: var(--s3); }
 tr.last td[rowspan] { border-bottom: 0; }
 td.empty { color: var(--muted); padding-top: var(--s4); padding-bottom: var(--s4); }
 /* compact controls inside editable table rows */
@@ -548,6 +548,14 @@ td.saved { animation: savedFade .4s ease-out 1.2s forwards; }
   .content .panel table { min-width: 640px; }
 }
 
+/* devices on report sheets: name (label, else type) large, SI under, barcode beside */
+.dev-cell { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.dev-cell .dn { font-weight: 600; font-size: 14px; line-height: 1.25; }
+.dev-cell .ds { font-size: 12px; color: var(--muted); }
+.dev-cell .ds .si { font-family: var(--mono, ui-monospace, monospace); color: var(--text); }
+.dev-code { flex: none; line-height: 0; }
+.dev-code .barcode { background: #fff; border-radius: 2px; max-width: 46mm; }
+.flag-reason { border-left: 3px solid var(--amber); padding: 4px 0 4px 10px; }
 .print-head, .print-title { display: none; }
 @media print {
   @page { size: A4 landscape; margin: 8mm; }
@@ -557,6 +565,19 @@ td.saved { animation: savedFade .4s ease-out 1.2s forwards; }
   .admin, .admin-main, .content { display: block; padding: 0; margin: 0; max-width: none; grid-template-columns: 1fr; }
   .print-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 4px; font-size: 10px; }
   .print-head b { font-size: 13px; }
+  .print-head.sheet { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; border-bottom: 1.5px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+  .sheet-riedel { height: 9mm; width: auto; justify-self: start; }
+  .sheet-event { max-height: 12mm; max-width: 50mm; width: auto; justify-self: end; object-fit: contain; }
+  .sheet-title { text-align: center; font-size: 10px; }
+  .sheet-title h1 { font-size: 18px; margin: 0 0 2px; color: #000; }
+  .dev-cell { gap: 8px; }
+  .dev-cell .dn { font-size: 12px; font-weight: 700; color: #000; }
+  .dev-cell .ds { font-size: 8.5px; color: #000; }
+  .dev-cell .ds .si { color: #000; font-weight: 600; }
+  .dev-code .barcode { max-width: none; }
+  td.dev-col:first-child, td.sub:first-child { padding-left: 5px; }
+  td.dev-col, th.dev-col { width: 38%; }
+  .page-narrow { max-width: none; }
   .report-stats { display: none !important; }
   .print-title { display: block; font-size: 11px; margin: 8px 0 2px; break-after: avoid; page-break-after: avoid; }
   .report.is-empty .table-wrap { display: none; }

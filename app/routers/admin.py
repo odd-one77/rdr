@@ -923,6 +923,10 @@ def away_clear(site_id: int):
 @router.get("/bolero", dependencies=[Depends(require_admin)])
 def bolero_page(request: Request, path: str = "", host: str = ""):
     """Settings for the antenna link, live status, and a read-only explorer of the antenna's /rest resources."""
+    return _bolero_render(request, path, host)
+
+
+def _bolero_render(request: Request, path: str = "", host: str = "", test: dict | None = None):
     import json as _json
     path = path.strip().lstrip("/")[:80]
     text, err = "", ""
@@ -940,7 +944,29 @@ def bolero_page(request: Request, path: str = "", host: str = ""):
         diffs = bolero_names.differences(db)
         renamed = bolero_names.renamed(db)
     polled = datetime.fromtimestamp(st["updated"]).strftime("%H:%M:%S") if st.get("updated") else ""
-    return render(request, "admin/bolero.html", bolero=st, diffs=diffs, renamed=renamed, polled=polled, path=path, host=host, text=text, err=err, active="bolero")
+    return render(request, "admin/bolero.html", bolero=st, diffs=diffs, renamed=renamed, polled=polled, path=path, host=host, text=text, err=err, test=test, active="bolero")
+
+
+@router.post("/bolero/test", dependencies=[Depends(require_admin)])
+def bolero_test(request: Request, number: str = Form(""), action: str = Form("check"), seconds: int = Form(10)):
+    """Flash tester: check a pack (sends nothing), flash it through its charger bay, or stop. Same rules as the kiosk."""
+    number = number.strip()
+    if not number:
+        return _redirect("/admin/bolero#tester", err="Pick a pack to test")
+    seconds = max(3, min(60, seconds))
+    result: dict = {"number": number, "seconds": seconds}
+    try:
+        if action == "flash":
+            r = bolero.identify(number, on=True, seconds=seconds)
+            result["done"] = ("Already flashing" if r.get("already") else f"Flashing for {seconds} seconds") + \
+                (f" in {r['charger']['name']}, bay {r['charger']['bay']}" if r.get("charger") else "") + (f" via /rest/{r['resource']}" if r.get("resource") else "")
+        elif action == "stop":
+            bolero.identify(number, on=False)
+            result["done"] = "Stopped"
+    except ValueError as e:
+        result["error"] = str(e)
+    result.update(bolero.flash_check(number) if action == "check" or "error" in result else {"number": number})
+    return _bolero_render(request, test=result)
 
 
 @router.post("/bolero/settings", dependencies=[Depends(require_admin)])

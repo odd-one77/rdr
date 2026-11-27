@@ -25,7 +25,7 @@
         <dt>Pack status</dt><dd>Under the selected person: whether the pack with their Bolero ID is on, its battery and antenna.</dd>
         <dt>Flash</dt><dd>Selecting a person flashes their pack for ten seconds through its charger bay, when it is docked in a networked, licensed charger. Needs the admin password. A pack that is not in a charger is never flashed: before each flash RDR reads the antennas again, and says no if the pack is on air, its bay reads empty, it shows in two bays, or any antenna does not answer.</dd>
         <dt>Charger bay</dt><dd>With Riedel's Charger Monitoring licence on networked chargers the kiosk shows which charger and bay a docked pack is in. {% if bolero.ok %}{% if bolero.charger_resource %}Reading from <span class="mono">/rest/{{ bolero.charger_resource }}</span>: {{ bolero.chargers | length }} charger(s).{% else %}No charger data found on this system yet: look for it with the explorer below and enter the resource name.{% endif %}{% endif %}</dd>
-        <dt>Pack names</dt><dd>With Pack names on, the kiosk also finds people by the name set on their pack. Ask: the tech is asked when that name differs from the imported one, and chooses the Bolero name or the RDR name. Flag only: a name that differs is marked in search results and on the selected person, with no prompt, and nobody is renamed. Pack names hold 8 characters: the first 6 letters of the first name and the last name's initial, so Jonath S matches Jonathan Smith, with or without the space. Any other name cut short, or with an initial, counts as the same too. Default names like Bolero 61 are ignored.</dd>
+        <dt>Pack names</dt><dd>With Pack names on, the kiosk also finds people by the name set on their pack. Ask: the tech is asked when that name differs from the imported one, and chooses the Bolero name or the RDR name. Flag only: a name that differs is marked in search results and on the selected person, with no prompt, and nobody is renamed. Pack names hold 8 characters: the first 6 letters of the first name, a dot and the last name's initial, so Jonath.S matches Jonathan Smith and Kevin .W matches Kevin Wu, also with a space or nothing in place of the dot. Any other name cut short, or with an initial, counts as the same too. Default names like Bolero 61 are ignored.</dd>
         <dt>Read only</dt><dd>RDR only reads, with the read-only account the Bolero web page uses. The one thing it ever sends is Identify, addressed to a charger bay. RDR refuses to send the antenna's own pack locate, which would flash a pack on someone's belt. It never changes names, keys, partylines or settings.</dd>
         <dt>Network load</dt><dd>One request at a time. Pack status every 5 seconds while a kiosk is using it, every 30 seconds when nobody is, pack names once a minute. It backs off to one try every two minutes when the antenna does not answer.</dd>
         <dt>No match</dt><dd>The kiosk says so when the person's ID is not on the system, or when they have no Bolero ID.</dd>
@@ -53,6 +53,28 @@
       <td class="num"><form method="post" action="/admin/bolero/names/restore" class="row end"><input type="hidden" name="person_id" value="{{ r.id }}"><button class="btn sm ghost">Restore</button></form></td></tr>{% endfor %}</tbody>
   </table></div></div>
 {% endif %}
+
+<div class="panel mt" id="tester"><div class="panel-head"><h2>Flash tester</h2><span class="muted sm">Same rules as the kiosk: a pack out of a charger is never flashed</span></div>
+  <form method="post" action="/admin/bolero/test#tester" class="panel-body">
+    <div class="row wrap">
+      <div class="field"><label>Pack</label><input name="number" list="packList" value="{{ test.number if test else '' }}" placeholder="Bolero ID" class="short" required autocomplete="off">
+        <datalist id="packList">{% for n, p in bolero.packs.items() %}<option value="{{ n }}">{{ p.name }}</option>{% endfor %}</datalist></div>
+      <div class="field"><label>Seconds</label><select name="seconds" class="short">{% for s in [5, 10, 30] %}<option value="{{ s }}" {{ 'selected' if (test.seconds if test else 10) == s }}>{{ s }}</option>{% endfor %}</select></div>
+      <div class="field"><label>&nbsp;</label><div class="row"><button class="btn" name="action" value="check">Check</button><button class="btn primary" name="action" value="flash">Flash</button><button class="btn ghost" name="action" value="stop">Stop</button></div></div>
+    </div>
+    <p class="help">Check reads the antennas again and runs every check, and sends nothing. Flash sends Identify to the pack's charger bay and turns it off after the time chosen.</p>
+    {% if test %}
+    <div class="mt">
+      {% if test.done %}<p class="green"><b>{{ test.done }}</b></p>{% endif %}
+      {% if test.error %}<p class="red"><b>Not flashed:</b> {{ test.error }}</p>{% endif %}
+      {% if test.steps %}<div class="lines">{% for st in test.steps %}<div><span class="{{ 'green' if st.ok else 'red' }}">{{ '✓' if st.ok else '✕' }}</span> {{ st.text }}</div>{% endfor %}</div>
+        {% if not test.done and not test.error %}<p class="mt-s">{% if test.block %}<span class="red"><b>Would not flash:</b> {{ test.block }}</span>{% elif test.ok %}<span class="green"><b>Would flash.</b></span>{% if test.flashing %} It is flashing now.{% endif %}{% else %}<span class="amber"><b>Checks pass, but no admin password is saved.</b></span>{% endif %}</p>{% endif %}
+        {% if test.would_send %}<div class="muted sm mt-s">Tried in this order until the system accepts one:</div><div class="code">{% for w in test.would_send %}POST /rest/{{ w.resource }} {{ w.body | tojson }}{% if w.known_good %}   (worked before){% endif %}
+{% endfor %}</div>{% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
+  </form></div>
 
 <div class="panel mt"><div class="panel-head"><h2>Packs seen</h2><span class="muted sm">{{ ('Updated ' ~ polled) if polled else 'Not polled yet' }}</span></div>
   <div class="table-wrap short"><table>

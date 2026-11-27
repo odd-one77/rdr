@@ -15,12 +15,12 @@ def test_same_name_rules():
     assert not s("Dana Whitfield", "Morgan Hale")
     assert not s("Rafael Okonkwo", "T Okonkwo")
     # Bolero's 8 characters: first 6 of the first name, then the last initial, with or without the space
-    assert s("Jonathan Smith", "Jonath S") and s("Jonathan Smith", "JonathS") and s("Hannah Weiss", "HannahW")
+    assert s("Jonathan Smith", "Jonath.S") and s("Kevin Wu", "Kevin .W") and s("Jonathan Smith", "Jonath S") and s("Jonathan Smith", "JonathS") and s("Hannah Weiss", "HannahW")
     assert s("Mary Jane Watson", "Mary W") and s("Bartholomew de Vries", "Bartho V") and s("Al Kerr", "Al K")
     assert not s("Hannah Weiss", "Hannah P") and not s("Hannah Weiss", "HannahP") and not s("Jonathan Smith", "Jonath T")
     assert not s("Jonathan Smith", "Joanna S")
     p = bolero_names.pack_style
-    assert p("Jonathan Smith") == "Jonath S" and p("Al Kerr") == "Al K" and p("Mary Jane watson") == "Mary W" and p("Cher") == "Cher"
+    assert p("Jonathan Smith") == "Jonath.S" and p("Al Kerr") == "Al    .K" and p("Mary Jane watson") == "Mary  .W" and p("Cher") == "Cher"
     assert not bolero_names.real_name("Bolero 61") and not bolero_names.real_name("BP 7") and not bolero_names.real_name("")
     assert bolero_names.real_name("Alex") and bolero_names.id_of("Bolero 061") == "61"
 
@@ -43,7 +43,7 @@ def test_prompt_search_and_choices(names_on, client):
     assert d["name_check"] is None
     assert client.get(f"/api/people/{ids['Rafael Okonkwo']}").json()["name_check"] is None   # initial counts as the same
     c = client.get(f"/api/people/{ids['Morgan Hale']}").json()["name_check"]
-    assert c == {"number": "805", "pack_name": "Quinn Lavelle", "expected": "Morgan H"}
+    assert c == {"number": "805", "pack_name": "Quinn Lavelle", "expected": "Morgan.H"}
 
     # search by the pack name finds the person holding that ID, flagged as different
     r = client.get("/api/people/search?q=quinn").json()
@@ -87,7 +87,7 @@ def test_flag_only_never_renames(monkeypatch, client):
 
     d = client.get(f"/api/people/{a}").json()
     assert d["person"]["name"] == "Wendell Frost" and d["name_check"] is None
-    assert d["name_flag"]["pack_name"] == "Imogen Strand" and d["name_flag"]["expected"] == "Wendel F"
+    assert d["name_flag"]["pack_name"] == "Imogen Strand" and d["name_flag"]["expected"] == "Wendel.F"
     assert client.get(f"/api/people/{b}").json()["name_flag"] is None   # an initial on the pack is the same person
     hit = [p for p in client.get("/api/people/search?q=wendell").json()["results"] if p["id"] == a]
     assert hit and hit[0]["name"] == "Wendell Frost" and hit[0]["bolero_differs"]

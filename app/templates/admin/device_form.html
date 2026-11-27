@@ -23,6 +23,7 @@
   <div class="stack lg">
     <div class="panel"><div class="panel-head"><h2>Status</h2></div>
       <div class="panel-body">
+        {% if device.status in ('damaged', 'lost') %}<div class="flag-reason mb-s"><b>{{ device.status | capitalize }}{% if device.flag_reason %}: {{ device.flag_reason }}{% endif %}</b>{% if device.flag_note %}<div>{{ device.flag_note }}</div>{% endif %}{% if not device.flag_reason and not device.flag_note %}<div class="muted sm">No reason given</div>{% endif %}{% if device.flag_at %}<div class="muted sm mono">{{ device.flag_at }}</div>{% endif %}</div>{% endif %}
         <p>{% if device.holder_id %}Currently with <a href="/admin/people/{{ device.holder_id }}"><b>{{ device.holder_name }}</b></a>{% else %}Not signed out.{% endif %}</p>
         <form method="post" action="/admin/devices/{{ device.id }}" class="row wrap">
           <input type="hidden" name="action" value="status">

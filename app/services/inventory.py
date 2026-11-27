@@ -16,13 +16,16 @@ DEVICE_SELECT = """
 SELECT d.*, t.name AS type_name, t.short_code AS type_code,
        p.name AS holder_name, p.dept AS holder_dept, p.phone AS holder_phone,
        s.name AS site_name,
-       a.person_id AS assigned_person_id, ap.name AS assigned_person_name
+       a.person_id AS assigned_person_id, ap.name AS assigned_person_name,
+       fx.reason AS flag_reason, fx.note AS flag_note, fx.ts AS flag_at
 FROM devices d
 JOIN device_types t ON t.id = d.type_id
 LEFT JOIN people p ON p.id = d.holder_id
 LEFT JOIN sites s ON s.id = d.site_id
 LEFT JOIN assignments a ON a.device_id = d.id
 LEFT JOIN people ap ON ap.id = a.person_id
+LEFT JOIN transactions fx ON d.status IN ('damaged', 'lost')
+     AND fx.id = (SELECT MAX(id) FROM transactions WHERE device_id = d.id AND action = d.status)
 """
 
 

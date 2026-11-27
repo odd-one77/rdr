@@ -15,11 +15,13 @@ from . import __version__
 from .auth import is_admin, live_tech
 from .config import APP_DIR, UPLOAD_DIR, ensure_dirs, is_hub, load_config
 from .db import ACTION_LABELS, get_db, init_db
+from .services import barcode
 
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 templates.env.globals["version"] = __version__
 templates.env.globals["on_windows"] = sys.platform.startswith("win")
 templates.env.globals["ACTION_LABELS"] = ACTION_LABELS
+templates.env.filters["barcode"] = barcode.svg
 
 
 def lan_addresses() -> list[str]:

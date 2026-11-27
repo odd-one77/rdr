@@ -2,8 +2,8 @@
 
 Off unless "Use Bolero pack names" is ticked on the Bolero link page. A pack's name is matched to a
 person through their Bolero ID (pack number). Pack names hold 8 characters, set as the first 6 letters
-of the first name and the last name's initial ("Jonath S" for Jonathan Smith), so that form, with or
-without the space, counts as the same person, as does any name whose words each start the person's
+of the first name (padded with spaces when shorter), a dot and the last name's initial ("Jonath.S" for
+Jonathan Smith, "Kevin .W" for Kevin Wu), so that form, with a space or nothing in place of the dot, counts as the same person, as does any name whose words each start the person's
 words ("J Carter", "Sam P"). Default pack names
 like "Bolero 61" or "BP 61" are ignored. A tech can keep the RDR name, which is remembered until the
 pack is renamed again.
@@ -54,11 +54,14 @@ PACK_LEN, FIRST_LEN = 8, 6   # Bolero pack names: 8 characters, first 6 of the f
 
 
 def pack_style(name: str) -> str:
-    """The name as it would be set on a pack: "Jonathan Smith" -> "Jonath S"."""
+    """The name as set on a pack: the first name cut or padded to 6, a dot, the last initial.
+    "Jonathan Smith" -> "Jonath.S", "Kevin Wu" -> "Kevin .W"."""
     w = (name or "").split()
     if not w:
         return ""
-    return (w[0][:FIRST_LEN] + (" " + w[-1][0].upper() if len(w) > 1 else ""))[:PACK_LEN]
+    if len(w) == 1:
+        return w[0][:PACK_LEN]
+    return w[0][:FIRST_LEN].ljust(FIRST_LEN) + "." + w[-1][0].upper()
 
 
 def same_name(rdr_name: str, pack_name: str) -> bool:

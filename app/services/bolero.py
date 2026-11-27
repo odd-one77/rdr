@@ -219,11 +219,18 @@ def parse_packs(bp: Any, node_status: Any, audio_ports: Any) -> dict[str, dict]:
     """Packs keyed by their number (the Bolero ID people are given): name, online, battery, antenna, internal id."""
     packs: dict[str, dict] = {}
     for i, rec in enumerate(_items(bp)):
+        # the antenna's /bp: {"bp": [{"id": 0, "registered": true, "lastConnectTime": ..., "bpConfig": {"bpName": "Jonath.S", "bpNumber": 1, ...}}]}
+        cfg = rec.get("bpConfig") if isinstance(rec.get("bpConfig"), dict) else {}
         internal = _get(rec, "id", "bpId", "index", default=i)
-        number = _get(rec, "number", "bpNumber", "no", "beltpackNumber", default=None)
+        number = _get(cfg, "bpNumber", "number", default=None)
+        if number is None:
+            number = _get(rec, "number", "bpNumber", "no", "beltpackNumber", default=None)
         if number is None:
             number = int(internal) + 1 if isinstance(internal, int) else internal
-        packs[str(number)] = {"number": str(number), "id": internal, "name": str(_get(rec, "name", "label", default="") or ""),
+        name = _get(cfg, "bpName", "name", default=None) or _get(rec, "bpName", "name", "label", default="")
+        packs[str(number)] = {"number": str(number), "id": internal, "name": str(name or "").strip(),
+                              "registered": _truthy(_get(rec, "registered", default=None)),
+                              "last_connect": _get(rec, "lastConnectTime", default=None),
                               "online": None, "battery": None, "antenna": None, "charging": None}
     by_id = {str(p["id"]): p for p in packs.values()}
     for rec in _items(node_status):
@@ -529,6 +536,44 @@ def _locate_forms(info: dict, bp_id, on: bool) -> list[tuple[str, dict]]:
         (f"{res}/{cid}/bay/{bay}/locate", {"active": act}),
         (f"{res}/locate", {"active": act, "chargers": [{"id": cid, "bays": [{"id": bay}]}]}),
     ]
+
+
+def flash_check(number: str) -> dict:
+    """For the tester: read the antennas again, run every check a flash would, and say what would be sent.
+    Sends nothing to the system."""
+    cfg = load_config()
+    steps: list[dict] = []
+    if not hosts(cfg.get("bolero_host") or ""):
+        return {"number": str(number), "ok": False, "steps": [{"ok": False, "text": "No antenna address set"}], "would_send": []}
+    steps.append({"ok": bool(cfg.get("bolero_admin_password")), "text": "Admin password saved" if cfg.get("bolero_admin_password") else "No admin password saved: flashing needs it"})
+    _poll_once(force=True)
+    with _lock:
+        fresh = bool(_state.get("ok")) and not _state.get("error")
+        err = _state.get("error")
+    steps.append({"ok": fresh, "text": "Every antenna answered just now" if fresh else f"Not every antenna answered: {err}"})
+    info = pack_info(number)
+    n = info["number"]
+    steps.append({"ok": info["known"], "text": f"Bolero {n} is on the system" + (f", named {info['name']}" if info.get("name") else "") if info["known"] else f"No Bolero {n} on the system"})
+    if info["known"]:
+        on_air = bool(info.get("online") or info.get("antenna"))
+        steps.append({"ok": not on_air, "text": f"Bolero {n} is on air" + (f" via {info['antenna']}" if info.get("antenna") else "") if on_air else f"Bolero {n} is off air"})
+    ch = info.get("charger")
+    if ch:
+        steps.append({"ok": True, "text": f"In {ch['name']}, bay {ch['bay']}" + (f" ({ch['state']})" if ch.get("state") else "")})
+    elif info["known"]:
+        steps.append({"ok": False, "text": "No charger data from the system" if not info.get("charger_data") else f"Bolero {n} is not in a charger"})
+    block = info["flash_block"] or ("" if fresh else f"Could not read every antenna just now, so Bolero {n} is not flashed")
+    would = []
+    if not block:
+        with _lock:
+            bp_id = _state["packs"].get(n, {}).get("id")
+            remembered = (_state.get("locate_form") or {}).get("docked")
+        forms = _locate_forms(info, bp_id, True)
+        if remembered in [f[0] for f in forms]:
+            forms.sort(key=lambda f: f[0] != remembered)
+        would = [{"resource": r, "body": b, "known_good": r == remembered} for r, b in forms]
+    return {"number": n, "ok": not block and bool(cfg.get("bolero_admin_password")), "block": block, "steps": steps, "would_send": would,
+            "flashing": n in _identify_timers}
 
 
 def identify(number: str, on: bool = True, seconds: int = IDENTIFY_SECONDS) -> dict:

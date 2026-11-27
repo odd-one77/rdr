@@ -453,7 +453,7 @@
       if (d.status === 'out') {
         if (p && d.holder_id === p.id) { cls = 'warn'; note = 'Already with this person'; }
         else { cls = 'conflict'; note = `Out to ${d.holder_name}`; }
-      } else if (d.status === 'lost' || d.status === 'damaged') { cls = 'warn'; note = `Marked ${d.status}`; }
+      } else if (d.status === 'lost' || d.status === 'damaged') { cls = 'warn'; note = `Marked ${d.status}${d.flag_reason || d.flag_note ? `: ${[d.flag_reason, d.flag_note].filter(Boolean).join(' · ')}` : ''}`; }
       if (d.site_name && d.site_name !== TECH.site_name) note += (note ? ' · ' : '') + `${d.site_name} stock`;
       const isPack = /bolero/i.test(d.type_name) && !/antenna/i.test(d.type_name);
       if (isPack && p && d.status !== 'out') {

@@ -246,3 +246,49 @@ def test_never_flash_a_pack_out_of_a_charger(antenna, monkeypatch):
     # docked, off air, one bay: flashes
     cfg["bolero_host"] = antenna
     assert bolero.identify("65", seconds=0)["ok"] and len(FakeAntenna.posts) == n + 1
+
+
+def test_parse_real_bp_shape():
+    """The antenna's /bp keeps the name and number inside bpConfig; the internal id is not the pack number."""
+    bp = {"bp": [
+        {"registered": True, "id": 0, "ipei": [2, 229, 0, 81, 202], "bpType": 3300, "lastConnectTime": 1795451605,
+         "bpConfig": {"profileId": 1, "bpName": "Tobias.R", "bpNumber": 1, "bpDescription": "", "keys": []}},
+        {"registered": True, "id": 1, "lastConnectTime": 1795815950, "bpConfig": {"bpName": "Nell  .V", "bpNumber": 2}},
+        {"registered": False, "id": 2, "bpConfig": {"bpName": "Spare", "bpNumber": 40}},
+    ]}
+    packs = bolero.parse_packs(bp, [{"bpId": 2, "online": True}], [])
+    assert set(packs) == {"1", "2", "40"}
+    assert packs["1"]["name"] == "Tobias.R" and packs["1"]["registered"] is True and packs["1"]["last_connect"] == 1795451605
+    assert packs["2"]["name"] == "Nell  .V"
+    assert packs["40"]["id"] == 2 and packs["40"]["registered"] is False and packs["40"]["online"] is True   # status found by internal id
+    from app.services import bolero_names
+    assert bolero_names.same_name("Tobias Reinholt", "Tobias.R") and bolero_names.same_name("Nell Varga", "Nell  .V")
+    assert bolero_names.pack_style("Tobias Reinholt") == "Tobias.R" and bolero_names.pack_style("Nell Varga") == "Nell  .V"
+    assert not bolero_names.same_name("Tobias Reinholt", "Tobias.K")
+
+
+def test_flash_tester(antenna, monkeypatch, client):
+    """Admin, Bolero link, Flash tester: Check sends nothing; Flash and Stop use the kiosk's rules."""
+    cfg = {"bolero_host": antenna, "bolero_enabled": True, "bolero_admin_password": "secret", "bolero_charger_resource": ""}
+    monkeypatch.setattr(bolero, "load_config", lambda: dict(cfg))
+    monkeypatch.setattr(FakeAntenna, "charger_resource", "chargers")
+    _reset(); bolero._identify_timers.clear(); bolero._identify_off.clear()
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    page = client.get("/admin/login").text
+    client.post("/admin/login", data={"password": "test1234", "confirm": "test1234"} if "Set the admin password" in page else {"password": "test1234"})
+    bolero.poll_now()
+    assert "Flash tester" in client.get("/admin/bolero").text
+    n = len(FakeAntenna.posts)
+
+    page = client.post("/admin/bolero/test", data={"number": "65", "action": "check"}).text
+    assert "Would flash." in page and "In Charger A, bay 1" in page and "chargers/7/locate" in page
+    page = client.post("/admin/bolero/test", data={"number": "61", "action": "check"}).text   # on air, not docked
+    assert "Would not flash:" in page and "is on air" in page
+    assert len(FakeAntenna.posts) == n   # Check never writes
+
+    page = client.post("/admin/bolero/test", data={"number": "61", "action": "flash"}).text
+    assert "Not flashed:" in page and len(FakeAntenna.posts) == n
+    page = client.post("/admin/bolero/test", data={"number": "65", "action": "flash", "seconds": "5"}).text
+    assert "Flashing for 5 seconds in Charger A, bay 1" in page and FakeAntenna.posts[-1] == ("chargers/7/bays/1/locate", {"active": 1})
+    page = client.post("/admin/bolero/test", data={"number": "65", "action": "stop"}).text
+    assert "Stopped" in page and FakeAntenna.posts[-1] == ("chargers/7/bays/1/locate", {"active": 0})

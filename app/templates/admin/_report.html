@@ -1,0 +1,22 @@
+{# Shared pieces of the printed report sheets. #}
+
+{# A device on a sheet: its name (the label when one is set, otherwise its type) large, the SI under it,
+   and with code=True the SI as a barcode beside it. #}
+{% macro dev(d, code=True, link=True) -%}
+<div class="dev-cell">
+  <div class="dev-name">
+    <div class="dn">{% if link and d.device_id %}<a href="/admin/devices/{{ d.device_id }}">{{ d.label or d.type_name }}</a>{% else %}{{ d.label or d.type_name }}{% endif %}</div>
+    <div class="ds"><span class="si">{{ d.si }}</span>{% if d.label and d.type_name %} · {{ d.type_name }}{% endif %}</div>
+  </div>
+  {% if code and d.si %}<div class="dev-code">{{ d.si | barcode }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{# The top of a printed sheet: Riedel and event logos, the sheet's title and what it covers. #}
+{% macro sheet_head(title, event, line) -%}
+<div class="print-head sheet">
+  <img class="sheet-riedel" src="/static/img/riedel-dark.png" alt="Riedel">
+  <div class="sheet-title"><h1>{{ title }}</h1><div>{{ event.name or '' }}{% if event.show_name %} · {{ event.show_name }}{% endif %}{% if line %} · {{ line }}{% endif %}</div></div>
+  {% if event.logo_path %}<img class="sheet-event" src="{{ event.logo_path }}" alt="">{% else %}<span class="sheet-event"></span>{% endif %}
+</div>
+{%- endmacro %}
