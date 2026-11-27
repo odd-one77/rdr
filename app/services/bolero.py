@@ -254,6 +254,9 @@ def parse_packs(bp: Any, node_status: Any, audio_ports: Any) -> dict[str, dict]:
             p = packs.get(str(num)) if num is not None else None
         if p is None:
             continue
+        nid = _get(rec, "nodeId", "id", default=None)
+        if nid is not None:
+            p["node_id"] = nid   # the pack's id in nodeStatus, one candidate for what locate expects
         online = _truthy(_get(rec, "online", "connected", "status", "state", default=None))
         if online is not None:
             p["online"] = online
@@ -679,7 +682,29 @@ def _safe_off(number: str) -> None:
             time.sleep(1)
 
 
-def test_locate(number: str, how: str = "pack", seconds: int = IDENTIFY_SECONDS) -> dict:
+def locate_ids(number: str) -> list[dict]:
+    """IDs the pack locate might expect for this pack, for the tester to try one at a time. Each says where it
+    comes from and whether it is another pack's slot (sending that could flash the other pack)."""
+    n = str(number or "").strip().lstrip("0") or str(number)
+    with _lock:
+        packs = {k: dict(v) for k, v in _state["packs"].items()}
+    p = packs.get(n)
+    if not p:
+        return []
+    out, seen = [], set()
+    cands = [(p.get("id"), "slot id in /bp"), (p.get("node_id"), "id in nodeStatus")]
+    if n.isdigit():
+        cands += [(int(n) - 1, "pack number − 1"), (int(n), "pack number")]
+    for v, why in cands:
+        if v is None or str(v) in seen:
+            continue
+        seen.add(str(v))
+        other = next((q for k, q in packs.items() if k != n and str(q.get("id")) == str(v)), None)
+        out.append({"id": v, "why": why, "other": (f"Bolero {other['number']}" + (f" ({other['name']})" if other.get("name") else "")) if other else ""})
+    return out
+
+
+def test_locate(number: str, how: str = "pack", seconds: int = IDENTIFY_SECONDS, send_id=None) -> dict:
     """Admin tester, test mode: locate a pack WITHOUT the charger checks, to see whether locate works on this
     system at all. how="pack" sends the pack's own locate (it flashes and buzzes wherever the pack is);
     how="charger" sends Identify to its charger bay even if the pack looks on air. Turned off after `seconds`.
@@ -701,6 +726,8 @@ def test_locate(number: str, how: str = "pack", seconds: int = IDENTIFY_SECONDS)
         forms = _locate_forms(info, bp_id, True)
         off = {r: b for r, b in _locate_forms(info, bp_id, False)}
     else:
+        if send_id not in (None, ""):
+            bp_id = int(send_id) if str(send_id).isdigit() else send_id
         forms = [("locate", {"active": 1, "nodes": [{"id": bp_id}]}), (f"bp/{bp_id}/locate", {"active": 1})]
         off = {"locate": {"active": 0, "nodes": [{"id": bp_id}]}, f"bp/{bp_id}/locate": {"active": 0}}
     old = _identify_timers.pop(n, None)

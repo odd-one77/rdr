@@ -927,6 +927,8 @@ def bolero_page(request: Request, path: str = "", host: str = ""):
 
 
 def _bolero_render(request: Request, path: str = "", host: str = "", test: dict | None = None):
+    if test and test.get("number"):
+        test["ids"] = bolero.locate_ids(test["number"])
     import json as _json
     path = path.strip().lstrip("/")[:80]
     text, err = "", ""
@@ -948,19 +950,22 @@ def _bolero_render(request: Request, path: str = "", host: str = "", test: dict 
 
 
 @router.post("/bolero/test", dependencies=[Depends(require_admin)])
-def bolero_test(request: Request, number: str = Form(""), action: str = Form("check"), seconds: int = Form(10), how: str = Form("pack"), confirm: str = Form("")):
+def bolero_test(request: Request, number: str = Form(""), action: str = Form("check"), seconds: int = Form(10), how: str = Form("pack"), confirm: str = Form(""), send_id: str = Form("")):
     """Flash tester: check a pack (sends nothing), flash it through its charger bay, or stop. Same rules as the kiosk."""
     number = number.strip()
     if not number:
         return _redirect("/admin/bolero#tester", err="Pick a pack to test")
     seconds = max(3, min(60, seconds))
-    result: dict = {"number": number, "seconds": seconds, "how": how}
+    send_id = send_id.strip()
+    if send_id and not send_id.isdigit():
+        return _redirect("/admin/bolero#tester", err="The ID to send is a whole number")
+    result: dict = {"number": number, "seconds": seconds, "how": how, "send_id": send_id}
     if action == "test":
         # test mode: no charger checks, so the pack may flash and buzz on someone's belt. Admin, this page, ticked each time.
         if not confirm:
             return _redirect("/admin/bolero#tester", err="Tick the box to confirm test mode: the pack flashes and buzzes wherever it is")
         try:
-            result["test"] = bolero.test_locate(number, "charger" if how == "charger" else "pack", seconds)
+            result["test"] = bolero.test_locate(number, "charger" if how == "charger" else "pack", seconds, send_id=send_id or None)
         except ValueError as e:
             result["error"] = str(e)
         return _bolero_render(request, test=result)

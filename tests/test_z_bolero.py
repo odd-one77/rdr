@@ -321,3 +321,30 @@ def test_tester_test_mode(antenna, monkeypatch, client):
         bolero._request(antenna, "bp/60/locate", method="POST", body={"active": 1}, auth=("admin", "secret"))
     with pytest.raises(ValueError, match="only reads"):   # test mode never lets anything else through
         bolero._request(antenna, "bp/60", method="POST", body={"bpName": "x"}, auth=("admin", "secret"), test_mode=True)
+
+
+def test_tester_choose_locate_id(antenna, monkeypatch, client):
+    """The tester lists the IDs locate might expect, flags any that is another pack's slot, and sends the one chosen."""
+    cfg = {"bolero_host": antenna, "bolero_enabled": True, "bolero_admin_password": "secret", "bolero_charger_resource": ""}
+    monkeypatch.setattr(bolero, "load_config", lambda: dict(cfg))
+    _reset(); bolero._identify_timers.clear(); bolero._identify_off.clear()
+    bolero.poll_now()
+    ids = bolero.locate_ids("65")   # slot 64, number - 1 is also 64, number 65
+    assert [c["id"] for c in ids] == [64, 65] and ids[0]["why"] == "slot id in /bp" and not ids[0]["other"]
+    with_other = {c["id"]: c["other"] for c in bolero.locate_ids("61")}
+    assert with_other[60] == "" and with_other[61] == ""
+    with bolero._lock:   # a system whose slots do not follow the numbers
+        bolero._state["packs"]["121"] = {"number": "121", "id": 108, "name": "Test pack"}
+        bolero._state["packs"]["109"] = {"number": "109", "id": 120, "name": "Other pack"}
+    c = {x["id"]: x for x in bolero.locate_ids("121")}
+    assert set(c) == {108, 120, 121} and c[120]["other"] == "Bolero 109 (Other pack)" and c[108]["why"] == "slot id in /bp"
+
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    page = client.get("/admin/login").text
+    client.post("/admin/login", data={"password": "test1234", "confirm": "test1234"} if "Set the admin password" in page else {"password": "test1234"})
+    page = client.post("/admin/bolero/test", data={"number": "61", "action": "test", "how": "pack", "confirm": "1", "seconds": "5", "send_id": "61"}).text
+    assert FakeAntenna.posts[-1] == ("bp/61/locate", {"active": 1}) and "IDs to try for Bolero 61" in page
+    client.post("/admin/bolero/test", data={"number": "61", "action": "test_stop"})
+    assert FakeAntenna.posts[-1] == ("bp/61/locate", {"active": 0})
+    r = client.post("/admin/bolero/test", data={"number": "61", "action": "test", "confirm": "1", "send_id": "6x"})
+    assert r.status_code == 303 and "whole%20number" in r.headers["location"]

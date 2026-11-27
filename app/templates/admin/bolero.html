@@ -65,12 +65,15 @@
     <p class="help">Check reads the antennas again and runs every check, and sends nothing. Flash sends Identify to the pack's charger bay and turns it off after the time chosen.</p>
     <div class="test-mode mt">
       <h3>Test mode</h3>
-      <p class="help">Skips the charger checks, to see whether locate works on this system at all. The pack flashes and buzzes wherever it is, even on someone's belt. Only this page can do it. The kiosk and phones still never flash a pack that is out of a charger.</p>
+      <p class="help">The pack must be switched on: a pack in a charger is off and cannot answer a pack locate. Skips the charger checks, to see whether locate works on this system at all. The pack flashes and buzzes wherever it is, even on someone's belt. Only this page can do it. The kiosk and phones still never flash a pack that is out of a charger.</p>
       <div class="row wrap">
         <div class="field"><label>Send</label><select name="how"><option value="pack" {{ 'selected' if not test or test.how != 'charger' }}>Pack locate (flash and buzz the pack)</option><option value="charger" {{ 'selected' if test and test.how == 'charger' }}>Charger bay Identify, without the checks</option></select></div>
+        <div class="field"><label>ID to send</label><input name="send_id" list="idList" value="{{ test.send_id if test else '' }}" placeholder="slot id" class="short" inputmode="numeric" autocomplete="off">
+          <datalist id="idList">{% for c in (test.ids if test else []) %}<option value="{{ c.id }}">{{ c.why }}{% if c.other %} · slot of {{ c.other }}{% endif %}</option>{% endfor %}</datalist></div>
         <div class="field"><label>&nbsp;</label><label class="check"><input type="checkbox" name="confirm" value="1"> The pack may be in use: flash it anyway</label></div>
         <div class="field"><label>&nbsp;</label><div class="row"><button class="btn danger" name="action" value="test">Test locate</button><button class="btn ghost" name="action" value="test_stop">Stop</button></div></div>
       </div>
+      {% if test and test.ids %}<div class="lines sm mt-s"><div class="muted">IDs to try for Bolero {{ test.number }}, one at a time:</div>{% for c in test.ids %}<div><span class="mono">{{ c.id }}</span> · {{ c.why }}{% if c.other %} · <span class="red">slot of {{ c.other }}: sending it may flash that pack</span>{% endif %}</div>{% endfor %}</div>{% endif %}
     </div>
     {% if test %}
     <div class="mt">
