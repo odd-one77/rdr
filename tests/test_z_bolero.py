@@ -292,3 +292,32 @@ def test_flash_tester(antenna, monkeypatch, client):
     assert "Flashing for 5 seconds in Charger A, bay 1" in page and FakeAntenna.posts[-1] == ("chargers/7/bays/1/locate", {"active": 1})
     page = client.post("/admin/bolero/test", data={"number": "65", "action": "stop"}).text
     assert "Stopped" in page and FakeAntenna.posts[-1] == ("chargers/7/bays/1/locate", {"active": 0})
+
+
+def test_tester_test_mode(antenna, monkeypatch, client):
+    """Test mode (admin tester only): pack locate without the charger checks; the kiosk path still refuses it."""
+    cfg = {"bolero_host": antenna, "bolero_enabled": True, "bolero_admin_password": "secret", "bolero_charger_resource": ""}
+    monkeypatch.setattr(bolero, "load_config", lambda: dict(cfg))
+    monkeypatch.setattr(FakeAntenna, "charger_resource", "chargers")
+    _reset(); bolero._identify_timers.clear(); bolero._identify_off.clear()
+    client.post("/start", data={"tech_id": 1, "site_id": 1})
+    page = client.get("/admin/login").text
+    client.post("/admin/login", data={"password": "test1234", "confirm": "test1234"} if "Set the admin password" in page else {"password": "test1234"})
+    bolero.poll_now()
+    n = len(FakeAntenna.posts)
+    # not ticked: nothing sent
+    r = client.post("/admin/bolero/test", data={"number": "61", "action": "test", "how": "pack"})
+    assert r.status_code == 303 and "Tick" in r.headers["location"] and len(FakeAntenna.posts) == n
+    # Bolero 61 is on air and in no charger: the kiosk refuses, test mode sends the pack locate (fake accepts bp/<id>/locate)
+    with pytest.raises(ValueError):
+        bolero.identify("61", seconds=0)
+    page = client.post("/admin/bolero/test", data={"number": "61", "action": "test", "how": "pack", "confirm": "1", "seconds": "5"}).text
+    assert "accepted locate" in page and "HTTP 404" in page   # the CommsCheck form first, then bp/60/locate
+    assert FakeAntenna.posts[-1] == ("bp/60/locate", {"active": 1}) and "61" in bolero._identify_timers
+    page = client.post("/admin/bolero/test", data={"number": "61", "action": "test_stop"}).text
+    assert "Stopped" in page and FakeAntenna.posts[-1] == ("bp/60/locate", {"active": 0}) and "61" not in bolero._identify_timers
+    # outside test mode the pack locate is still refused by the write guard
+    with pytest.raises(ValueError, match="only reads"):
+        bolero._request(antenna, "bp/60/locate", method="POST", body={"active": 1}, auth=("admin", "secret"))
+    with pytest.raises(ValueError, match="only reads"):   # test mode never lets anything else through
+        bolero._request(antenna, "bp/60", method="POST", body={"bpName": "x"}, auth=("admin", "secret"), test_mode=True)

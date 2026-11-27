@@ -948,13 +948,25 @@ def _bolero_render(request: Request, path: str = "", host: str = "", test: dict 
 
 
 @router.post("/bolero/test", dependencies=[Depends(require_admin)])
-def bolero_test(request: Request, number: str = Form(""), action: str = Form("check"), seconds: int = Form(10)):
+def bolero_test(request: Request, number: str = Form(""), action: str = Form("check"), seconds: int = Form(10), how: str = Form("pack"), confirm: str = Form("")):
     """Flash tester: check a pack (sends nothing), flash it through its charger bay, or stop. Same rules as the kiosk."""
     number = number.strip()
     if not number:
         return _redirect("/admin/bolero#tester", err="Pick a pack to test")
     seconds = max(3, min(60, seconds))
-    result: dict = {"number": number, "seconds": seconds}
+    result: dict = {"number": number, "seconds": seconds, "how": how}
+    if action == "test":
+        # test mode: no charger checks, so the pack may flash and buzz on someone's belt. Admin, this page, ticked each time.
+        if not confirm:
+            return _redirect("/admin/bolero#tester", err="Tick the box to confirm test mode: the pack flashes and buzzes wherever it is")
+        try:
+            result["test"] = bolero.test_locate(number, "charger" if how == "charger" else "pack", seconds)
+        except ValueError as e:
+            result["error"] = str(e)
+        return _bolero_render(request, test=result)
+    if action == "test_stop":
+        result["done"] = "Stopped" if bolero.test_stop(number) else "Nothing was running for that pack"
+        return _bolero_render(request, test=result)
     try:
         if action == "flash":
             r = bolero.identify(number, on=True, seconds=seconds)

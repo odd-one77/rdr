@@ -60,7 +60,7 @@ _wake = threading.Event()
 _last_demand = 0.0
 _identify_timers: dict[str, threading.Timer] = {}
 _after_poll: list = []   # callbacks run after a good poll (Always use Bolero names)
-_identify_off: dict[str, tuple[str, str, dict]] = {}   # pack -> (host, resource, body) that turns its flashing off
+_identify_off: dict[str, tuple] = {}   # pack -> (host, resource, body[, test_mode]) that turns its flashing off
 
 
 # -- config -------------------------------------------------------------------
@@ -141,11 +141,24 @@ def _charger_locate(method: str, resource: str, body: Optional[dict]) -> bool:
     return not (isinstance(body, dict) and any(str(k).lower() in ("nodes", "node", "bp", "bpid", "bps") for k in body))
 
 
-def _request(host: str, resource: str, method: str = "GET", body: Optional[dict] = None, auth: tuple[str, str] = READ_AUTH, timeout: float = TIMEOUT) -> Any:
+def _pack_locate(method: str, resource: str, body: Optional[dict]) -> bool:
+    """The pack's own locate (CommsCheck: POST locate {active, nodes: [{id}]}, or bp/<id>/locate). It flashes
+    and buzzes a pack wherever it is, so only the admin tester's test mode may send it."""
+    if method != "POST":
+        return False
+    r = resource.strip("/")
+    if r == "locate":
+        return isinstance(body, dict) and set(body) <= {"active", "nodes"}
+    return bool(re.fullmatch(r"bp/\d+/locate", r)) and isinstance(body, dict) and set(body) <= {"active"}
+
+
+def _request(host: str, resource: str, method: str = "GET", body: Optional[dict] = None, auth: tuple[str, str] = READ_AUTH, timeout: float = TIMEOUT,
+             test_mode: bool = False) -> Any:
     if not _is_private(host):
         raise ValueError("Antenna address must be on the show network (10.x, 172.16-31.x, 192.168.x)")
     # Read only, with one exception: Identify through a charger bay. Nothing else may ever be written.
-    if method != "GET" and not _charger_locate(method, resource, body):
+    # The admin tester's test mode may also send the pack's own locate (never the kiosk).
+    if method != "GET" and not _charger_locate(method, resource, body) and not (test_mode and _pack_locate(method, resource, body)):
         raise ValueError(f"RDR only reads from the Bolero system; refusing {method} {resource}")
     with _lock:
         _state["requests"] = _state.get("requests", 0) + 1
@@ -656,10 +669,78 @@ def _safe_off(number: str) -> None:
     pw = load_config().get("bolero_admin_password") or ""
     if not target or not pw:
         return
-    host, resource, body = target
+    host, resource, body = target[:3]
+    test_mode = len(target) > 3 and target[3]
     for attempt in range(2):
         try:
-            _request(host, resource, method="POST", body=body, auth=("admin", pw))
+            _request(host, resource, method="POST", body=body, auth=("admin", pw), test_mode=test_mode)
             return
         except Exception:  # noqa: BLE001
             time.sleep(1)
+
+
+def test_locate(number: str, how: str = "pack", seconds: int = IDENTIFY_SECONDS) -> dict:
+    """Admin tester, test mode: locate a pack WITHOUT the charger checks, to see whether locate works on this
+    system at all. how="pack" sends the pack's own locate (it flashes and buzzes wherever the pack is);
+    how="charger" sends Identify to its charger bay even if the pack looks on air. Turned off after `seconds`.
+    Every request tried, and what the system answered, is returned."""
+    cfg = load_config()
+    host_list, pw = hosts(cfg.get("bolero_host") or ""), cfg.get("bolero_admin_password") or ""
+    if not host_list or not pw:
+        raise ValueError("Set the antenna address and admin password first")
+    _poll_once(force=True)
+    info = pack_info(number)
+    n = info["number"]
+    with _lock:
+        bp_id = (_state["packs"].get(n) or {}).get("id")
+    if not info["known"] or bp_id is None:
+        raise ValueError(f"No Bolero {n} on the system")
+    if how == "charger":
+        if not info.get("charger"):
+            raise ValueError(f"Bolero {n} is not listed in any charger bay, so there is no bay to send Identify to")
+        forms = _locate_forms(info, bp_id, True)
+        off = {r: b for r, b in _locate_forms(info, bp_id, False)}
+    else:
+        forms = [("locate", {"active": 1, "nodes": [{"id": bp_id}]}), (f"bp/{bp_id}/locate", {"active": 1})]
+        off = {"locate": {"active": 0, "nodes": [{"id": bp_id}]}, f"bp/{bp_id}/locate": {"active": 0}}
+    old = _identify_timers.pop(n, None)
+    if old:
+        old.cancel()
+        _safe_off(n)
+    attempts, used = [], None
+    for host in host_list:
+        for resource, body in forms:
+            try:
+                answer = _request(host, resource, method="POST", body=body, auth=("admin", pw), test_mode=True)
+                attempts.append({"host": host, "resource": resource, "body": body, "ok": True, "answer": str(answer)[:300] if answer else "accepted"})
+                used = (host, resource)
+                break
+            except urllib.error.HTTPError as e:
+                attempts.append({"host": host, "resource": resource, "body": body, "ok": False, "answer": f"HTTP {e.code} {e.reason}"})
+                if e.code in (401, 403):
+                    raise ValueError("The antenna refused the admin password") from e
+            except Exception as e:  # noqa: BLE001
+                attempts.append({"host": host, "resource": resource, "body": body, "ok": False, "answer": f"{type(e).__name__}: {e}"})
+                break
+        if used:
+            break
+    if used:
+        _identify_off[n] = (used[0], used[1], off[used[1]], True)
+        timer = threading.Timer(seconds, lambda: _safe_off(n))
+        timer.daemon = True
+        timer.start()
+        _identify_timers[n] = timer
+    return {"number": n, "name": info.get("name"), "how": how, "ok": bool(used), "seconds": seconds, "attempts": attempts,
+            "charger": info.get("charger"), "online": info.get("online"), "antenna": info.get("antenna")}
+
+
+def test_stop(number: str) -> bool:
+    """Stop whatever the tester started for this pack, with the request that started it."""
+    n = str(number or "").strip().lstrip("0") or str(number)
+    t = _identify_timers.pop(n, None)
+    if t:
+        t.cancel()
+    if n in _identify_off:
+        _safe_off(n)
+        return True
+    return False

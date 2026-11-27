@@ -624,3 +624,5 @@ body.locked { overflow: hidden; }
 .choice.wide { width: 100%; color: inherit; font-family: inherit; }
 .choice:disabled { opacity: .55; cursor: not-allowed; }
 .lines > div { padding: 3px 0; font-size: 13px; }
+.test-mode { border-top: 1px solid var(--border); padding-top: var(--s3); }
+.test-mode h3 { font-size: 13px; margin: 0 0 4px; color: var(--amber); }
