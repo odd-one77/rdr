@@ -728,7 +728,9 @@ def test_locate(number: str, how: str = "pack", seconds: int = IDENTIFY_SECONDS,
     else:
         if send_id not in (None, ""):
             bp_id = int(send_id) if str(send_id).isdigit() else send_id
-        forms = [("locate", {"active": 1, "nodes": [{"id": bp_id}]}), (f"bp/{bp_id}/locate", {"active": 1})]
+        # what the Bolero web page itself sends (seen on a live system): /rest/bp/<slot id>/locate.
+        # The antenna also answers 200 to /rest/locate {nodes: [...]} without flashing, so that is not tried.
+        forms = [(f"bp/{bp_id}/locate", {"active": 1})]
         off = {"locate": {"active": 0, "nodes": [{"id": bp_id}]}, f"bp/{bp_id}/locate": {"active": 0}}
     old = _identify_timers.pop(n, None)
     if old:
