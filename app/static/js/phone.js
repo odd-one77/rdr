@@ -95,7 +95,7 @@
 
   // ---- basket ----------------------------------------------------------------
   let lastScan = { si: '', t: 0 };
-  async function handleCode(raw) {
+  async function handleCode(raw, fromCamera = false) {
     const si = String(raw || '').trim();
     if (!si) return;
     const now = Date.now();
@@ -111,8 +111,18 @@
         document.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { closeModal(); addToBasket(r.results.find(x => x.id === +b.dataset.pick)); });
         return;
       }
+      if (fromCamera) { unknownToast(d.si); return; }   // a misread must not open a form: offer it instead
       beep(false); openQuickCreate(d.si);
     } catch (e) { beep(false); toast('err', 'Lookup failed', e.message); }
+  }
+  const offered = {};
+  function unknownToast(si) {
+    if (Date.now() - (offered[si] || 0) < 10000) return;   // label still in view: one offer is enough
+    offered[si] = Date.now(); beep(false);
+    const el = document.createElement('div'); el.className = 'toast warn';
+    el.innerHTML = `<div class="t">Not in the database</div><div class="d mono">${esc(si)}</div><button class="btn sm mt-s" type="button">Add as new device</button>`;
+    el.querySelector('button').onclick = () => { el.remove(); openQuickCreate(si); };
+    $('#toasts').appendChild(el); setTimeout(() => { el.classList.add('hide'); setTimeout(() => el.remove(), 220); }, 6000);
   }
   function addToBasket(device, quiet = false) {
     if (state.basket.some(x => x.id === device.id)) { if (!quiet) { beep(false); toast('warn', 'Already in the list', device.label || device.si, 1200); } return; }
@@ -178,7 +188,9 @@
   // up to 1080p, the box is mapped back through the object-fit crop to camera pixels, and that strip is read
   // at full resolution (small Code 128 labels need it). Native BarcodeDetector when the phone has one
   // (Android Chrome), ZXing otherwise (iPhone).
-  const cam = { stream: null, track: null, busy: false, timer: null, detector: null, reader: null, canvas: document.createElement('canvas'), zoom: 1, flip: 0, last: { text: '', t: 0 } };
+  const cam = { stream: null, track: null, busy: false, timer: null, detector: null, reader: null, canvas: document.createElement('canvas'), zoom: 1, flip: 0, last: { text: '', t: 0 }, votes: [] };
+  // A camera read worth acting on: printable, at least 4 characters, no control or odd symbols.
+  const plausible = t => { t = String(t || '').trim(); return t.length >= 4 && t.length <= 64 && /^[A-Za-z0-9][A-Za-z0-9 ._\/+-]*$/.test(t) ? t : null; };
 
   function guideCrop(video) {
     const vw = video.videoWidth, vh = video.videoHeight;
@@ -196,7 +208,7 @@
   function zxingReader() {
     if (cam.reader || !window.ZXing) return cam.reader;
     const Z = window.ZXing, F = Z.BarcodeFormat, hints = new Map();
-    hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [F.CODE_128, F.CODE_39, F.CODE_93, F.EAN_13, F.EAN_8, F.ITF, F.UPC_A, F.CODABAR, F.QR_CODE, F.DATA_MATRIX]);
+    hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [F.CODE_128, F.EAN_13, F.QR_CODE, F.DATA_MATRIX]);   // all carry a check: Code 39, ITF and Codabar misread shadows
     hints.set(Z.DecodeHintType.TRY_HARDER, true);
     cam.reader = new Z.MultiFormatReader(); cam.reader.setHints(hints);
     return cam.reader;
@@ -227,15 +239,20 @@
     clearTimeout(cam.timer);
     cam.timer = setTimeout(async () => {
       const video = $('#camVideo');
-      if (cam.stream && !document.hidden && video.readyState >= 2 && !cam.busy) {
+      if (cam.stream && !document.hidden && video.readyState >= 2 && !cam.busy && !$('#modalRoot').firstChild) {   // no reading behind an open dialog
         cam.busy = true;
         try {
-          const text = await readFrame();
+          const text = plausible(await readFrame());
           const now = Date.now();
-          if (text && !(text === cam.last.text && now - cam.last.t < 2500)) {   // the same label is seen many times a second
-            cam.last = { text, t: now };
-            const g = $('#scanGuide'); g.classList.add('hit'); setTimeout(() => g.classList.remove('hit'), 400);
-            handleCode(text);
+          if (text) {
+            // Shadows and print can fool a reader for one frame; a real label reads the same several frames running.
+            cam.votes = cam.votes.filter(v => now - v.t < 1500); cam.votes.push({ text, t: now });
+            const agree = cam.votes.filter(v => v.text === text).length;
+            if (agree >= 3 && !(text === cam.last.text && now - cam.last.t < 2500)) {   // the same label is seen many times a second
+              cam.last = { text, t: now }; cam.votes = [];
+              const g = $('#scanGuide'); g.classList.add('hit'); setTimeout(() => g.classList.remove('hit'), 400);
+              handleCode(text, true);
+            }
           }
         } catch (e) { /* keep going */ }
         cam.busy = false;
@@ -248,7 +265,7 @@
     if (!('BarcodeDetector' in window)) return;
     try {
       const have = await BarcodeDetector.getSupportedFormats();
-      const want = ['code_128', 'code_39', 'code_93', 'ean_13', 'ean_8', 'itf', 'upc_a', 'codabar', 'qr_code', 'data_matrix'].filter(f => have.includes(f));
+      const want = ['code_128', 'ean_13', 'qr_code', 'data_matrix'].filter(f => have.includes(f));
       if (want.includes('code_128')) cam.detector = new BarcodeDetector({ formats: want });
     } catch (e) { cam.detector = null; }
   }
