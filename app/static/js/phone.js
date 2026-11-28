@@ -174,24 +174,128 @@
   }
 
   // ---- camera ------------------------------------------------------------------
-  async function startCamera() {
-    const msg = $('#scanMsg');
-    if (!window.RDR.secure || !window.Html5Qrcode) return;
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { msg.textContent = 'This browser cannot access the camera.'; return; }
-    const formats = window.Html5QrcodeSupportedFormats ? [
-      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.DATA_MATRIX, Html5QrcodeSupportedFormats.ITF, Html5QrcodeSupportedFormats.UPC_A,
-    ] : undefined;
-    const scanner = new Html5Qrcode('reader', { formatsToSupport: formats, verbose: false, experimentalFeatures: { useBarCodeDetectorIfSupported: true } });
+  // Our own loop, so the box on screen is exactly the part of the picture that is read: the camera runs at
+  // up to 1080p, the box is mapped back through the object-fit crop to camera pixels, and that strip is read
+  // at full resolution (small Code 128 labels need it). Native BarcodeDetector when the phone has one
+  // (Android Chrome), ZXing otherwise (iPhone).
+  const cam = { stream: null, track: null, busy: false, timer: null, detector: null, reader: null, canvas: document.createElement('canvas'), zoom: 1, flip: 0, last: { text: '', t: 0 } };
+
+  function guideCrop(video) {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const vr = video.getBoundingClientRect(), g = $('#scanGuide').getBoundingClientRect();
+    if (!vw || !vh || !vr.width || !g.width) return null;
+    const s = Math.max(vr.width / vw, vr.height / vh);              // object-fit: cover
+    const ox = (vr.width - vw * s) / 2, oy = (vr.height - vh * s) / 2;
+    const padX = g.width * 0.06, padY = g.height * 0.25;            // a little slack around the box
+    let x0 = (g.left - vr.left - padX - ox) / s, x1 = (g.right - vr.left + padX - ox) / s;
+    let y0 = (g.top - vr.top - padY - oy) / s, y1 = (g.bottom - vr.top + padY - oy) / s;
+    x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(vw, x1); y1 = Math.min(vh, y1);
+    return { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
+  }
+
+  function zxingReader() {
+    if (cam.reader || !window.ZXing) return cam.reader;
+    const Z = window.ZXing, F = Z.BarcodeFormat, hints = new Map();
+    hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [F.CODE_128, F.CODE_39, F.CODE_93, F.EAN_13, F.EAN_8, F.ITF, F.UPC_A, F.CODABAR, F.QR_CODE, F.DATA_MATRIX]);
+    hints.set(Z.DecodeHintType.TRY_HARDER, true);
+    cam.reader = new Z.MultiFormatReader(); cam.reader.setHints(hints);
+    return cam.reader;
+  }
+
+  async function readFrame() {
+    const video = $('#camVideo'), crop = guideCrop(video);
+    if (!crop || crop.w < 20 || crop.h < 10) return null;
+    const scale = Math.min(1, 1600 / crop.w);
+    const c = cam.canvas; c.width = Math.round(crop.w * scale); c.height = Math.round(crop.h * scale);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(video, crop.x, crop.y, crop.w, crop.h, 0, 0, c.width, c.height);
+    if (cam.detector) {
+      const found = await cam.detector.detect(c);
+      return found.length ? found[0].rawValue : null;
+    }
+    const Z = window.ZXing, reader = zxingReader();
+    if (!reader) return null;
+    const lum = new Z.HTMLCanvasElementLuminanceSource(c);
+    cam.flip = 1 - cam.flip;                                        // two binarizers in turn: global suits 1D labels, hybrid suits uneven light
+    const bin = cam.flip ? new Z.GlobalHistogramBinarizer(lum) : new Z.HybridBinarizer(lum);
+    try { return reader.decodeWithState(new Z.BinaryBitmap(bin)).getText(); }
+    catch (e) { return null; }                                      // nothing in this frame
+    finally { reader.reset(); }
+  }
+
+  function scanLoop() {
+    clearTimeout(cam.timer);
+    cam.timer = setTimeout(async () => {
+      const video = $('#camVideo');
+      if (cam.stream && !document.hidden && video.readyState >= 2 && !cam.busy) {
+        cam.busy = true;
+        try {
+          const text = await readFrame();
+          const now = Date.now();
+          if (text && !(text === cam.last.text && now - cam.last.t < 2500)) {   // the same label is seen many times a second
+            cam.last = { text, t: now };
+            const g = $('#scanGuide'); g.classList.add('hit'); setTimeout(() => g.classList.remove('hit'), 400);
+            handleCode(text);
+          }
+        } catch (e) { /* keep going */ }
+        cam.busy = false;
+      }
+      scanLoop();
+    }, 90);
+  }
+
+  async function setupDetector() {
+    if (!('BarcodeDetector' in window)) return;
     try {
-      await scanner.start({ facingMode: 'environment' }, { fps: 12, qrbox: (w, h) => ({ width: Math.round(w * 0.7), height: Math.round(h * 0.36) }), aspectRatio: 4 / 3 }, text => handleCode(text), () => {});
+      const have = await BarcodeDetector.getSupportedFormats();
+      const want = ['code_128', 'code_39', 'code_93', 'ean_13', 'ean_8', 'itf', 'upc_a', 'codabar', 'qr_code', 'data_matrix'].filter(f => have.includes(f));
+      if (want.includes('code_128')) cam.detector = new BarcodeDetector({ formats: want });
+    } catch (e) { cam.detector = null; }
+  }
+
+  function cameraControls() {
+    const caps = cam.track && cam.track.getCapabilities ? cam.track.getCapabilities() : {};
+    if (caps.focusMode && caps.focusMode.includes('continuous')) cam.track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+    const tb = $('#btnTorch');
+    if (caps.torch) { tb.classList.remove('hidden'); let on = false; tb.onclick = async () => { on = !on; try { await cam.track.applyConstraints({ advanced: [{ torch: on }] }); tb.classList.toggle('on', on); } catch (e) {} }; }
+    const zb = $('#btnZoom');
+    if (caps.zoom && caps.zoom.max >= 1.5) {                         // small labels: zoom in rather than hold the phone too close to focus
+      const steps = [1, 2, 3].filter(z => z <= caps.zoom.max).map(z => Math.max(caps.zoom.min || 1, z));
+      zb.classList.remove('hidden');
+      zb.onclick = async () => {
+        const next = steps[(steps.indexOf(cam.zoom) + 1) % steps.length] || steps[0];
+        try { await cam.track.applyConstraints({ advanced: [{ zoom: next }] }); cam.zoom = next; zb.textContent = `Zoom ${next}×`; } catch (e) {}
+      };
+    }
+  }
+
+  async function startCamera() {
+    const msg = $('#scanMsg'), video = $('#camVideo');
+    if (!window.RDR.secure) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { msg.textContent = 'This browser cannot access the camera.'; return; }
+    if (cam.stream) return;
+    try {
+      cam.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      cam.track = cam.stream.getVideoTracks()[0];
+      cam.track.addEventListener('ended', () => { cam.stream = null; });
+      video.srcObject = cam.stream;
+      await video.play().catch(() => {});
+      await setupDetector();
+      if (!cam.detector && !window.ZXing) { msg.textContent = 'The barcode reader did not load. Reload the page, or type SI numbers below.'; return; }
       msg.classList.add('hidden');
-      const caps = scanner.getRunningTrackCapabilities ? scanner.getRunningTrackCapabilities() : {};
-      if (caps && caps.torch) { const b = $('#btnTorch'); b.classList.remove('hidden'); let on = false; b.onclick = async () => { on = !on; try { await scanner.applyVideoConstraints({ advanced: [{ torch: on }] }); } catch (e) {} }; }
+      cameraControls();
+      scanLoop();
     } catch (e) {
+      cam.stream = null;
+      msg.classList.remove('hidden');
       msg.textContent = 'No camera available. Allow camera access for this site and reload, or type SI numbers below.'; msg.title = e && e.message ? e.message : String(e);
     }
   }
+  // iPhones stop the camera when the page is in the background: start it again on return.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (!cam.stream || !cam.track || cam.track.readyState === 'ended') { cam.stream = null; cam.zoom = 1; $('#btnZoom').textContent = 'Zoom 1×'; startCamera(); }
+  });
 
   // ---- live configuration: admin edits show up here without a reload ------------
   let configVersion = null;

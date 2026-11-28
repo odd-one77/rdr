@@ -91,7 +91,7 @@ def test_phone_and_trust_pages(client):
         phone.post("/start", data={"tech_id": 1, "site_id": 1})
         r = phone.get("/m")
         assert r.status_code == 200 and "Camera scanning needs HTTPS" in r.text  # test client is http://testserver
-        assert "html5-qrcode.min.js" in r.text
+        assert "zxing.min.js" in r.text
     r = client.get("/trust")
     assert r.status_code == 200 and "HTTPS is off" in r.text
     r = client.get("/trust/rdr-ca.crt")

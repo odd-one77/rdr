@@ -15,13 +15,14 @@
   </div></div>
 
   <div class="scanner" id="scanner">
-    <div id="reader"></div>
-    <div class="overlay"><div></div></div>
+    <video id="camVideo" playsinline muted autoplay></video>
+    <div class="overlay"><div class="guide" id="scanGuide"></div><div class="hint">Line the barcode up inside the box</div></div>
     <div class="msg" id="scanMsg">{{ 'Starting camera' if secure else 'The camera needs the https address' }}</div>
   </div>
   <div class="row">
     <input type="text" id="scanInput" class="mono upper" placeholder="Type an SI number" autocomplete="off">
     <button class="btn" id="btnAddManual">Add</button>
+    <button class="btn ghost hidden" id="btnZoom">Zoom 1×</button>
     <button class="btn ghost hidden" id="btnTorch">Torch</button>
   </div>
 
@@ -36,7 +37,7 @@
 <div class="toasts" id="toasts"></div>
 <div id="modalRoot"></div>
 <script nonce="{{ request.state.csp_nonce }}">window.RDR = { tech: {{ tech | tojson }}, types: {{ types | tojson }}, secure: {{ 'true' if secure else 'false' }} };</script>
-<script src="/static/vendor/html5-qrcode.min.js?v={{ version }}"></script>
+<script src="/static/vendor/zxing.min.js?v={{ version }}"></script>
 <script src="/static/js/lock.js?v={{ version }}"></script>
 <script src="/static/js/phone.js?v={{ version }}"></script>
 {% endblock %}
