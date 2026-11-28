@@ -189,8 +189,8 @@
   // at full resolution (small Code 128 labels need it). Native BarcodeDetector when the phone has one
   // (Android Chrome), ZXing otherwise (iPhone).
   const cam = { stream: null, track: null, busy: false, timer: null, detector: null, reader: null, canvas: document.createElement('canvas'), zoom: 1, flip: 0, last: { text: '', t: 0 }, votes: [] };
-  // A camera read worth acting on: printable, at least 4 characters, no control or odd symbols.
-  const plausible = t => { t = String(t || '').trim(); return t.length >= 4 && t.length <= 64 && /^[A-Za-z0-9][A-Za-z0-9 ._\/+-]*$/.test(t) ? t : null; };
+  // A camera read worth acting on: 4-64 printable characters (easyjob labels start with '@', e.g. '@si13225837').
+  const plausible = t => { t = String(t || '').trim(); return t.length >= 4 && t.length <= 64 && /^[\x21-\x7E][\x20-\x7E]*$/.test(t) ? t : null; };
 
   function guideCrop(video) {
     const vw = video.videoWidth, vh = video.videoHeight;
@@ -245,10 +245,10 @@
           const text = plausible(await readFrame());
           const now = Date.now();
           if (text) {
-            // Shadows and print can fool a reader for one frame; a real label reads the same several frames running.
-            cam.votes = cam.votes.filter(v => now - v.t < 1500); cam.votes.push({ text, t: now });
+            // Shadows and print can fool a reader for one frame; a real label reads the same twice running.
+            cam.votes = cam.votes.filter(v => now - v.t < 2000); cam.votes.push({ text, t: now });
             const agree = cam.votes.filter(v => v.text === text).length;
-            if (agree >= 3 && !(text === cam.last.text && now - cam.last.t < 2500)) {   // the same label is seen many times a second
+            if (agree >= 2 && !(text === cam.last.text && now - cam.last.t < 2500)) {   // the same label is seen many times a second
               cam.last = { text, t: now }; cam.votes = [];
               const g = $('#scanGuide'); g.classList.add('hit'); setTimeout(() => g.classList.remove('hit'), 400);
               handleCode(text, true);
